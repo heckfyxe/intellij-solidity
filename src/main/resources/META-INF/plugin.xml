@@ -164,6 +164,15 @@
         <codeInsight.lineMarkerProvider language="Solidity"
                                         implementationClass="me.serce.solidity.ide.annotation.SolLineMarkerProvider"/>
 
+        <!-- Chains: deploy and interact with contracts on local anvil chains -->
+        <toolWindow id="Solidity Chains" anchor="bottom" icon="AllIcons.Nodes.Deploy" canCloseContents="false"
+                    factoryClass="me.serce.solidity.chain.ui.ChainsToolWindowFactory"/>
+        <codeInsight.lineMarkerProvider language="Solidity"
+                                        implementationClass="me.serce.solidity.chain.ui.ChainLineMarkerProvider"/>
+        <externalAnnotator language="Solidity"
+                           implementationClass="me.serce.solidity.chain.compile.SolcExternalAnnotator"/>
+        <notificationGroup id="Solidity Chains" displayType="BALLOON"/>
+
 
         <internalFileTemplate name="Solidity Contract"/>
         <internalFileTemplate name="Solidity Library"/>
