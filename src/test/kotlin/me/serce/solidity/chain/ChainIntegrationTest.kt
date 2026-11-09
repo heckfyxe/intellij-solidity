@@ -1,6 +1,10 @@
 package me.serce.solidity.chain
 
 import com.intellij.execution.configurations.GeneralCommandLine
+import me.serce.solidity.chain.ui.ChainUi
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.SystemProperties
@@ -121,6 +125,33 @@ class ChainIntegrationTest : BasePlatformTestCase() {
     assertTrue(rt.staleForkNotified)
     service.stop(chain)
     rt.process?.waitFor(10_000)
+  }
+
+  /** Deploying builds what the editor shows, not the last saved file. */
+  fun testBuildSavesEditorsFirst() {
+    if (!File(bin, "forge").canExecute()) return
+    val root = FileUtil.createTempDirectory("chain-save", null)
+    File(root, "foundry.toml").writeText("[profile.default]\nsrc = \"src\"\nout = \"out\"\nlibs = []\n")
+    File(root, "src").mkdirs()
+    val source = File(root, "src/Box.sol").apply {
+      writeText("// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\ncontract Box { function a() public {} }\n")
+    }
+    val file = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(source)!!
+    val document = FileDocumentManager.getInstance().getDocument(file)!!
+    WriteCommandAction.runWriteCommandAction(project) {
+      document.setText(document.text.replace("function a() public {}", "function a() public {} function b() public {}"))
+    }
+    assertTrue(FileDocumentManager.getInstance().isDocumentUnsaved(document))
+
+    var built: List<Artifact>? = null
+    ChainUi.buildThen(project, FoundryProject(root.toPath(), File(bin, "forge").path)) { built = it }
+    val deadline = System.currentTimeMillis() + 120_000
+    while (built == null && System.currentTimeMillis() < deadline) {
+      UIUtil.dispatchAllInvocationEvents()
+      Thread.sleep(100)
+    }
+    val box = built!!.single { it.name == "Box" }
+    assertEquals(listOf("a", "b"), box.abi.functions.map { it.name }.sorted())
   }
 
   fun testDeployCallTransact() {

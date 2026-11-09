@@ -11,6 +11,7 @@ import com.intellij.build.events.impl.MessageEventImpl
 import com.intellij.build.events.impl.StartBuildEventImpl
 import com.intellij.build.events.impl.SuccessResultImpl
 import com.intellij.notification.NotificationAction
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.application.runReadAction
@@ -47,8 +48,12 @@ import java.nio.file.Path
 
 object ChainUi {
 
-  /** Runs `forge build` in the background, reports to the Build tool window, then calls [onSuccess] on the EDT. */
+  /**
+   * Saves open editors, runs `forge build` in the background, reports to the Build tool window, then calls [onSuccess]
+   * on the EDT. Call on the EDT. forge reads files from disk, so without the save it would build the last saved code.
+   */
   fun buildThen(project: Project, foundry: FoundryProject, onSuccess: (List<Artifact>) -> Unit) {
+    FileDocumentManager.getInstance().saveAllDocuments()
     object : Task.Backgroundable(project, "Building with forge", true) {
       private var result: BuildResult? = null
       private var artifacts: List<Artifact> = emptyList()
