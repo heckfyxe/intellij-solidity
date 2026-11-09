@@ -7,12 +7,14 @@ import com.intellij.lang.ASTNode
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiNameIdentifierOwner
 import com.intellij.psi.presentation.java.SymbolPresentationUtil
+import com.intellij.psi.search.SearchScope
 import com.intellij.psi.stubs.IStubElementType
 import com.intellij.psi.stubs.StubElement
 import me.serce.solidity.lang.core.SolidityTokenTypes.IDENTIFIER
 import me.serce.solidity.lang.psi.SolElement
 import me.serce.solidity.lang.psi.SolNamedElement
 import me.serce.solidity.lang.psi.SolPsiFactory
+import me.serce.solidity.lang.resolve.SolUseScope
 import me.serce.solidity.lang.resolve.ref.SolReference
 import me.serce.solidity.lang.stubs.SolNamedStub
 
@@ -35,6 +37,8 @@ abstract class SolNamedElementImpl(node: ASTNode) : SolElementImpl(node), SolNam
   override fun getNavigationElement(): PsiElement = nameIdentifier ?: this
 
   override fun getTextOffset(): Int = nameIdentifier?.textOffset ?: super.getTextOffset()
+
+  override fun getUseScope(): SearchScope = SolUseScope.of(this) ?: super.getUseScope()
 }
 
 abstract class SolStubbedElementImpl<StubT : StubElement<*>> : StubBasedPsiElementBase<StubT>, SolElement {
@@ -72,6 +76,8 @@ abstract class SolStubbedNamedElementImpl<S> :
   override fun getTextOffset(): Int = nameIdentifier?.textOffset ?: super.getTextOffset()
 
   override fun getPresentation(): PresentationData = createPresentation()
+
+  override fun getUseScope(): SearchScope = SolUseScope.of(this) ?: super.getUseScope()
 }
 
 private fun SolNamedElement.createPresentation(): PresentationData {
