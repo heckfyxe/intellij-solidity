@@ -6,6 +6,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.SystemProperties
 import com.intellij.util.ui.UIUtil
 import me.serce.solidity.chain.abi.AbiValueParser
+import me.serce.solidity.chain.foundry.Artifact
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import java.io.File
@@ -84,6 +85,40 @@ class ChainIntegrationTest : BasePlatformTestCase() {
     val rt = service.runtime(chain.id)
     assertEquals(rt.error, ChainStatus.RUNNING, waitFor(rt, 60))
     rt.accounts.forEach { assertTrue(it, rt.rpc!!.code(it).isEmpty()) }
+    service.stop(chain)
+    rt.process?.waitFor(10_000)
+  }
+
+  /** The fork RPC dropped the fork block's state (as non-archive nodes do): a transaction fails with why, not hangs. */
+  fun testStaleForkExplainsFailure() {
+    if (!File(bin, "anvil").canExecute()) return
+    val upstreamPort = ServerSocket(0).use { it.localPort }
+    // nobody reads its log, which would fill the pipe and block anvil while it mines many blocks
+    anvil = ProcessBuilder(File(bin, "anvil").path, "--port", upstreamPort.toString(), "--prune-history", "1")
+      .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+    val upstream = JsonRpcClient("http://127.0.0.1:$upstreamPort")
+    for (i in 1..50) if (runCatching { upstream.chainId() }.isSuccess) break else Thread.sleep(200)
+
+    val service = ChainService.getInstance(project)
+    val chain = ChainConfig().apply { name = "fork"; forkUrl = upstream.url; persistent = false; port = 8792 }
+    service.addChain(chain)
+    service.start(chain)
+    val rt = service.runtime(chain.id)
+    assertEquals(rt.error, ChainStatus.RUNNING, waitFor(rt, 60))
+    val from = rt.accounts.first()
+    val executor = ChainExecutor(service)
+    // a contract whose code is a single STOP, so any call succeeds
+    val artifact = Artifact("Stop", "src/Stop.sol", """[{"type":"function","name":"poke","inputs":[],"outputs":[],"stateMutability":"payable"}]""",
+      "0x6001600c60003960016000f300", hasLinkReferences = false)
+    val deployed = executor.deploy(chain, artifact, emptyList(), from, BigInteger.ZERO)
+    assertEquals(deployed.record.error, TxStatus.SUCCESS, deployed.record.status)
+    val poke = deployed.deployment!!.abi().functions.single()
+
+    upstream.call("anvil_mine", "0x300") // the fork block's state is pruned upstream now
+    val stale = executor.invoke(chain, deployed.deployment!!, poke, emptyList(), from, BigInteger.ONE)
+    assertEquals(TxStatus.FAILED, stale.record.status)
+    assertTrue(stale.record.error, stale.record.error.startsWith("The fork RPC no longer serves the state of the fork block"))
+    assertTrue(rt.staleForkNotified)
     service.stop(chain)
     rt.process?.waitFor(10_000)
   }

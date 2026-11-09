@@ -10,6 +10,7 @@ import com.intellij.execution.process.UnixProcessManager
 import com.intellij.execution.ui.ConsoleView
 import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.notification.Notification
+import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
@@ -59,6 +60,8 @@ class ChainRuntime(val configId: String) {
   @Volatile var console: ConsoleView? = null
   /** Deployments whose address no longer has code (chain was reset). */
   @Volatile var missing: Set<String> = emptySet()
+  /** The "fork cannot mine" notification was shown for this run. */
+  @Volatile var staleForkNotified = false
 }
 
 fun chainNotification(title: String, content: String, type: NotificationType): Notification =
@@ -179,6 +182,7 @@ class ChainService(private val project: Project) : PersistentStateComponent<Chai
     if (rt.status == ChainStatus.RUNNING || rt.status == ChainStatus.STARTING) return
     rt.status = ChainStatus.STARTING
     rt.error = null
+    rt.staleForkNotified = false
     fireChanged()
     if (config.kind == ChainKind.EXTERNAL) {
       ApplicationManager.getApplication().executeOnPooledThread { connect(config, JsonRpcClient(config.url), attempts = 1) }
@@ -233,6 +237,31 @@ class ChainService(private val project: Project) : PersistentStateComponent<Chai
     } catch (e: Exception) {
       fail(config, e.message ?: e.toString())
     }
+  }
+
+  /** Stops [config] if it runs and starts it again once anvil has exited (and saved its state). */
+  fun restart(config: ChainConfig) {
+    val process = runtime(config.id).process
+    if (process == null || process.isProcessTerminated) return start(config)
+    process.addProcessListener(object : ProcessListener {
+      override fun processTerminated(event: ProcessEvent) = invokeLater { start(config) }
+    })
+    stop(config)
+  }
+
+  /** Once per run: [config]'s fork RPC dropped the fork block's state, and restarting forks again from the latest block. */
+  fun notifyStaleFork(config: ChainConfig) {
+    val rt = runtime(config.id)
+    if (rt.staleForkNotified) return
+    rt.staleForkNotified = true
+    val keeps = if (config.persistent) "Its accounts and deployments are kept."
+    else "This is a temporary chain, so its deployments are lost."
+    chainNotification(
+      "${config.name} cannot mine any more",
+      "The fork RPC no longer serves the state of the fork block. Restart the chain to fork again from the latest block. " +
+        "$keeps Fork from an archive RPC to avoid this.",
+      NotificationType.ERROR,
+    ).addAction(NotificationAction.createSimpleExpiring("Restart Chain") { restart(config) }).notify(project)
   }
 
   fun stop(config: ChainConfig) {

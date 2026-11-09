@@ -15,6 +15,7 @@ import me.serce.solidity.chain.rpc.JsonRpcClient
 import me.serce.solidity.chain.rpc.RpcException
 import me.serce.solidity.chain.rpc.hexToBigInt
 import java.math.BigInteger
+import java.time.Duration
 
 /** Runs deploys, calls and transactions against a running chain and records them. Call off the EDT. */
 class ChainExecutor(private val service: ChainService) {
@@ -29,7 +30,7 @@ class ChainExecutor(private val service: ChainService) {
     var deployment: Deployment? = null
     run(chain, record, artifact.abi) { rpc ->
       val hash = rpc.sendTransaction(from, null, data, value)
-      val receipt = rpc.waitForReceipt(hash)
+      val receipt = awaitReceipt(chain, rpc, hash)
       applyReceipt(record, receipt, artifact.abi)
       if (record.status == TxStatus.SUCCESS) {
         val address = AbiCodec.checksum(receipt["contractAddress"].asText())
@@ -63,7 +64,7 @@ class ChainExecutor(private val service: ChainService) {
       record.results += formatOutputs(fn.outputs, returned)
       if (kind == TxKind.TRANSACT) {
         val hash = rpc.sendTransaction(from, target.address, data, value)
-        applyReceipt(record, rpc.waitForReceipt(hash), abi)
+        applyReceipt(record, awaitReceipt(chain, rpc, hash), abi)
       }
     }
     service.addRecord(record)
@@ -80,7 +81,8 @@ class ChainExecutor(private val service: ChainService) {
     }
     try {
       body(rpc)
-    } catch (e: RpcException) {
+    } catch (rpcError: RpcException) {
+      val e = explainForkFailure(chain, rpcError)
       val revertData = e.data?.takeIf { it.startsWith("0x") }
       val message = e.message.orEmpty()
       record.status = if (revertData != null || message.contains("revert", ignoreCase = true)) TxStatus.REVERTED else TxStatus.FAILED
@@ -89,6 +91,37 @@ class ChainExecutor(private val service: ChainService) {
       record.status = TxStatus.FAILED
       record.error = e.message ?: e.toString()
     }
+  }
+
+  /**
+   * anvil mines each transaction as it arrives unless told otherwise, so one still pending a moment later means mining
+   * failed, which anvil only logs. Mining once by hand returns that error instead of leaving the transaction stuck.
+   */
+  private fun awaitReceipt(chain: ChainConfig, rpc: JsonRpcClient, hash: String): JsonNode {
+    if (chain.kind == ChainKind.ANVIL) {
+      rpc.receiptWithin(hash, Duration.ofSeconds(2))?.let { return it }
+      if (rpc.automine()) rpc.mine()
+    }
+    return rpc.waitForReceipt(hash)
+  }
+
+  /**
+   * A fork reads the forked network's state at the fork block from its RPC. Most RPCs are not archive nodes and drop
+   * that state after about 128 blocks (~25 minutes on mainnet); from then on no block can be mined, and calls touching
+   * state anvil has not cached fail too. anvil reports this as a "database error" wrapping the RPC's own message.
+   */
+  private fun explainForkFailure(chain: ChainConfig, e: RpcException): RpcException {
+    val message = e.message.orEmpty()
+    if (!chain.isFork || !message.contains("database error")) return e
+    val upstream = message.substringAfterLast("error response:").trim().ifEmpty { message }
+    if (STALE_STATE.none { message.contains(it, ignoreCase = true) }) {
+      return RpcException("anvil could not read the forked network: $upstream")
+    }
+    service.notifyStaleFork(chain)
+    return RpcException(
+      "The fork RPC no longer serves the state of the fork block, so ${chain.name} cannot mine or read new state. " +
+        "Restart the chain to fork again from the latest block, or fork from an archive RPC. ($upstream)"
+    )
   }
 
   private fun applyReceipt(record: TxRecord, receipt: JsonNode, abi: ContractAbi) {
@@ -146,6 +179,9 @@ class ChainExecutor(private val service: ChainService) {
     }
 
   companion object {
+    /** How RPCs (geth, reth, erigon, public endpoints, anvil itself) say they no longer have a block's state. */
+    private val STALE_STATE = listOf("historical state", "missing trie node", "header not found", "pruned", "BlockOutOfRange", "not available")
+
     fun formatArgs(params: List<AbiParam>, values: List<Any>): List<String> =
       params.zip(values).mapIndexed { i, (p, v) -> "${p.name.ifEmpty { "arg$i" }}: ${formatValue(v)}" }
 

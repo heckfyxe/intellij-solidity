@@ -73,13 +73,20 @@ class JsonRpcClient(val url: String) {
   fun sendTransaction(from: String, to: String?, data: ByteArray, value: BigInteger): String =
     call("eth_sendTransaction", tx(from, to, data, value)).asText()
 
+  fun automine(): Boolean = call("anvil_getAutomine").asBoolean(false)
+  fun mine() { call("evm_mine") }
+
   /** Polls for the receipt; anvil mines instantly by default, so this normally returns on the first try. */
-  fun waitForReceipt(hash: String, timeout: Duration = Duration.ofSeconds(60)): JsonNode {
+  fun waitForReceipt(hash: String, timeout: Duration = Duration.ofSeconds(60)): JsonNode =
+    receiptWithin(hash, timeout) ?: throw RpcException("No receipt for $hash after ${timeout.seconds}s (is mining paused?)")
+
+  /** The receipt, or null when [hash] is still not mined after [timeout]. */
+  fun receiptWithin(hash: String, timeout: Duration): JsonNode? {
     val deadline = System.nanoTime() + timeout.toNanos()
     while (true) {
       val r = call("eth_getTransactionReceipt", hash)
       if (!r.isNull) return r
-      if (System.nanoTime() > deadline) throw RpcException("No receipt for $hash after ${timeout.seconds}s (is mining paused?)")
+      if (System.nanoTime() > deadline) return null
       Thread.sleep(200)
     }
   }
