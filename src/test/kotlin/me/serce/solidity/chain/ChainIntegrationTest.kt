@@ -66,6 +66,28 @@ class ChainIntegrationTest : BasePlatformTestCase() {
     assertTrue(rt.error, rt.error!!.startsWith("anvil stopped:") || rt.error!!.contains("listening"))
   }
 
+  /** Dev accounts with code on the forked network (e.g. EIP-7702 sweepers on mainnet) become plain accounts on the fork. */
+  fun testForkClearsCodeOfDevAccounts() {
+    if (!File(bin, "anvil").canExecute()) return
+    val upstreamPort = ServerSocket(0).use { it.localPort }
+    anvil = GeneralCommandLine(File(bin, "anvil").path, "--port", upstreamPort.toString()).createProcess()
+    val upstream = JsonRpcClient("http://127.0.0.1:$upstreamPort")
+    for (i in 1..50) if (runCatching { upstream.chainId() }.isSuccess) break else Thread.sleep(200)
+    val swept = upstream.accounts().first()
+    upstream.call("anvil_setCode", swept, "0xef01008a67b5020ee254ef48e3b6a04927f39baf7e408a")
+    assertTrue(upstream.code(swept).isNotEmpty())
+
+    val service = ChainService.getInstance(project)
+    val chain = ChainConfig().apply { name = "fork"; forkUrl = upstream.url; persistent = false; port = 8791 }
+    service.addChain(chain)
+    service.start(chain)
+    val rt = service.runtime(chain.id)
+    assertEquals(rt.error, ChainStatus.RUNNING, waitFor(rt, 60))
+    rt.accounts.forEach { assertTrue(it, rt.rpc!!.code(it).isEmpty()) }
+    service.stop(chain)
+    rt.process?.waitFor(10_000)
+  }
+
   fun testDeployCallTransact() {
     if (!File(bin, "anvil").canExecute() || !File(bin, "forge").canExecute()) return
     val root = FileUtil.createTempDirectory("chain-it", null)

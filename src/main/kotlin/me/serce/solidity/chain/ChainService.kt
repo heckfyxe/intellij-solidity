@@ -273,6 +273,7 @@ class ChainService(private val project: Project) : PersistentStateComponent<Chai
       try {
         rt.chainId = rpc.chainId()
         rt.rpc = rpc
+        if (config.isFork) clearForkedAccountCode(rt, rpc)
         loadChainInfo(config, rt, rpc)
         rt.status = ChainStatus.RUNNING
         fireChanged()
@@ -284,6 +285,19 @@ class ChainService(private val project: Project) : PersistentStateComponent<Chai
     }
     fail(config, lastError?.message ?: "Chain did not start")
     if (config.kind == ChainKind.ANVIL) stop(config)
+  }
+
+  /**
+   * anvil's dev accounts come from a public mnemonic, so on real networks they carry code planted by others,
+   * such as EIP-7702 delegations that sweep every incoming transfer to someone else's address.
+   * A fork copies that code, so dev accounts would silently forward ETH sent to them; make them plain accounts again.
+   */
+  private fun clearForkedAccountCode(rt: ChainRuntime, rpc: JsonRpcClient) {
+    for (account in rpc.accounts()) {
+      if (rpc.code(account).isEmpty()) continue
+      rpc.call("anvil_setCode", account, "0x")
+      rt.console?.print("Cleared code that ${AbiCodec.checksum(account)} has on the forked network\n", ConsoleViewContentType.SYSTEM_OUTPUT)
+    }
   }
 
   private fun loadChainInfo(config: ChainConfig, rt: ChainRuntime, rpc: JsonRpcClient) {
