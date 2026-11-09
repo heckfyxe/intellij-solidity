@@ -105,6 +105,7 @@
         <annotator language="Solidity" implementationClass="me.serce.solidity.ide.annotation.SolidityAnnotator"/>
         <annotator language="Yul" implementationClass="me.serce.solidity.ide.annotation.SolidityAnnotator"/>
 
+        <newProjectWizard.generator implementation="me.serce.solidity.ide.newProject.FoundryNewProjectWizard"/>
         <renamePsiElementProcessor implementation="me.serce.solidity.ide.refactoring.RenameContractProcessor"/>
         <renamePsiElementProcessor implementation="me.serce.solidity.ide.refactoring.RenameConstructorProcessor"/>
         <renamePsiElementProcessor implementation="me.serce.solidity.ide.refactoring.SolRenameFileProcessor"/>
