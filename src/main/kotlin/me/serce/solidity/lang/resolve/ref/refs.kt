@@ -11,6 +11,7 @@ import me.serce.solidity.lang.psi.impl.SolNewExpressionElement
 import me.serce.solidity.lang.psi.impl.SolYulPathElement
 import me.serce.solidity.lang.resolve.SolResolver
 import me.serce.solidity.lang.resolve.canBeApplied
+import me.serce.solidity.lang.resolve.findBest
 import me.serce.solidity.lang.resolve.function.SolFunctionResolver
 import me.serce.solidity.lang.types.*
 import me.serce.solidity.wrap
@@ -19,7 +20,7 @@ class SolUserDefinedTypeNameReference(element: SolUserDefinedTypeName) : SolRefe
   override fun multiResolve(): Collection<PsiElement> {
     val parent = element.parent
     if (parent is SolNewExpressionElement) {
-      return SolResolver.resolveNewExpression(parent)
+      return parent.reference.multiResolve()
     } else if (parent is SolUsingForElement) {
       val resolved = SolResolver.resolveUsingForElement(element)
       if (resolved != null) return listOf(resolved)
@@ -70,7 +71,7 @@ class SolModifierReference(
 
   override fun multiResolve(): List<SolNamedElement> {
     val contract = modifierElement.findContract() ?: return emptyList()
-    val superNames: List<String> = (contract.collectSupers.map { it.name } + contract.name).filterNotNull()
+    val superNames = (contract.collectSupers.map { it.name } + contract.name).filterNotNullTo(hashSetOf())
     return SolResolver.resolveTypeNameUsingImports(modifierElement)
       .filterIsInstance<SolModifierDefinition>()
       .filter { it.contract.name in superNames }
@@ -117,15 +118,8 @@ class SolNewExpressionReference(val element: SolNewExpression) : SolReferenceBas
   override fun multiResolve(): Collection<PsiElement> {
     val types = SolResolver.resolveTypeNameUsingImports(element.referenceNameElement)
     return types
-      .filterIsInstance(SolContractDefinition::class.java)
-      .flatMap {
-        val constructors = it.findConstructors()
-        if (constructors.isEmpty()) {
-          listOf(it)
-        } else {
-          constructors
-        }
-      }
+      .filterIsInstance<SolContractDefinition>()
+      .flatMap { contract -> contract.findConstructors().ifEmpty { listOf(contract) } }
   }
 }
 
@@ -177,7 +171,7 @@ class SolFunctionCallReference(element: SolFunctionCallExpression) : SolReferenc
       else ->
         emptyList()
     }
-    return removeOverrides(resolved.groupBy { it.callablePriority }.entries.minByOrNull { it.key }?.value ?: emptyList())
+    return removeOverrides(resolved.findBest { it.callablePriority })
   }
 
   private fun isRequireErrorArgument(): Boolean {
@@ -189,14 +183,9 @@ class SolFunctionCallReference(element: SolFunctionCallExpression) : SolReferenc
   }
 
   private fun removeOverrides(callables: Collection<SolCallable>): Collection<SolCallable> {
-    val test = callables.filterIsInstance<SolFunctionDefinition>().flatMap { SolFunctionResolver.collectOverridden(it) }.toSet()
-    return callables
-      .filter {
-        when (it) {
-          is SolFunctionDefinition -> !test.contains(it)
-          else -> true
-        }
-      }
+    val overridden = callables.filterIsInstance<SolFunctionDefinition>()
+      .flatMapTo(hashSetOf()) { SolFunctionResolver.collectOverridden(it) }
+    return callables.filter { it !is SolFunctionDefinition || it !in overridden }
   }
 
   private fun resolveElementaryTypeCasts(expr: SolPrimaryExpression): Collection<SolCallable> {

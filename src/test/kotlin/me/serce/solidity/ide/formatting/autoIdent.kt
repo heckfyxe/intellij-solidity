@@ -14,4 +14,10 @@ class SolAutoIdentationTest : SolTypingTestBase() {
   fun testIf() = doTest()
   fun testStateVar() = doTest()
   fun testPragma() = doTest()
+  fun testUnchecked() = doTest()
+  fun testEventParams() = doTest()
+  fun testIfWithoutBraces() = doTest()
+  fun testUnfinishedAssignment() = doTest()
+  fun testUnfinishedCallArgs() = doTest()
+  fun testFunctionHeader() = doTest()
 }

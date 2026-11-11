@@ -30,12 +30,7 @@ class SoliditySettings :
   var formatterFoundryConfigPath: String
     get() = state.configPath ?: ""
     set(value) {
-      val file = File(value)
-      if (file.isFile) {
-        state.configPath = file.parentFile.path
-        return
-      }
-      state.configPath = value
+      state.configPath = configDirectory(value)
     }
 
   var testFoundryConfigurationMode: ConfigurationMode
@@ -53,13 +48,14 @@ class SoliditySettings :
   var testFoundryConfigPath: String
     get() = state.testFoundryConfigPath ?: ""
     set(value) {
-      val file = File(value)
-      if (file.isFile) {
-        state.testFoundryConfigPath = file.parentFile.path
-        return
-      }
-      state.testFoundryConfigPath = value
+      state.testFoundryConfigPath = configDirectory(value)
     }
+
+  /** Users may pick foundry.toml itself; the stored setting is the directory that contains it. */
+  private fun configDirectory(path: String): String {
+    val file = File(path)
+    return if (file.isFile) file.parentFile.path else path
+  }
 
   companion object {
     @JvmStatic

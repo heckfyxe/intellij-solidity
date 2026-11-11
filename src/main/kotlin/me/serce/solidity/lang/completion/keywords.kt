@@ -4,7 +4,11 @@ import com.intellij.codeInsight.completion.*
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.openapi.editor.EditorModificationUtil
 import com.intellij.openapi.project.DumbAware
+import com.intellij.psi.PsiElement
+import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.util.elementType
 import com.intellij.util.ProcessingContext
+import me.serce.solidity.lang.core.SolidityTokenTypes
 
 const val KEYWORD_PRIORITY = -1.0
 
@@ -78,8 +82,12 @@ class SolKeywordCompletionProvider(private vararg val keywords: String) : Comple
   override fun addCompletions(
     parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet
   ) {
-    keywords.map { LookupElementBuilder.create(it) }.forEach { result.addElement(it.keywordPrioritised()) }
+    if (isAfterDot(parameters.position)) return // `x.` is followed by a member, never by a keyword
+    keywords.forEach { result.addElement(LookupElementBuilder.create(it).keywordPrioritised()) }
   }
+
+  private fun isAfterDot(position: PsiElement): Boolean =
+    PsiTreeUtil.prevVisibleLeaf(position)?.elementType == SolidityTokenTypes.DOT
 }
 
 class SolKeywordCompletionContributor : CompletionContributor(), DumbAware {
@@ -119,13 +127,13 @@ class SolKeywordCompletionContributor : CompletionContributor(), DumbAware {
     extend(
       CompletionType.BASIC,
       insideFunction(),
-      SolKeywordCompletionProvider(*(arrayOf(*KEYWORD_FUNCTION + KEYWORD_ON_FUNCTION + KEYWORD_STATE_MUTABILITY + KEYWORD_TYPE)))
+      SolKeywordCompletionProvider(*(KEYWORD_FUNCTION + KEYWORD_ON_FUNCTION + KEYWORD_STATE_MUTABILITY + KEYWORD_TYPE))
     )
 
     extend(
       CompletionType.BASIC,
       inFunctionParameterDef(),
-      SolKeywordCompletionProvider(*(arrayOf(*KEYWORD_DATA_LOCATION + KEYWORD_TYPE + "mapping")))
+      SolKeywordCompletionProvider(*(KEYWORD_DATA_LOCATION + KEYWORD_TYPE + "mapping"))
     )
     extend(
       CompletionType.BASIC, inImportDeclaration(), SolKeywordCompletionProvider("from ")
@@ -185,7 +193,7 @@ class SolKeywordCompletionContributor : CompletionContributor(), DumbAware {
     extend(
       CompletionType.BASIC,
       inMappingDeclaration(),
-      SolKeywordCompletionProvider(*(arrayOf(*KEYWORD_TYPE)))
+      SolKeywordCompletionProvider(*KEYWORD_TYPE)
     )
   }
 }

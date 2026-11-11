@@ -6,7 +6,7 @@ interface Linearizable<T : Linearizable<T>> {
 
   @Suppress("UNCHECKED_CAST")
   fun linearize(): List<T> {
-    return listOf(this as T)  + linearizeParents()
+    return listOf(this as T) + linearizeParents()
   }
 
   fun linearizeParents(): List<T> {

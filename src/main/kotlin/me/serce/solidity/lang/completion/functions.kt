@@ -35,6 +35,7 @@ class SolFunctionCompletionContributor : CompletionContributor(), DumbAware {
 }
 
 private fun deduceSemicolonOrBracket(editor: Editor, file: SolidityFile, startOffset: Int): String {
+  if (isMemberAccessEndingLine(file, startOffset)) return ";"
   if (editor !is EditorEx) {
     return ""
   }
@@ -81,6 +82,27 @@ private fun deduceSemicolonOrBracket(editor: Editor, file: SolidityFile, startOf
   return ");"
 }
 
+/**
+ * `source.` at the end of a line followed by another statement parses as a declaration of a variable of type
+ * `source.<member>`, which completes type names instead of members. Ending the statement right after the completion
+ * marker keeps it a member access, as it is when nothing follows.
+ */
+private fun isMemberAccessEndingLine(file: SolidityFile, offset: Int): Boolean {
+  val text = file.viewProvider.contents
+  var dot = offset
+  while (dot > 0 && Character.isJavaIdentifierPart(text[dot - 1])) dot--
+  if (dot < 2 || text[dot - 1] != '.') return false
+  val beforeDot = text[dot - 2]
+  if (!Character.isJavaIdentifierPart(beforeDot) && beforeDot != ')' && beforeDot != ']') return false
+  var end = offset
+  while (end < text.length && text[end] != '\n') {
+    if (!text[end].isWhitespace()) return false
+    end++
+  }
+  val element = file.findElementAt(dot - 1) ?: return false
+  return getParentOfType(element, SolBlock::class.java, SolYulBlock::class.java) is SolBlock
+}
+
 object FunctionCompletionProvider : CompletionProvider<CompletionParameters>() {
   override fun addCompletions(
     parameters: CompletionParameters,
@@ -90,9 +112,6 @@ object FunctionCompletionProvider : CompletionProvider<CompletionParameters>() {
     // actual completion is performed via com.intellij.psi.PsiReference#getVariants
   }
 }
-
-fun List<SolFunctionDefinition>.toFunctionLookups() =
-  this.mapNotNull { it.toFunctionLookup() }
 
 fun SolCallable.toFunctionLookup(): LookupElementBuilder? {
   return getName()?.let {
@@ -107,7 +126,7 @@ fun SolCallable.toFunctionLookup(): LookupElementBuilder? {
 }
 
 fun SolStructDefinition.toStructLookup(): LookupElementBuilder? {
-  return name?.let {  LookupElementBuilder
+  return name?.let { LookupElementBuilder
       .create(this)
       .withBoldness(true)
       .withIcon(SolidityIcons.STRUCT)
@@ -123,16 +142,9 @@ fun SolNamedElement.toVarLookup(): LookupElementBuilder? {
   }
 }
 
-private fun funcOutType(elem: SolCallable): String {
-  val type = elem.parseType()
-  return type.toString()
-}
+private fun funcOutType(elem: SolCallable): String = elem.parseType().toString()
 
-private fun funcInType(elem: SolCallable): String {
-  val params = elem.parseParameters()
-  val joinedParams = params.joinToString { formatParam(it) }
-  return "($joinedParams)"
-}
+private fun funcInType(elem: SolCallable): String = elem.parseParameters().joinToString(prefix = "(", postfix = ")") { formatParam(it) }
 
 private fun formatParam(param: Pair<String?, SolType>): String {
   return when (param.first) {

@@ -42,31 +42,20 @@ class SolImportPathReference(element: SolImportPathElement) : SolReferenceBase<S
       return SolImportConfigService.getInstance(project).resolveRemapping(path, file)
     }
 
-    private fun findNpmImportFile(file: VirtualFile, path: String): VirtualFile? {
-      val test = file.findFileByRelativePath("node_modules/$path")
-      val parent = file.parent
-      return when {
-        test != null -> test
-        parent != null && parent.isValid -> findNpmImportFile(parent, path)
-        else -> null
-      }
-    }
+    private fun findNpmImportFile(file: VirtualFile, path: String): VirtualFile? =
+      findInSelfOrAncestors(file, "node_modules/$path")
 
     private fun findFoundryImportFile(project: Project, file: VirtualFile, path: String): VirtualFile? {
       return SolImportConfigService.getInstance(project).resolve(path, file)
     }
 
-    private fun findEthPMImportFile(file: VirtualFile, path: String): VirtualFile? {
-      val test = file.findFileByRelativePath(
-        "installed_contracts/" + path.replaceFirst("/", "/contracts/")
-      )
-      val parent = file.parent
-      return when {
-        test != null -> test
-        parent != null && parent.isValid -> findEthPMImportFile(parent, path)
-        else -> null
-      }
-    }
+    private fun findEthPMImportFile(file: VirtualFile, path: String): VirtualFile? =
+      findInSelfOrAncestors(file, "installed_contracts/" + path.replaceFirst("/", "/contracts/"))
+
+    /** [relativePath] looked up from [file], then from each valid ancestor directory, nearest first. */
+    private fun findInSelfOrAncestors(file: VirtualFile, relativePath: String): VirtualFile? =
+      generateSequence(file) { it.parent?.takeIf { parent -> parent.isValid } }
+        .firstNotNullOfOrNull { it.findFileByRelativePath(relativePath) }
   }
 
   override fun doRename(identifier: PsiElement, newName: String) {
@@ -78,11 +67,7 @@ class SolImportPathReference(element: SolImportPathElement) : SolReferenceBase<S
       return
     }
     val name = renamedElement.name
-    val currentPath: String? = (identifier as PsiElement).text
-    if (currentPath == null) {
-      return
-    }
-    val newImportPath = currentPath.replace(name, newName)
+    val newImportPath = (identifier as PsiElement).text.replace(name, newName)
     identifier.replaceWithText(newImportPath)
   }
 

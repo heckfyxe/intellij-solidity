@@ -12,9 +12,9 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiFile
 import me.serce.solidity.chain.ChainService
+import me.serce.solidity.chain.Offsets
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.foundry.SolcLocator
-import me.serce.solidity.chain.ui.Offsets
 import java.io.File
 
 /**

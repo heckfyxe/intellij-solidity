@@ -2,6 +2,7 @@ package me.serce.solidity.chain
 
 import me.serce.solidity.chain.abi.AbiEntry
 import me.serce.solidity.chain.abi.ContractAbi
+import me.serce.solidity.chain.debug.FailedFrame
 import java.util.UUID
 
 enum class ChainKind { ANVIL, EXTERNAL }
@@ -51,7 +52,6 @@ class Deployment {
   var sourcePath: String = ""
   var address: String = ""
   var abiJson: String = "[]"
-  var deployTx: String = ""
 
   @Transient
   private var parsedAbi: ContractAbi? = null
@@ -64,6 +64,28 @@ class Deployment {
   /** Read-only functions first, then by name; empty when the ABI can't be parsed. */
   fun sortedFunctions(): List<AbiEntry.Function> = sorted ?: runCatching { abi().functions }.getOrDefault(emptyList())
     .sortedWith(compareBy({ !it.mutability.isReadOnly }, { it.name })).also { sorted = it }
+}
+
+/** A contract on the way to a failure, and the source line it was at when it failed (path empty when unknown). */
+class ErrorFrame {
+  var contract: String = ""
+  var address: String = ""
+  var path: String = ""
+  /** Zero-based. */
+  var line: Int = 0
+  var column: Int = 0
+  var code: String = ""
+
+  /** `src/A.sol:12` with a 1-based line, the way compilers and the terminal print it. */
+  val label: String get() = "$path:${line + 1}"
+
+  companion object {
+    fun of(frame: FailedFrame) = ErrorFrame().apply {
+      contract = frame.contract.orEmpty()
+      address = frame.address.orEmpty()
+      frame.location?.let { path = it.path; line = it.line; column = it.column; code = it.code }
+    }
+  }
 }
 
 enum class TxKind { DEPLOY, CALL, TRANSACT }
@@ -88,6 +110,10 @@ class TxRecord {
   var results: MutableList<String> = ArrayList()
   var events: MutableList<String> = ArrayList()
   var error: String = ""
+  /** Where it failed first, then each caller up to the called contract; empty when the node can't trace. */
+  var errorFrames: MutableList<ErrorFrame> = ArrayList()
+  /** What else went wrong on the way, e.g. calls to addresses without code. */
+  var notes: MutableList<String> = ArrayList()
   var txHash: String = ""
   var blockNumber: String = ""
   var gasUsed: String = ""

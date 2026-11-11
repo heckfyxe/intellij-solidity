@@ -1,105 +1,60 @@
 package me.serce.solidity.lang.stubs
 
 import com.intellij.psi.stubs.IndexSink
+import com.intellij.psi.stubs.StubIndexKey
+import me.serce.solidity.lang.psi.SolNamedElement
 
 fun IndexSink.indexEnumDef(stub: SolEnumDefStub) {
-  indexNamedStub(stub)
-  indexGotoClass(stub)
+  indexName(stub, SolNamedElementIndex.KEY, SolGotoClassIndex.KEY)
 }
 
 fun IndexSink.indexUserDefinedValueTypeDef(stub: SolUserDefinedValueTypeDefStub) {
-  indexNamedStub(stub)
-  indexGotoClass(stub)
+  indexName(stub, SolNamedElementIndex.KEY, SolGotoClassIndex.KEY)
 }
 
 fun IndexSink.indexContractDef(stub: SolContractOrLibDefStub) {
-  indexNamedStub(stub)
-  indexGotoClass(stub)
+  indexName(stub, SolNamedElementIndex.KEY, SolGotoClassIndex.KEY)
   stub.superNames.forEach { occurrence(SolInheritanceIndex.KEY, it) }
 }
 
 fun IndexSink.indexStructDef(stub: SolStructDefStub) {
-  indexNamedStub(stub)
-  indexGotoClass(stub)
+  indexName(stub, SolNamedElementIndex.KEY, SolGotoClassIndex.KEY)
 }
 
 fun IndexSink.indexFunctionDef(stub: SolFunctionDefStub) {
-  indexNamedStub(stub)
-  indexFunction(stub)
+  indexName(stub, SolNamedElementIndex.KEY, SolFunctionIndex.KEY)
 }
 
 fun IndexSink.indexModifierDef(stub: SolModifierDefStub) {
-  indexNamedStub(stub)
-  indexModifier(stub)
+  indexName(stub, SolNamedElementIndex.KEY, SolModifierIndex.KEY)
 }
 
 fun IndexSink.indexStateVarDecl(stub: SolStateVarDeclStub) {
-  indexNamedStub(stub)
+  indexName(stub, SolNamedElementIndex.KEY)
 }
 
 fun IndexSink.indexConstantVariableDecl(stub: SolConstantVariableDeclStub) {
-  indexNamedStub(stub)
+  indexName(stub, SolNamedElementIndex.KEY)
 }
 
 fun IndexSink.indexEventDef(stub: SolEventDefStub) {
-  indexNamedStub(stub)
-  indexEvent(stub)
-  indexGotoClass(stub)
+  indexName(stub, SolNamedElementIndex.KEY, SolEventIndex.KEY, SolGotoClassIndex.KEY)
 }
 
 fun IndexSink.indexErrorDef(stub: SolErrorDefStub) {
-  indexNamedStub(stub)
-  indexError(stub)
-  indexGotoClass(stub)
+  indexName(stub, SolNamedElementIndex.KEY, SolErrorIndex.KEY, SolGotoClassIndex.KEY)
 }
 
 fun IndexSink.indexImportPathDef(stub: SolImportPathDefStub) {
-  indexNamedStub(stub)
-  indexImportPath(stub)
+  indexName(stub, SolNamedElementIndex.KEY)
+  stub.path?.let { occurrence(SolImportIndex.KEY, it) }
 }
 
-fun IndexSink.indexImportPathDef(stub: SolImportAliasDefStub) {
-  indexNamedStub(stub)
+fun IndexSink.indexImportAliasDef(stub: SolImportAliasDefStub) {
+  indexName(stub, SolNamedElementIndex.KEY)
 }
 
-private fun IndexSink.indexModifier(stub: SolModifierDefStub) {
-  stub.name?.let {
-    occurrence(SolModifierIndex.KEY, it)
-  }
-}
-
-private fun IndexSink.indexNamedStub(stub: SolNamedStub) {
-  stub.name?.let {
-    occurrence(SolNamedElementIndex.KEY, it)
-  }
-}
-
-private fun IndexSink.indexGotoClass(stub: SolNamedStub) {
-  stub.name?.let {
-    occurrence(SolGotoClassIndex.KEY, it)
-  }
-}
-
-private fun IndexSink.indexEvent(stub: SolEventDefStub) {
-  stub.name?.let {
-    occurrence(SolEventIndex.KEY, it)
-  }
-}
-
-private fun IndexSink.indexError(stub: SolErrorDefStub) {
-  stub.name?.let {
-    occurrence(SolErrorIndex.KEY, it)
-  }
-}
-
-private fun IndexSink.indexFunction(stub: SolFunctionDefStub) {
-  stub.name?.let {
-    occurrence(SolFunctionIndex.KEY, it)
-  }
-}
-
-private fun IndexSink.indexImportPath(stub: SolImportPathDefStub) {
-  stub.path?.let {
-    occurrence(SolImportIndex.KEY, it)
-  }
+private fun IndexSink.indexName(stub: SolNamedStub, vararg keys: StubIndexKey<String, SolNamedElement>) {
+  val name = stub.name ?: return
+  keys.forEach { occurrence(it, name) }
 }

@@ -37,7 +37,8 @@ object SolHighlighter : SyntaxHighlighterBase() {
     HEXNUMBER to SolColor.NUMBER,
     NUMBERUNIT to SolColor.NUMBER,
 
-    STRINGLITERAL to SolColor.STRING
+    STRINGLITERAL to SolColor.STRING,
+    HEXLITERAL to SolColor.STRING
   ).plus(
     keywords().map { it to SolColor.KEYWORD }
   ).plus(

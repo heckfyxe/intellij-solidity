@@ -53,7 +53,7 @@ interface SolStateVarElement : SolMember, SolCallableElement {
   val mutability: VariableMutability?
 }
 
-interface SolConstantVariable : SolNamedElement {}
+interface SolConstantVariable : SolNamedElement
 
 
 enum class SpecialFunctionType {

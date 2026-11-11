@@ -4,37 +4,29 @@ import me.serce.solidity.ide.navigation.findAllImplementations
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefElement
 import me.serce.solidity.lang.psi.SolFunctionDefinition
-import me.serce.solidity.lang.psi.impl.LinearizationImpossibleException
 import me.serce.solidity.lang.psi.parentOfType
-import me.serce.solidity.lang.types.SolContract
 import me.serce.solidity.lang.types.SolUnknown
 import me.serce.solidity.lang.types.getSolType
 
 object SolFunctionResolver {
   fun collectOverridden(func: SolFunctionDefElement, contract: SolContractDefinition? = func.parentOfType()): Collection<SolFunctionDefinition> {
     contract ?: return emptyList()
-    val parents = try {
-      SolContract(contract).linearizeParents().map { it.ref }
-    } catch (e: LinearizationImpossibleException) {
-      emptyList<SolContractDefinition>()
-    }
+    val parents = SolOverrideResolver.linearizedParents(contract) ?: emptyList()
     return parents
       .flatMap { it.functionDefinitionList }
       .filter { signatureEquals(func, it) }
   }
 
-  fun collectOverrides(func: SolFunctionDefinition): Collection<SolFunctionDefinition> {
-    val contract = func.parentOfType<SolContractDefinition>() ?: return emptyList()
-    return contract.findAllImplementations()
+  fun collectOverrides(func: SolFunctionDefinition): Collection<SolFunctionDefinition> = overridesIn(func).toList()
+
+  fun hasOverrides(func: SolFunctionDefinition): Boolean = overridesIn(func).any()
+
+  /** Functions of derived contracts with the same signature as [func]. */
+  private fun overridesIn(func: SolFunctionDefinition): Sequence<SolFunctionDefinition> {
+    val contract = func.parentOfType<SolContractDefinition>() ?: return emptySequence()
+    return contract.findAllImplementations().asSequence()
       .flatMap { it.functionDefinitionList }
       .filter { signatureEquals(func, it) }
-  }
-
-  fun hasOverrides(func: SolFunctionDefinition): Boolean {
-    val contract = func.parentOfType<SolContractDefinition>() ?: return false
-    return contract.findAllImplementations()
-      .flatMap { it.functionDefinitionList }
-      .any { signatureEquals(func, it) }
   }
 
   internal fun signatureEquals(f1: SolFunctionDefElement, f2: SolFunctionDefElement): Boolean {

@@ -34,52 +34,13 @@ import java.io.File
 class SolContextCompletionContributor : CompletionContributor(), DumbAware {
   init {
     // beginning of a statement inside a block
-    extend(CompletionType.BASIC, startStatementInsideBlock(),
-      object : CompletionProvider<CompletionParameters>() {
-        override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
-          val position = parameters.originalPosition
-          if (position != null) {
-            // Pass matcher prefix + invocation count so global type completion can stay cheap on autopopup.
-            SolCompleter.completeLiteral(position, result.prefixMatcher.prefix, parameters.invocationCount)
-              .forEach(result::addElement)
-          }
-        }
-      })
+    extend(CompletionType.BASIC, startStatementInsideBlock(), LiteralCompletionProvider)
 
     // new expression after '=' inside a block
-    extend(CompletionType.BASIC, eqExpressionInsideBlock(),
-      object : CompletionProvider<CompletionParameters>() {
-        override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
-          val position = parameters.originalPosition
-          if (position != null) {
-            // Pass matcher prefix + invocation count so global type completion can stay cheap on autopopup.
-            SolCompleter.completeLiteral(position, result.prefixMatcher.prefix, parameters.invocationCount)
-              .forEach(result::addElement)
-          }
-        }
-      })
+    extend(CompletionType.BASIC, eqExpressionInsideBlock(), LiteralCompletionProvider)
 
-    extend(CompletionType.BASIC, emitStartStatement(),
-      object : CompletionProvider<CompletionParameters>() {
-        override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
-          SolCompleter
-            .completeEventName(parameters.position)
-            .map { it.insertParenthesis(true) }
-            .forEach(result::addElement)
-        }
-      }
-    )
-
-    extend(CompletionType.BASIC, revertStartStatement(),
-      object : CompletionProvider<CompletionParameters>() {
-        override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
-          SolCompleter
-            .completeErrorName(parameters.position)
-            .map { it.insertParenthesis(true) }
-            .forEach(result::addElement)
-        }
-      }
-    )
+    extend(CompletionType.BASIC, emitStartStatement(), callStatementProvider(SolCompleter::completeEventName))
+    extend(CompletionType.BASIC, revertStartStatement(), callStatementProvider(SolCompleter::completeErrorName))
 
     extend(CompletionType.BASIC, mappingExpression(),
       object : CompletionProvider<CompletionParameters>() {
@@ -113,8 +74,8 @@ class SolContextCompletionContributor : CompletionContributor(), DumbAware {
               val knownPrefixes = listOf('.', '/', '"')
 
               val matcher = CamelHumpMatcher(text)
-              val humpFiles = StubIndex.getInstance()
-                .getAllKeys(SolGotoClassIndex.KEY, project)
+              val humpFiles = SolContractNamesCache.getInstance(project)
+                .allNames()
                 .filter { matcher.prefixMatches(it) }
                 .flatMap {
                   StubIndex.getInstance().getContainingFilesIterator(
@@ -122,7 +83,7 @@ class SolContextCompletionContributor : CompletionContributor(), DumbAware {
                   ).asSequence()
                 }
 
-              var dirText = dirPartOf(text)
+              val dirText = dirPartOf(text)
               val vPath = SolImportPathReference.findImportFile(project, curFile, dirText)
 
               val prefix = result.prefixMatcher.prefix.takeWhile { knownPrefixes.contains(it) }
@@ -148,6 +109,24 @@ class SolContextCompletionContributor : CompletionContributor(), DumbAware {
           }
         )
   }
+
+  /** Completes names visible at the caret (locals, members, project types); shared by statement and assignment positions. */
+  private object LiteralCompletionProvider : CompletionProvider<CompletionParameters>() {
+    override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
+      val position = parameters.originalPosition ?: return
+      // Pass matcher prefix + invocation count so global type completion can stay cheap on autopopup.
+      SolCompleter.completeLiteral(position, result.prefixMatcher.prefix, parameters.invocationCount)
+        .forEach(result::addElement)
+    }
+  }
+
+  /** Completes names that are immediately called as a statement, such as `emit E();` and `revert Err();`. */
+  private fun callStatementProvider(names: (PsiElement) -> Array<out LookupElementBuilder>) =
+    object : CompletionProvider<CompletionParameters>() {
+      override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
+        names(parameters.position).forEach { result.addElement(it.insertParenthesis(true)) }
+      }
+    }
 
   private fun dirPartOf(input: String): String {
     val isDir = File(input).isDirectory || input.endsWith("/")
@@ -196,9 +175,6 @@ class SolContextCompletionContributor : CompletionContributor(), DumbAware {
 }
 
 private fun <E> or(vararg patterns: ElementPattern<E>) = StandardPatterns.or(*patterns)
-
-fun statement(): PsiElementPattern.Capture<PsiElement> = psiElement<PsiElement>()
-  .inside(SolStatement::class.java)
 
 private inline fun <reified I : PsiElement> psiElement(): PsiElementPattern.Capture<I> {
   return psiElement(I::class.java)

@@ -3,7 +3,7 @@ package me.serce.solidity.ide.run
 import me.serce.solidity.utils.SolTestBase
 
 class ForgeTestOutputTransformerTest : SolTestBase() {
-  private val transformer = ForgetTestOutputTransformer()
+  private val transformer = ForgeTestOutputTransformer()
 
   private val compilerSuccessLine = "Compiler run successful!"
   private val compilerFailLine = "Compiler run failed:"

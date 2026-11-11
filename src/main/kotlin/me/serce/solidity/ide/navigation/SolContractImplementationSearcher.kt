@@ -2,7 +2,6 @@ package me.serce.solidity.ide.navigation
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.QueryExecutorBase
-import com.intellij.openapi.application.ex.ApplicationEx
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.util.Condition
@@ -50,7 +49,7 @@ fun SolContractDefinition.findAllImplementations(): HashSet<SolContractDefinitio
     // TODO: would it be worth using a real progress here?
     // TODO: would resolution from EDT only be called in tests? If not, it might trigger a warning again. If yes, then
     //    need to find a way to run tests from a non dispatcher thread.
-    val application = ApplicationManager.getApplication() as ApplicationEx
+    val application = ApplicationManager.getApplication()
     if (application.isDispatchThread) {
       findAllImplementationsInAction(implQueue, implementations)
     } else {

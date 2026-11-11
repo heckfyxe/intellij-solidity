@@ -4,9 +4,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.PsiParserFacade
-import com.intellij.psi.impl.source.tree.LeafPsiElement
 import me.serce.solidity.lang.SolidityFileType
-import me.serce.solidity.lang.core.SolidityTokenTypes
 import org.intellij.lang.annotations.Language
 
 class SolPsiFactory(val project: Project) {
@@ -14,8 +12,6 @@ class SolPsiFactory(val project: Project) {
     return createFromText<SolContractDefinition>("contract $name {}")?.identifier
       ?: error("Failed to create identifier: `$name`")
   }
-
-  fun createStringLiteral(text: String) = LeafPsiElement(SolidityTokenTypes.STRINGLITERAL, text)
 
   fun createFunction(@Language("Solidity") text: String) = createFromText<SolFunctionDefinition>(text)
     ?: error("Failed to create function: `$text`")
@@ -27,7 +23,7 @@ class SolPsiFactory(val project: Project) {
 
   fun createContractImportFromDirective(importPath: String, contractName: String): SolImportDirective {
     return createFromText("import {$contractName} from \"$importPath\";")
-      ?: error("Failed to create struct: `$importPath`")
+      ?: error("Failed to create import: `$importPath`")
   }
 
   fun createImportDirective(content: String, addQuotes: Boolean = true): SolImportDirective {

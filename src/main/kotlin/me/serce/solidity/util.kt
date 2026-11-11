@@ -1,15 +1,10 @@
 package me.serce.solidity
 
-import com.intellij.openapi.util.Computable
-import com.intellij.openapi.util.RecursionManager
 import com.intellij.openapi.util.io.StreamUtil
 import com.intellij.util.SystemProperties
 import me.serce.solidity.settings.ConfigurationMode
 import java.io.InputStreamReader
 import java.nio.file.Paths
-
-fun <T> recursionGuard(key: Any, memoize: Boolean = true, block: Computable<T>): T? =
-  RecursionManager.doPreventingRecursion(key, memoize, block)
 
 fun <T> Sequence<T>.firstOrElse(el: T): T {
   return firstOrNull() ?: el
@@ -30,12 +25,7 @@ fun loadCodeSampleResource(ctx: Any, resource: String): String {
   return StreamUtil.convertSeparators(StreamUtil.readText(InputStreamReader(stream)))
 }
 
-fun <T> T?.wrap(): List<T> {
-  return when (this) {
-    null -> emptyList()
-    else -> listOf(this)
-  }
-}
+fun <T> T?.wrap(): List<T> = if (this == null) emptyList() else listOf(this)
 
 fun <T> nullIfError(action: () -> T): T? {
   return try {
@@ -44,6 +34,7 @@ fun <T> nullIfError(action: () -> T): T? {
     null
   }
 }
+
 fun String.removeQuotes(): String {
   return removeSurrounding("\"").removeSurrounding("'")
 }

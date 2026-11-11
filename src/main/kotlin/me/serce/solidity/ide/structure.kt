@@ -12,7 +12,6 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.util.childrenOfType
 import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.psi.*
-import javax.swing.Icon
 
 class SolPsiStructureViewFactory : PsiStructureViewFactory {
   override fun getStructureViewBuilder(psiFile: PsiFile): StructureViewBuilder? {
@@ -45,18 +44,13 @@ class SolStructureViewExtension: StructureViewExtension {
     }
   }
 
+  /** Replaces each custom region with its children. */
   private fun doFilter(baseChildren: MutableCollection<StructureViewTreeElement>) {
-    val rest = baseChildren.toMutableList()
-    val iter = rest.listIterator()
-    for (i in iter) {
-      if (i is CustomRegionTreeElement) {
-        iter.remove()
-        i.children.filterIsInstance<StructureViewTreeElement>().forEach { iter.add(it) }
-      }
-      }
-    //    super.filterChildren(baseChildren, extensionChildren)
+    val flattened = baseChildren.flatMap {
+      if (it is CustomRegionTreeElement) it.children.filterIsInstance<StructureViewTreeElement>() else listOf(it)
+    }
     baseChildren.clear()
-    baseChildren.addAll(rest)
+    baseChildren.addAll(flattened)
   }
 }
 
@@ -72,7 +66,7 @@ class SolStructureViewModel(editor: Editor?, file: SolidityFile) : TextEditorBas
   override fun isAlwaysLeaf(element: StructureViewTreeElement) = false
 
   override fun getSorters(): Array<Sorter> {
-    return arrayOf(Sorter.ALPHA_SORTER, VisibilitySorter, MutabilitySorter);
+    return arrayOf(Sorter.ALPHA_SORTER, VisibilitySorter, MutabilitySorter)
   }
 
   override fun getFilters(): Array<Filter> {
@@ -84,7 +78,7 @@ private const val CUSTOM_REGION_NAME = "SHOW_CUSTOM_REGIONS"
 
 class RegionFilter : Filter {
   override fun getPresentation(): ActionPresentation {
-    return ActionPresentationData("Show Custom Regions", null as String?, SolidityIcons.SHOW_REGION_TOGGLE);
+    return ActionPresentationData("Show Custom Regions", null as String?, SolidityIcons.SHOW_REGION_TOGGLE)
   }
 
   override fun getName(): String {
@@ -103,13 +97,13 @@ class RegionFilter : Filter {
 
 object VisibilitySorter : Sorter {
   override fun getPresentation(): ActionPresentation {
-    return ActionPresentationData("By Visibility", null as String?, AllIcons.ObjectBrowser.VisibilitySort);
+    return ActionPresentationData("By Visibility", null as String?, AllIcons.ObjectBrowser.VisibilitySort)
   }
 
   override fun getName(): String = "VISIBILITY_COMPARATOR"
 
   override fun getComparator(): Comparator<*> {
-    return Comparator { o1: Any?, o2: Any?  -> compare(o1, o2) { it.visibility } };
+    return Comparator { o1: Any?, o2: Any?  -> compare(o1, o2) { it.visibility } }
   }
 
   override fun isVisible(): Boolean = true
@@ -118,12 +112,12 @@ object VisibilitySorter : Sorter {
 
 object MutabilitySorter : Sorter {
   override fun getPresentation(): ActionPresentation {
-    return ActionPresentationData("By Mutability", null as String?, AllIcons.ObjectBrowser.SortByType);
+    return ActionPresentationData("By Mutability", null as String?, AllIcons.ObjectBrowser.SortByType)
   }
   override fun getName(): String = "MUTABILITY_COMPARATOR"
 
   override fun getComparator(): Comparator<*> {
-    return Comparator { o1: Any?, o2: Any?  -> compare(o1, o2) { it.mutability } };
+    return Comparator { o1: Any?, o2: Any?  -> compare(o1, o2) { it.mutability } }
   }
 
   override fun isVisible(): Boolean = true
@@ -171,7 +165,7 @@ class SolStructTreeElement(item: SolStructDefinition) : SolNamedPsiTreeElementBa
 
 }
 
-class SolLeafTreeElement(item: SolNamedElement, private val icon: Icon? = null) : PsiTreeElementBase<SolNamedElement>(item) {
+class SolLeafTreeElement(item: SolNamedElement) : PsiTreeElementBase<SolNamedElement>(item) {
   override fun getPresentableText() = element?.let {
     when (it) {
       is SolConstructorDefinition -> "constructor${params(it.parameterList)}"
@@ -185,10 +179,6 @@ class SolLeafTreeElement(item: SolNamedElement, private val icon: Icon? = null) 
   private fun params(it: SolParameterList?): String {
     if (it == null) return "()"
     return "(" + it.parameterDefList.joinToString { it.typeName.text  + (it.name?.let {" $it"} ?: "") } + ")"
-  }
-
-  override fun getIcon(open: Boolean): Icon? {
-    return icon ?: super.getIcon(open)
   }
 
   override fun getChildrenBase(): Collection<StructureViewTreeElement> = emptyList()

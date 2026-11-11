@@ -40,13 +40,11 @@ class ResolveNameInspection : LocalInspectionTool() {
 }
 
 private fun checkReference(element: SolReferenceElement, report: () -> Unit) {
-  if (element.reference != null) {
-    // resolve return either 1 reference or null, and because our resolve is not perfect we can return a number
-    // of references, so instead of showing false positives we can use multiresolve
-    val results = element.reference?.multiResolve(false)
-    if (results.isNullOrEmpty()) {
-      report()
-    }
+  val reference = element.reference ?: return
+  // resolve returns either 1 reference or null, and because our resolve is not perfect we can return a number
+  // of references, so instead of showing false positives we use multiResolve
+  if (reference.multiResolve(false).isEmpty()) {
+    report()
   }
 }
 

@@ -14,6 +14,7 @@ import com.intellij.psi.FileViewProvider
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.TokenType
+import com.intellij.psi.tree.IElementType
 import com.intellij.psi.tree.IFileElementType
 import com.intellij.psi.tree.TokenSet
 import me.serce.solidity.SolidityParser
@@ -67,7 +68,7 @@ class YulParserDefinition : ParserDefinition {
 
   override fun getStringLiteralElements(): TokenSet = TokenSet.EMPTY
 
-  override fun getWhitespaceTokens(): TokenSet = TokenSet.create(TokenType.WHITE_SPACE)
+  override fun getWhitespaceTokens(): TokenSet = SolidityParserDefinition.WHITE_SPACES
 
   override fun getCommentTokens(): TokenSet = SolidityParserDefinition.COMMENTS
 
@@ -82,12 +83,12 @@ class YulParserDefinition : ParserDefinition {
 }
 
 class YulParser : PsiParser, LightPsiParser {
-  override fun parse(root: com.intellij.psi.tree.IElementType, builder: PsiBuilder): ASTNode {
+  override fun parse(root: IElementType, builder: PsiBuilder): ASTNode {
     parseLight(root, builder)
     return builder.treeBuilt
   }
 
-  override fun parseLight(root: com.intellij.psi.tree.IElementType, builder: PsiBuilder) {
+  override fun parseLight(root: IElementType, builder: PsiBuilder) {
     // Grammar-Kit generates a single-root parser (SourceUnit) for Solidity.
     // For standalone .yul we need a different root, so we wrap the generated
     // parser rules with a tiny custom root driver instead of duplicating grammar.

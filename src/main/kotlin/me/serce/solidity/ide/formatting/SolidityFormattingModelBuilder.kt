@@ -2,6 +2,7 @@ package me.serce.solidity.ide.formatting
 
 import com.intellij.formatting.*
 import com.intellij.lang.ASTNode
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiFile
 import com.intellij.psi.codeStyle.CodeStyleSettings
@@ -10,6 +11,26 @@ import me.serce.solidity.lang.SolidityLanguage
 import me.serce.solidity.lang.core.SolidityParserDefinition.Companion.BINARY_OPERATORS
 import me.serce.solidity.lang.core.SolidityParserDefinition.Companion.CONTROL_STRUCTURES
 import me.serce.solidity.lang.core.SolidityTokenTypes.*
+import me.serce.solidity.settings.FormatterType
+import me.serce.solidity.settings.SoliditySettings
+
+/** False when an external formatter (Foundry) or none is configured; edits must then be formatted by hand. */
+fun isIdeFormatterActive(project: Project): Boolean =
+  SoliditySettings.getInstance(project).formatterType == FormatterType.INTELLIJ_SOLIDITY
+
+/** A single leaf spanning the whole file: the formatter has no whitespace between blocks to change. */
+private class UntouchedFileBlock(private val fileNode: ASTNode) : ASTBlock {
+  override fun getNode(): ASTNode = fileNode
+  override fun getTextRange(): TextRange = fileNode.textRange
+  override fun getSubBlocks(): List<Block> = emptyList()
+  override fun getWrap(): Wrap? = null
+  override fun getIndent(): Indent = Indent.getNoneIndent()
+  override fun getAlignment(): Alignment? = null
+  override fun getSpacing(child1: Block?, child2: Block): Spacing? = null
+  override fun getChildAttributes(newChildIndex: Int) = ChildAttributes(Indent.getNoneIndent(), null)
+  override fun isIncomplete(): Boolean = false
+  override fun isLeaf(): Boolean = true
+}
 
 /**
  * The formatter attempts to follow the official style guide while remaining configurable.
@@ -19,10 +40,14 @@ class SolidityFormattingModelBuilder : FormattingModelBuilder {
   override fun createModel(context: FormattingContext): FormattingModel {
     val element = context.psiElement
     val settings = context.codeStyleSettings
-    val spacingBuilder = createSpacingBuilder(settings)
-
     val containingFile = element.containingFile
-    val solidityBlock = SolFormattingBlock(element.node, null, Indent.getNoneIndent(), null, settings, spacingBuilder, false, false)
+    if (context.formattingMode == FormattingMode.REFORMAT && !isIdeFormatterActive(context.project)) {
+      // Foundry (or no formatter) owns the layout of the code: reformatting must leave it untouched, while indenting
+      // new lines on Enter or after typing a closing brace still needs the real model below.
+      return FormattingModelProvider.createFormattingModelForPsiFile(containingFile, UntouchedFileBlock(containingFile.node), settings)
+    }
+    val solidityBlock =
+      SolFormattingBlock(element.node, null, Indent.getNoneIndent(), null, settings, createSpacingBuilder(settings), false, false)
 
     return FormattingModelProvider.createFormattingModelForPsiFile(containingFile, solidityBlock, settings)
   }

@@ -66,7 +66,9 @@ object SolUseScope {
       it.importPath?.reference?.resolve()?.containingFile == other
     }
 
+  private val nonIdentifierChars = Regex("[^A-Za-z0-9_$]+")
+
   /** The word index splits literals at non-identifier characters, so search for the longest identifier-like part of the name. */
   private fun searchWord(file: VirtualFile): String? =
-    file.nameWithoutExtension.split(Regex("[^A-Za-z0-9_$]+")).maxByOrNull { it.length }?.takeIf { it.isNotEmpty() }
+    file.nameWithoutExtension.split(nonIdentifierChars).maxByOrNull { it.length }?.takeIf { it.isNotEmpty() }
 }

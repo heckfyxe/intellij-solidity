@@ -18,61 +18,36 @@ class ImportFileFix(element: SolReferenceElement) : LocalQuickFixOnPsiElement(el
   override fun getFamilyName(): String = "Import file"
 
   override fun showHint(editor: Editor): Boolean {
-    val element = startElement as? SolReferenceElement
-    if (element != null) {
-      val suggestions = resolveSuggestions(element)
-      val fixText: String? = when {
-          suggestions.size == 1 -> {
-            val importPath = buildImportPath(element.project, element.containingFile.virtualFile, suggestions.first().virtualFile)
-            "$familyName $importPath"
-          }
-
-          suggestions.isNotEmpty() -> familyName
-          else -> null
+    val element = startElement as? SolReferenceElement ?: return false
+    val suggestions = resolveSuggestions(element)
+    val fixText = when {
+      suggestions.size == 1 -> {
+        val importPath = buildImportPath(element.project, element.containingFile.virtualFile, suggestions.first().virtualFile)
+        "$familyName $importPath"
       }
-      return when {
-        fixText != null -> {
-          HintManager.getInstance().showQuestionHint(editor, fixText, element.textOffset, element.textRange.endOffset,
-            ImportFileAction(editor, element.containingFile, suggestions)
-          )
-          true
-        }
 
-        else -> false
-      }
-    } else {
-      return false
+      suggestions.isNotEmpty() -> familyName
+      else -> return false
     }
+    HintManager.getInstance().showQuestionHint(editor, fixText, element.textOffset, element.textRange.endOffset,
+      ImportFileAction(editor, element.containingFile, suggestions)
+    )
+    return true
   }
 
   override fun isAvailable(project: Project, editor: Editor?, file: PsiFile?): Boolean {
-    val element = startElement as? SolReferenceElement
-    return when {
-      element != null -> when {
-        !element.isValid || element.reference?.resolve() != null -> false
-        else -> SolResolver.resolveTypeName(element).isNotEmpty()
-      }
-
-      else -> false
-    }
+    val element = startElement as? SolReferenceElement ?: return false
+    return element.isValid && element.reference?.resolve() == null && SolResolver.resolveTypeName(element).isNotEmpty()
   }
 
   override fun getText(): String = familyName
 
   override fun invoke(project: Project, file: PsiFile, element: PsiElement, endElement: PsiElement) {
-    val referenceElement = element as? SolReferenceElement
-    if (referenceElement == null) {
-      return
-    }
-    applyImportFix(referenceElement, null)
+    applyImportFix(element as? SolReferenceElement ?: return, null)
   }
 
   override fun invoke(project: Project, editor: Editor?, file: PsiFile?) {
-    val referenceElement = startElement as? SolReferenceElement
-    if (referenceElement == null) {
-      return
-    }
-    applyImportFix(referenceElement, editor)
+    applyImportFix(startElement as? SolReferenceElement ?: return, editor)
   }
 
   private fun resolveSuggestions(element: SolReferenceElement): Set<PsiFile> {

@@ -61,21 +61,9 @@ class SolEnumDefStub(
   override val name: String?
 ) : StubBase<SolEnumDefinition>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolEnumDefStub, SolEnumDefinition>("ENUM_DEFINITION") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolEnumDefStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolEnumDefStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolEnumDefStub) = SolEnumDefinitionImpl(stub, this)
-
-    override fun createStub(psi: SolEnumDefinition, parentStub: StubElement<*>?) =
-      SolEnumDefStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolEnumDefStub, sink: IndexSink) = sink.indexEnumDef(stub)
-  }
+  object Type : SolNamedStubElementType<SolEnumDefStub, SolEnumDefinition>(
+    "ENUM_DEFINITION", ::SolEnumDefStub, ::SolEnumDefinitionImpl, IndexSink::indexEnumDef
+  )
 }
 
 class SolUserDefinedValueTypeDefStub(
@@ -84,23 +72,10 @@ class SolUserDefinedValueTypeDefStub(
   override val name: String?
 ) : StubBase<SolUserDefinedValueTypeDefinition>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolUserDefinedValueTypeDefStub, SolUserDefinedValueTypeDefinition>("USER_DEFINED_VALUE_TYPE_DEFINITION") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolUserDefinedValueTypeDefStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolUserDefinedValueTypeDefStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolUserDefinedValueTypeDefStub) = SolUserDefinedValueTypeDefinitionImpl(stub, this)
-
-    override fun createStub(psi: SolUserDefinedValueTypeDefinition, parentStub: StubElement<*>?) =
-      SolUserDefinedValueTypeDefStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolUserDefinedValueTypeDefStub, sink: IndexSink) = sink.indexUserDefinedValueTypeDef(stub)
-  }
+  object Type : SolNamedStubElementType<SolUserDefinedValueTypeDefStub, SolUserDefinedValueTypeDefinition>(
+    "USER_DEFINED_VALUE_TYPE_DEFINITION", ::SolUserDefinedValueTypeDefStub, ::SolUserDefinedValueTypeDefinitionImpl, IndexSink::indexUserDefinedValueTypeDef
+  )
 }
-
 
 class SolFunctionDefStub(
   parent: StubElement<*>?,
@@ -108,21 +83,9 @@ class SolFunctionDefStub(
   override val name: String?
 ) : StubBase<SolFunctionDefinition>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolFunctionDefStub, SolFunctionDefinition>("FUNCTION_DEFINITION") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolFunctionDefStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolFunctionDefStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolFunctionDefStub) = SolFunctionDefinitionImpl(stub, this)
-
-    override fun createStub(psi: SolFunctionDefinition, parentStub: StubElement<*>?) =
-      SolFunctionDefStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolFunctionDefStub, sink: IndexSink) = sink.indexFunctionDef(stub)
-  }
+  object Type : SolNamedStubElementType<SolFunctionDefStub, SolFunctionDefinition>(
+    "FUNCTION_DEFINITION", ::SolFunctionDefStub, ::SolFunctionDefinitionImpl, IndexSink::indexFunctionDef
+  )
 }
 
 class SolModifierDefStub(
@@ -131,21 +94,9 @@ class SolModifierDefStub(
   override val name: String?
 ) : StubBase<SolModifierDefinition>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolModifierDefStub, SolModifierDefinition>("MODIFIER_DEFINITION") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolModifierDefStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolModifierDefStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolModifierDefStub) = SolModifierDefinitionImpl(stub, this)
-
-    override fun createStub(psi: SolModifierDefinition, parentStub: StubElement<*>?) =
-      SolModifierDefStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolModifierDefStub, sink: IndexSink) = sink.indexModifierDef(stub)
-  }
+  object Type : SolNamedStubElementType<SolModifierDefStub, SolModifierDefinition>(
+    "MODIFIER_DEFINITION", ::SolModifierDefStub, ::SolModifierDefinitionImpl, IndexSink::indexModifierDef
+  )
 }
 
 class SolStructDefStub(
@@ -154,21 +105,9 @@ class SolStructDefStub(
   override val name: String?
 ) : StubBase<SolStructDefinition>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolStructDefStub, SolStructDefinition>("STRUCT_DEFINITION") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolStructDefStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolStructDefStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolStructDefStub) = SolStructDefinitionImpl(stub, this)
-
-    override fun createStub(psi: SolStructDefinition, parentStub: StubElement<*>?) =
-      SolStructDefStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolStructDefStub, sink: IndexSink) = sink.indexStructDef(stub)
-  }
+  object Type : SolNamedStubElementType<SolStructDefStub, SolStructDefinition>(
+    "STRUCT_DEFINITION", ::SolStructDefStub, ::SolStructDefinitionImpl, IndexSink::indexStructDef
+  )
 }
 
 class SolStateVarDeclStub(
@@ -177,21 +116,9 @@ class SolStateVarDeclStub(
   override val name: String?
 ) : StubBase<SolStateVariableDeclaration>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolStateVarDeclStub, SolStateVariableDeclaration>("STATE_VARIABLE_DECLARATION") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolStateVarDeclStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolStateVarDeclStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolStateVarDeclStub) = SolStateVariableDeclarationImpl(stub, this)
-
-    override fun createStub(psi: SolStateVariableDeclaration, parentStub: StubElement<*>?) =
-      SolStateVarDeclStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolStateVarDeclStub, sink: IndexSink) = sink.indexStateVarDecl(stub)
-  }
+  object Type : SolNamedStubElementType<SolStateVarDeclStub, SolStateVariableDeclaration>(
+    "STATE_VARIABLE_DECLARATION", ::SolStateVarDeclStub, ::SolStateVariableDeclarationImpl, IndexSink::indexStateVarDecl
+  )
 }
 
 class SolConstantVariableDeclStub(
@@ -200,21 +127,9 @@ class SolConstantVariableDeclStub(
   override val name: String?
 ) : StubBase<SolConstantVariableDeclaration>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolConstantVariableDeclStub, SolConstantVariableDeclaration>("CONSTANT_VARIABLE_DECLARATION") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolConstantVariableDeclStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolConstantVariableDeclStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolConstantVariableDeclStub) = SolConstantVariableDeclarationImpl(stub, this)
-
-    override fun createStub(psi: SolConstantVariableDeclaration, parentStub: StubElement<*>?) =
-      SolConstantVariableDeclStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolConstantVariableDeclStub, sink: IndexSink) = sink.indexConstantVariableDecl(stub)
-  }
+  object Type : SolNamedStubElementType<SolConstantVariableDeclStub, SolConstantVariableDeclaration>(
+    "CONSTANT_VARIABLE_DECLARATION", ::SolConstantVariableDeclStub, ::SolConstantVariableDeclarationImpl, IndexSink::indexConstantVariableDecl
+  )
 }
 
 class SolContractOrLibDefStub(
@@ -254,8 +169,7 @@ class SolTypeRefStub(
     override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
       SolTypeRefStub(parentStub, this)
 
-    override fun serialize(stub: SolTypeRefStub, dataStream: StubOutputStream) = with(dataStream) {
-    }
+    override fun serialize(stub: SolTypeRefStub, dataStream: StubOutputStream) {}
 
     override fun createPsi(stub: SolTypeRefStub) = psiFactory(stub, this)
 
@@ -271,21 +185,9 @@ class SolEventDefStub(
   override val name: String?
 ) : StubBase<SolEventDefinition>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolEventDefStub, SolEventDefinition>("EVENT_DEFINITION") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolEventDefStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolEventDefStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolEventDefStub) = SolEventDefinitionImpl(stub, this)
-
-    override fun createStub(psi: SolEventDefinition, parentStub: StubElement<*>?) =
-      SolEventDefStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolEventDefStub, sink: IndexSink) = sink.indexEventDef(stub)
-  }
+  object Type : SolNamedStubElementType<SolEventDefStub, SolEventDefinition>(
+    "EVENT_DEFINITION", ::SolEventDefStub, ::SolEventDefinitionImpl, IndexSink::indexEventDef
+  )
 }
 
 class SolErrorDefStub(
@@ -294,23 +196,10 @@ class SolErrorDefStub(
   override val name: String?
 ) : StubBase<SolErrorDefinition>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolErrorDefStub, SolErrorDefinition>("ERROR_DEFINITION") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolErrorDefStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolErrorDefStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolErrorDefStub) = SolErrorDefinitionImpl(stub, this)
-
-    override fun createStub(psi: SolErrorDefinition, parentStub: StubElement<*>?) =
-      SolErrorDefStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolErrorDefStub, sink: IndexSink) = sink.indexErrorDef(stub)
-  }
+  object Type : SolNamedStubElementType<SolErrorDefStub, SolErrorDefinition>(
+    "ERROR_DEFINITION", ::SolErrorDefStub, ::SolErrorDefinitionImpl, IndexSink::indexErrorDef
+  )
 }
-
 
 class SolImportPathDefStub(
   parent: StubElement<*>?,
@@ -342,24 +231,12 @@ class SolImportAliasDefStub(
   override val name: String?,
 ) : StubBase<SolImportAliasImpl>(parent, elementType), SolNamedStub {
 
-  object Type : SolStubElementType<SolImportAliasDefStub, SolImportAliasImpl>("IMPORT_ALIAS") {
-    override fun deserialize(dataStream: StubInputStream, parentStub: StubElement<*>?) =
-      SolImportAliasDefStub(parentStub, this, dataStream.readNameAsString())
-
-    override fun serialize(stub: SolImportAliasDefStub, dataStream: StubOutputStream) = with(dataStream) {
-      writeName(stub.name)
-    }
-
-    override fun createPsi(stub: SolImportAliasDefStub) = SolImportAliasImpl(stub, this)
-
-    override fun createStub(psi: SolImportAliasImpl, parentStub: StubElement<*>?) = SolImportAliasDefStub(parentStub, this, psi.name)
-
-    override fun indexStub(stub: SolImportAliasDefStub, sink: IndexSink) = sink.indexImportPathDef(stub)
-  }
+  object Type : SolNamedStubElementType<SolImportAliasDefStub, SolImportAliasImpl>(
+    "IMPORT_ALIAS", ::SolImportAliasDefStub, ::SolImportAliasImpl, IndexSink::indexImportAliasDef
+  )
 }
 
-
-private fun StubInputStream.readNameAsString(): String? = readName()?.string
+internal fun StubInputStream.readNameAsString(): String? = readName()?.string
 
 /**
  * Names of the contracts this contract inherits from, as they should be indexed in [SolInheritanceIndex].

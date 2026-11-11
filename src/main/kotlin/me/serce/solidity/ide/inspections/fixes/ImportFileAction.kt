@@ -10,6 +10,7 @@ import com.intellij.openapi.ui.popup.util.BaseListPopupStep
 import com.intellij.openapi.util.RecursionManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.ui.popup.list.ListPopupImpl
@@ -123,33 +124,46 @@ class ImportFileAction(
     }
 
     fun addContractImport(contract: SolContractDefinition, file: PsiFile) {
-      CommandProcessor.getInstance().runUndoTransparentAction {
-        ApplicationManager.getApplication().runWriteAction {
-          val after = file.children.filterIsInstance<SolImportDirective>().lastOrNull()
-            ?: file.children.filterIsInstance<SolPragmaDirective>().firstOrNull()
-          val factory = SolPsiFactory(contract.project)
-          val contractName = contract.name;
-          val path = buildImportPath(contract.project, file.virtualFile, contract.containingFile.virtualFile);
-          if (contractName.isNullOrBlank()) {
-            file.addAfter(factory.createImportDirective(path), after);
-          } else {
-            file.addAfter(factory.createContractImportFromDirective(path, contractName), after);
-          }
-
-          file.addAfter(factory.createNewLine(contract.project), after)
+      val project = contract.project
+      insertImport(project, file, afterFirstPragma = true) { factory ->
+        val contractName = contract.name
+        val path = buildImportPath(project, file.virtualFile, contract.containingFile.virtualFile)
+        if (contractName.isNullOrBlank()) {
+          factory.createImportDirective(path)
+        } else {
+          factory.createContractImportFromDirective(path, contractName)
         }
       }
     }
 
     fun addImport(project: Project, file: PsiFile, to: PsiFile) {
+      insertImport(project, file, optimize = true) { factory ->
+        factory.createImportDirective(buildImportPath(project, file.virtualFile, to.virtualFile))
+      }
+    }
+
+    /**
+     * Inserts the directive built by [createDirective] after the last import or, when there are none,
+     * after the first or last pragma; [optimize] then runs the import optimizer.
+     */
+    private fun insertImport(
+      project: Project,
+      file: PsiFile,
+      afterFirstPragma: Boolean = false,
+      optimize: Boolean = false,
+      createDirective: (SolPsiFactory) -> PsiElement
+    ) {
       CommandProcessor.getInstance().runUndoTransparentAction {
         ApplicationManager.getApplication().runWriteAction {
+          val pragmas = file.children.filterIsInstance<SolPragmaDirective>()
           val after = file.children.filterIsInstance<SolImportDirective>().lastOrNull()
-            ?: file.children.filterIsInstance<SolPragmaDirective>().lastOrNull()
+            ?: if (afterFirstPragma) pragmas.firstOrNull() else pragmas.lastOrNull()
           val factory = SolPsiFactory(project)
-          file.addAfter(factory.createImportDirective(buildImportPath(project, file.virtualFile, to.virtualFile)), after)
+          file.addAfter(createDirective(factory), after)
           file.addAfter(factory.createNewLine(project), after)
-          SolImportOptimizer().processFile(file, false).run()
+          if (optimize) {
+            SolImportOptimizer().processFile(file, false).run()
+          }
         }
       }
     }

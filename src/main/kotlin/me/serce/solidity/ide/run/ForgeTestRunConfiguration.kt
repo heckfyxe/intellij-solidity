@@ -16,12 +16,12 @@ class ForgeTestRunConfiguration(
   name: String
 ) : LocatableConfigurationBase<ForgeTestCommandLineState>(project, factory, name) {
 
-  val settings = SoliditySettings.getInstance(project)
   var contractName: String = ""
   var testName: String = ""
-  var workingDirectory: String = settings.testFoundryConfigPath.ifBlank {
-      project.basePath ?: ""
+  var workingDirectory: String = SoliditySettings.getInstance(project).testFoundryConfigPath.ifBlank {
+    project.basePath ?: ""
   }
+
   override fun getConfigurationEditor() = ForgeTestRunConfigurationEditor()
 
   override fun getState(executor: Executor, environment: ExecutionEnvironment) =
@@ -30,31 +30,24 @@ class ForgeTestRunConfiguration(
   @Throws(InvalidDataException::class)
   override fun readExternal(element: Element) {
     super.readExternal(element)
-    testName = element.getChild("testName")?.getAttributeValue(Constants.VALUE) ?: ""
-    contractName = element.getChild("contractName")?.getAttributeValue(Constants.VALUE) ?: ""
-    workingDirectory = element.getChild("workingDirectory")?.getAttributeValue(Constants.VALUE) ?: ""
+    testName = element.readValue("testName")
+    contractName = element.readValue("contractName")
+    workingDirectory = element.readValue("workingDirectory")
   }
 
   @Throws(WriteExternalException::class)
   override fun writeExternal(element: Element) {
     super.writeExternal(element)
-
-    testName.let {
-      val tnEle = Element("testName")
-      tnEle.setAttribute(Constants.VALUE, it)
-      element.addContent(tnEle)
-    }
-
-    contractName.let {
-      val cnEle = Element("contractName")
-      cnEle.setAttribute(Constants.VALUE, it)
-      element.addContent(cnEle)
-    }
-
-    val wdEle = Element("workingDirectory")
-    wdEle.setAttribute(Constants.VALUE, workingDirectory)
-    element.addContent(wdEle)
+    element.writeValue("testName", testName)
+    element.writeValue("contractName", contractName)
+    element.writeValue("workingDirectory", workingDirectory)
   }
 
   override fun suggestedName(): String = "Forge Test${if (testName.isNotEmpty()) " - $testName" else ""}"
+}
+
+private fun Element.readValue(name: String): String = getChild(name)?.getAttributeValue(Constants.VALUE) ?: ""
+
+private fun Element.writeValue(name: String, value: String) {
+  addContent(Element(name).setAttribute(Constants.VALUE, value))
 }

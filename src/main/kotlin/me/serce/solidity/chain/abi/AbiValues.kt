@@ -159,8 +159,9 @@ object AbiValueFormatter {
 
 /** Decodes revert data into something readable. */
 object RevertDecoder {
-  private val ERROR_STRING = "08c379a0"
-  private val PANIC = "4e487b71"
+  const val NO_REASON = "reverted without a reason"
+  private const val ERROR_STRING = "08c379a0"
+  private const val PANIC = "4e487b71"
   private val PANIC_CODES = mapOf(
     0x00 to "generic compiler panic", 0x01 to "assert failed", 0x11 to "arithmetic overflow or underflow",
     0x12 to "division or modulo by zero", 0x21 to "invalid enum value", 0x22 to "corrupted storage byte array",
@@ -168,10 +169,14 @@ object RevertDecoder {
     0x51 to "call to zero-initialized function",
   )
 
-  fun decode(data: ByteArray, errors: List<AbiEntry.Error>): String {
-    if (data.isEmpty()) return "reverted without a reason"
+  fun decode(data: ByteArray, errors: List<AbiEntry.Error>): String = decodeOrNull(data, errors) ?: unknownError(data)
+
+  /** Like [decode], but null when [data] is a custom error that none of [errors] declares. */
+  fun decodeOrNull(data: ByteArray, errors: List<AbiEntry.Error>): String? {
+    if (data.isEmpty()) return NO_REASON
     if (data.size < 4) return "reverted with ${data.toHex()}"
-    val selector = data.copyOf(4).toHex(prefix = false)
+    val selectorBytes = data.copyOf(4)
+    val selector = selectorBytes.toHex(prefix = false)
     val body = data.copyOfRange(4, data.size)
     return try {
       when (selector) {
@@ -181,8 +186,7 @@ object RevertDecoder {
           "panic 0x${code.toString(16).padStart(2, '0')}: ${PANIC_CODES[code] ?: "unknown"}"
         }
         else -> {
-          val error = errors.firstOrNull { it.selector.toHex(prefix = false) == selector }
-            ?: return "reverted with unknown error 0x$selector${if (body.isNotEmpty()) " (${body.toHex()})" else ""}"
+          val error = errors.firstOrNull { it.selector.contentEquals(selectorBytes) } ?: return null
           val values = AbiCodec.decode(error.inputs.map { it.type }, body)
           "${error.name}(${error.inputs.zip(values).joinToString(", ") { (p, v) -> (if (p.name.isNotEmpty()) "${p.name}: " else "") + AbiValueFormatter.format(v) }})"
         }
@@ -190,5 +194,10 @@ object RevertDecoder {
     } catch (e: IllegalArgumentException) {
       "reverted with ${data.toHex()}"
     }
+  }
+
+  private fun unknownError(data: ByteArray): String {
+    val body = data.copyOfRange(4, data.size)
+    return "reverted with unknown error ${data.copyOf(4).toHex()}${if (body.isNotEmpty()) " (${body.toHex()})" else ""}"
   }
 }

@@ -1,5 +1,6 @@
 package me.serce.solidity.chain.ui
 
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.HTMLEditorKitBuilder
@@ -15,17 +16,27 @@ import java.util.Date
 import javax.swing.JEditorPane
 import javax.swing.event.HyperlinkEvent
 
-/** Read-only HTML view of a transaction's outcome. */
-class ResultView(private val onLink: (String) -> Unit = {}) {
+/** Read-only HTML view of a transaction's outcome. Links to failure locations open them in [project]. */
+class ResultView(private val project: Project, private val onLink: (String) -> Unit = {}) {
+  private var shown: TxRecord? = null
   val component = JEditorPane().apply {
     editorKit = HTMLEditorKitBuilder.simple()
     isEditable = false
     isOpaque = false
     border = JBUI.Borders.emptyTop(8)
-    addHyperlinkListener { if (it.eventType == HyperlinkEvent.EventType.ACTIVATED) onLink(it.description) }
+    addHyperlinkListener { if (it.eventType == HyperlinkEvent.EventType.ACTIVATED) link(it.description) }
+  }
+
+  private fun link(description: String) {
+    val frame = if (description.startsWith(FRAME_LINK)) {
+      description.substring(FRAME_LINK.length).toIntOrNull()?.let { shown?.errorFrames?.getOrNull(it) }
+    } else null
+    if (frame == null) return onLink(description)
+    ChainUi.navigateTo(project, frame.path, frame.line, frame.column)
   }
 
   fun clear() {
+    shown = null
     component.text = ""
   }
 
@@ -38,12 +49,15 @@ class ResultView(private val onLink: (String) -> Unit = {}) {
   }
 
   fun show(record: TxRecord, detailed: Boolean = false) {
+    shown = record
     component.text = html(render(record, detailed))
     component.caretPosition = 0
   }
 
   companion object {
-    private val TIME = SimpleDateFormat("HH:mm:ss")
+    private const val FRAME_LINK = "frame:"
+    /** Time of day shown next to transactions; used on the EDT only. */
+    internal val TIME = SimpleDateFormat("HH:mm:ss")
 
     fun esc(s: String): String = StringUtil.escapeXmlEntities(s)
     fun grey() = colorHex(UIUtil.getContextHelpForeground())
@@ -73,8 +87,24 @@ class ResultView(private val onLink: (String) -> Unit = {}) {
         if (r.args.isNotEmpty()) section("Arguments", r.args)
       }
       if (r.error.isNotEmpty()) append("<br><span style='color:${red()}'>${esc(r.error)}</span>")
+      failureFrames(r)
+      r.notes.forEach { append("<br><span style='color:${grey()}'>${esc(it)}</span>") }
       if (r.results.isNotEmpty()) section(if (r.kind == TxKind.TRANSACT) "Returned (simulated)" else "Returned", r.results)
       if (r.events.isNotEmpty()) section("Events", r.events)
+    }
+
+    /** `at src/A.sol:12 code in A`, then `called from …` for each caller; nothing when no frame has a source line. */
+    private fun StringBuilder.failureFrames(r: TxRecord) {
+      if (r.errorFrames.none { it.path.isNotEmpty() }) return
+      r.errorFrames.forEachIndexed { i, f ->
+        append("<br><span style='color:${grey()}'>${if (i == 0) "at" else "called from"}</span> ")
+        if (f.path.isNotEmpty()) {
+          append("<a href='$FRAME_LINK$i'>${esc(f.label)}</a>")
+          if (f.code.isNotEmpty()) append(" <code>${esc(f.code)}</code>")
+        }
+        val who = f.contract.ifEmpty { f.address }
+        if (who.isNotEmpty()) append(" <span style='color:${grey()}'>in ${esc(who)}</span>")
+      }
     }
 
     private fun StringBuilder.row(label: String, value: String) {

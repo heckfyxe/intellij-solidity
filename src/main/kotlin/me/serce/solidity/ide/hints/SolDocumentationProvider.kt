@@ -2,16 +2,13 @@ package me.serce.solidity.ide.hints
 
 import com.intellij.lang.documentation.AbstractDocumentationProvider
 import com.intellij.lang.documentation.DocumentationMarkup.*
-import com.intellij.openapi.editor.Document
 import com.intellij.openapi.util.ModificationTracker
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiFile
 import com.intellij.psi.impl.source.tree.LeafPsiElement
 import com.intellij.psi.util.*
 import com.intellij.psi.util.elementType
-import com.jetbrains.rd.util.getOrCreate
 import me.serce.solidity.ide.SolHighlighter
 import me.serce.solidity.ide.colors.SolColor
 import me.serce.solidity.lang.core.SolidityTokenTypes
@@ -26,11 +23,17 @@ import me.serce.solidity.lang.types.isBuiltin
 
 const val NO_VALIDATION_TAG = "@custom:no_validation"
 
+/** Whether the NatSpec of this declaration opts it out of argument validation. */
+fun PsiElement.hasNoValidationTag() = comments().any { it.isNatSpecTag(NO_VALIDATION_TAG) }
+
+private fun PsiElement.isNatSpecTag(tag: String) = elementType == SolidityTokenTypes.NAT_SPEC_TAG && text == tag
+
 fun PsiElement.comments(): List<PsiElement> {
   return CachedValuesManager.getCachedValue(this) {
+    val builtin = isBuiltin()
     val nonSolElements = siblings(false, false)
       .takeWhile { it !is SolElement }.toList()
-    val res = (if (!isBuiltin()) PsiDocumentManager.getInstance(project).getDocument(this.containingFile)?.let { document ->
+    val res = (if (!builtin) PsiDocumentManager.getInstance(project).getDocument(this.containingFile)?.let { document ->
       val tripleLines = nonSolElements.filter { it.text.startsWith("///") }.map { document.getLineNumber(it.textOffset) }.toSet()
       val tripleLineComments = nonSolElements.filter { tripleLines.contains(document.getLineNumber(it.startOffset)) }
       val blockComments = collectBlockComments(nonSolElements)
@@ -39,16 +42,14 @@ fun PsiElement.comments(): List<PsiElement> {
     else {
       collectBlockComments(nonSolElements)
     }).filterIsInstance<PsiComment>()
-    CachedValueProvider.Result.create(res, if (isBuiltin()) ModificationTracker.NEVER_CHANGED else this.parent)
+    CachedValueProvider.Result.create(res, if (builtin) ModificationTracker.NEVER_CHANGED else this.parent)
   }
 }
 
 private fun collectBlockComments(nonSolElements: List<PsiElement>): List<PsiElement> {
-  val blockComments = nonSolElements.dropWhile { it.elementType != SolidityTokenTypes.COMMENT || !it.text.contains("*/") }.toList().let { l ->
-    (l.indexOfFirst { it.elementType == SolidityTokenTypes.COMMENT && it.text.startsWith("/**") }.takeIf { it >= 0 }?.let { l.subList(0, it + 1) }
-      ?: emptyList())
-  }
-  return blockComments
+  val fromEnd = nonSolElements.dropWhile { it.elementType != SolidityTokenTypes.COMMENT || !it.text.contains("*/") }
+  val start = fromEnd.indexOfFirst { it.elementType == SolidityTokenTypes.COMMENT && it.text.startsWith("/**") }
+  return if (start >= 0) fromEnd.subList(0, start + 1) else emptyList()
 }
 
 class SolDocumentationProvider : AbstractDocumentationProvider() {
@@ -71,6 +72,7 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
   private fun String.colorizeKeyword()  = "<b style='color:$typeRGB'>${this}</b>"
 
   private val commentsRegex = "^/\\*\\*|\\*/$|^///".toRegex()
+  private val nonSlashRegex = "[^/]".toRegex()
 
   override fun generateDoc(psiElement: PsiElement, originalElement: PsiElement?): String? {
     var element = psiElement
@@ -89,10 +91,7 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
     if (!builder.appendDefinition(element)) {
       return null
     }
-    data class DocWrapper(val document: Document?)
-    val doc = mutableMapOf<PsiFile, DocWrapper>()
-
-    fun getDoc(file: PsiFile) = doc.getOrCreate(file) { DocWrapper(PsiDocumentManager.getInstance(element.project).getDocument(file)) }.document
+    val documentManager = PsiDocumentManager.getInstance(element.project)
     val comments = element.comments().let {
       it + if (it.isEmpty() || it.any { it.isInheritDoc() }) {
         when (element) {
@@ -124,8 +123,8 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
             }
             else -> text
         }
-        text = text.split("\n").filter { it.contains("[^/]".toRegex()) }.joinToString("\n")
-        getDoc(e.containingFile)?.let {doc ->
+        text = text.split("\n").filter { it.contains(nonSlashRegex) }.joinToString("\n")
+        documentManager.getDocument(e.containingFile)?.let { doc ->
           if (i > 0 && (i > 1 || prevText.isNotBlank()) && doc.getLineNumber(e.textOffset) != doc.getLineNumber(comments[i - 1].textRange.endOffset)) {
             text = "\n" + text
           } else text
@@ -156,7 +155,7 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
           else -> null
         }) ?: emptyList()
 
-    element.comments().find { it.elementType == SolidityTokenTypes.NAT_SPEC_TAG && it.text == "@inheritdoc" }?.let {
+    element.comments().find { it.isInheritDoc() }?.let {
       it.siblings().firstOrNull { it.elementType == SolidityTokenTypes.COMMENT }?.let {
         val ref = it.text.trimStart().split("\\s".toRegex(), limit = 2)[0]
         SolFunctionResolver.collectOverridden(function, element.parentOfType(false)).find { it.contract?.identifier?.text == ref }?.let {
@@ -182,8 +181,7 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
 
     val natParam = natIndexes.find { it.value.text == natName && (singleReturn || comments.getOrNull(it.index - 1)?.text?.trimStart()?.startsWith(paramName) ?: false) } ?: return emptyList()
     val nextNatParam = natIndexes.getOrNull(natIndexes.indexOf(natParam) - 1)?.index?.let { it + 1 } ?: 0
-    val paramComments = comments.slice(nextNatParam..natParam.index)
-    return paramComments
+    return comments.slice(nextNatParam..natParam.index)
   }
 
   private fun StringBuilder.appendDefinition(element: PsiElement) : Boolean {
@@ -265,4 +263,4 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
 }
 
 
-fun PsiElement.isInheritDoc() = elementType == SolidityTokenTypes.NAT_SPEC_TAG && text == "@inheritdoc"
+fun PsiElement.isInheritDoc() = isNatSpecTag("@inheritdoc")

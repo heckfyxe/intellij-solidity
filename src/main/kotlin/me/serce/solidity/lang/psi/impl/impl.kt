@@ -25,14 +25,9 @@ abstract class SolElementImpl(node: ASTNode) : ASTWrapperPsiElement(node), SolEl
 abstract class SolNamedElementImpl(node: ASTNode) : SolElementImpl(node), SolNamedElement, PsiNameIdentifierOwner {
   override fun getNameIdentifier(): PsiElement? = findChildByType(IDENTIFIER)
 
-  override fun getName(): String? {
-    return nameIdentifier?.text
-  }
+  override fun getName(): String? = nameIdentifier?.text
 
-  override fun setName(name: String): PsiElement? {
-    nameIdentifier?.replace(SolPsiFactory(project).createIdentifier(name))
-    return this
-  }
+  override fun setName(name: String): PsiElement? = renameIdentifier(name)
 
   override fun getNavigationElement(): PsiElement = nameIdentifier ?: this
 
@@ -66,10 +61,7 @@ abstract class SolStubbedNamedElementImpl<S> :
 
   override fun getName() = stub?.name ?: nameIdentifier?.text
 
-  override fun setName(name: String): PsiElement? {
-    nameIdentifier?.replace(SolPsiFactory(project).createIdentifier(name))
-    return this
-  }
+  override fun setName(name: String): PsiElement? = renameIdentifier(name)
 
   override fun getNavigationElement(): PsiElement = nameIdentifier ?: this
 
@@ -80,8 +72,12 @@ abstract class SolStubbedNamedElementImpl<S> :
   override fun getUseScope(): SearchScope = SolUseScope.of(this) ?: super.getUseScope()
 }
 
-private fun SolNamedElement.createPresentation(): PresentationData {
-  val location: String? = containingFile?.let { psiFile -> SymbolPresentationUtil.getFilePathPresentation(psiFile) }
+private fun PsiNameIdentifierOwner.renameIdentifier(name: String): PsiElement {
+  nameIdentifier?.replace(SolPsiFactory(project).createIdentifier(name))
+  return this
+}
 
+private fun SolNamedElement.createPresentation(): PresentationData {
+  val location: String? = containingFile?.let { SymbolPresentationUtil.getFilePathPresentation(it) }
   return PresentationData(name, location, getIcon(0), null)
 }

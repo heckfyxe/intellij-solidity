@@ -19,7 +19,7 @@ import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleTextAttributes
-import me.serce.solidity.ide.formatting.SolidityFormattingRestriction
+import me.serce.solidity.ide.formatting.isIdeFormatterActive
 import me.serce.solidity.ide.inspections.fixes.AddVirtualFix
 import me.serce.solidity.ide.inspections.fixes.SolSpecifierEditor
 import me.serce.solidity.lang.SolidityFileType
@@ -139,7 +139,7 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
     document.insertString(offset, inserted)
     psiDocumentManager.commitDocument(document)
     val marker = document.createRangeMarker(offset, offset + inserted.length)
-    if (SolidityFormattingRestriction.isIdeFormatterActive(project)) {
+    if (isIdeFormatterActive(project)) {
       val file = psiDocumentManager.getPsiFile(document)
       if (file != null) {
         CodeStyleManager.getInstance(project).reformatText(file, marker.startOffset, marker.endOffset)

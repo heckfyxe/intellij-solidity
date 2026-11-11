@@ -91,11 +91,12 @@ class JsonRpcClient(val url: String) {
     }
   }
 
-  private fun tx(from: String?, to: String?, data: ByteArray, value: BigInteger) = mapOf(
-    "from" to from, "to" to to, "data" to data.toHex(), "value" to "0x" + value.toString(16),
-  ).filterValues { it != null }
-
   companion object {
+    /** The transaction object of `eth_call`, `eth_sendTransaction` and `debug_traceCall`, without absent fields. */
+    fun tx(from: String?, to: String?, data: ByteArray, value: BigInteger, gas: String? = null): Map<String, String> = mapOf(
+      "from" to from, "to" to to, "data" to data.toHex(), "value" to value.toHexQuantity(), "gas" to gas,
+    ).filterValues { it != null }.mapValues { it.value!! }
+
     private val mapper = ObjectMapper()
     /** One client for all chains: each HttpClient owns a selector thread. */
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
@@ -110,3 +111,6 @@ class JsonRpcClient(val url: String) {
 }
 
 fun String.hexToBigInt(): BigInteger = removePrefix("0x").ifEmpty { "0" }.toBigInteger(16)
+
+/** A JSON-RPC quantity: `0x`-prefixed hex without leading zeros. */
+fun BigInteger.toHexQuantity(): String = "0x" + toString(16)

@@ -20,208 +20,90 @@ class NoReturnInspection : LocalInspectionTool() {
 }
 
 private fun SolFunctionDefinition.inspectReturns(holder: ProblemsHolder) {
-  val block = this.block
-  if (block != null) {
-    val returns = this.returns
-    if (returns != null) {
-      if (!block.returns) {
-        val shouldReturn = returns.parameterDefList.any { it.name == null }
-        if (shouldReturn) {
-          holder.registerProblem(this, "No return statement")
-        } else {
-          for (returnParam in returns.parameterDefList) {
-            if (!block.hasAssignment(returnParam)) {
-              holder.registerProblem(returnParam, "Return variable not assigned")
-            }
-          }
-        }
-      }
-    }
+  val block = block ?: return
+  val returns = returns ?: return
+  if (block.returns) return
+  val returnParams = returns.parameterDefList
+  if (returnParams.any { it.name == null }) {
+    holder.registerProblem(this, "No return statement")
+    return
+  }
+  returnParams.filterNot { block.hasAssignment(it) }.forEach {
+    holder.registerProblem(it, "Return variable not assigned")
   }
 }
 
 private val SolFunctionCallExpression.revert: Boolean
-  get() {
-    return if (this.name == "revert") {
-      val ref = this.reference?.resolve()
-      ref?.isGlobal() ?: false
-    } else {
-      false
-    }
-  }
+  get() = name == "revert" && reference?.resolve()?.isGlobal() == true
 
 private fun SolStatement.hasAssignment(el: SolNamedElement): Boolean {
-  this.throwSt?.let {
-    return true
-  }
-
-  this.revertStatement?.let {
-    return true
-  }
-
-  this.variableDefinition?.let {
-    return it.hasAssignment(el)
-  }
-
-  this.expression?.let {
-    return it.hasAssignment(el)
-  }
-
-  this.inlineAssemblyStatement.let { st ->
-    st?.yulBlock?.let {
-      return it.hasAssignment(el)
-    }
-  }
-
-  this.block?.let {
-    return it.hasAssignment(el)
-  }
-
-  this.ifStatement?.let {
-    return it.hasAssignment(el)
-  }
-
-  this.tryStatement?.let {
-    return it.hasAssignment(el)
-  }
-
-  this.tupleStatement?.let { st ->
+  if (throwSt != null || revertStatement != null) return true
+  variableDefinition?.let { return it.hasAssignment(el) }
+  expression?.let { return it.hasAssignment(el) }
+  inlineAssemblyStatement?.yulBlock?.let { return it.hasAssignment(el) }
+  block?.let { return it.hasAssignment(el) }
+  ifStatement?.let { return it.hasAssignment(el) }
+  tryStatement?.let { return it.hasAssignment(el) }
+  tupleStatement?.let { st ->
     val declaration = st.variableDeclaration
-    val expressions = st.expressionList
     if (declaration != null) {
-      return declaration.declarationList?.declarationItemList?.any { it.hasAssignment(el) }
-        ?: declaration.typedDeclarationList?.typedDeclarationItemList?.any { it.hasAssignment(el) }
+      return declaration.declarationList?.declarationItemList?.any { it.identifier?.text == el.name }
+        ?: declaration.typedDeclarationList?.typedDeclarationItemList?.any { it.identifier?.text == el.name }
         ?: false
-    } else {
-      expressions.firstOrNull()?.let {
-        if (it is SolSeqExpression) {
-          return it.expressionList.any { expr -> expr.isReferenceTo(el) }
-        }
-      }
     }
-  }
-
-  return false
-}
-
-private fun SolExpression.isReferenceTo(el: SolNamedElement): Boolean {
-  if (this is SolPrimaryExpression) {
-    this.varLiteral?.let { lit ->
-      if (lit.reference?.resolve() == el) {
-        return true
-      }
+    (st.expressionList.firstOrNull() as? SolSeqExpression)?.let { seq ->
+      return seq.expressionList.any { it.isReferenceTo(el) }
     }
   }
   return false
 }
+
+private fun SolExpression.isReferenceTo(el: SolNamedElement): Boolean =
+  (this as? SolPrimaryExpression)?.varLiteral?.reference?.resolve() == el
 
 private val SolStatement.returns: Boolean
   get() {
-    this.expression?.let {
-      if (it is SolFunctionCallExpression && it.revert) {
-        return true
-      }
-    }
-
-    this.revertStatement?.let {
-      return true
-    }
-
-    this.inlineAssemblyStatement.let { st ->
-      st?.yulBlock?.let {
-        return it.returns
-      }
-    }
-
-    this.throwSt?.let {
-      return true
-    }
-
-    this.block?.let {
-      return it.returns
-    }
-
-    this.ifStatement?.let {
-      return it.returns
-    }
-
-    this.tryStatement?.let {
-      return it.returns
-    }
-
-    if (this.returnSt != null) {
-      return true
-    }
-
-    if (this.returnTupleStatement != null) {
-      return true
-    }
-
-    return false
+    (expression as? SolFunctionCallExpression)?.let { if (it.revert) return true }
+    if (revertStatement != null) return true
+    inlineAssemblyStatement?.yulBlock?.let { return it.returns }
+    if (throwSt != null) return true
+    block?.let { return it.returns }
+    ifStatement?.let { return it.returns }
+    tryStatement?.let { return it.returns }
+    return returnSt != null || returnTupleStatement != null
   }
 
 private val SolYulStatement.returns: Boolean
-  get() {
-    yulFunctionCall?.let {
-      return it.text.startsWith("return")//todo better
-    }
-    return false
-  }
+  get() = yulFunctionCall?.text?.startsWith("return") == true //todo better
 
 private val SolYulBlock.returns: Boolean
-  get() {
-    return this.yulStatementList.any { it.returns }
-  }
+  get() = yulStatementList.any { it.returns }
 
 private val SolBlock.returns: Boolean
-  get() = (this.statementList + this.uncheckedBlockList.flatMap { it.statementList }).any { it.returns }
+  get() = (statementList + uncheckedBlockList.flatMap { it.statementList }).any { it.returns }
 
 private fun SolBlock.hasAssignment(el: SolNamedElement): Boolean =
-  this.statementList.any { it.hasAssignment(el) } || this.uncheckedBlockList.any { it.hasAssigment(el) }
+  statementList.any { it.hasAssignment(el) } || uncheckedBlockList.any { block -> block.statementList.any { it.hasAssignment(el) } }
 
-private fun SolUncheckedBlock.hasAssigment(el: SolNamedElement): Boolean =
-  this.statementList.any { it.hasAssignment(el) }
-
+// an `if` without `else` never guarantees the assignment or the return
 private val SolIfStatement.returns: Boolean
-  get() = if (this.statementList.size == 1) {
-    false
-  } else {
-    statementList.all { it.returns }
-  }
+  get() = statementList.size != 1 && statementList.all { it.returns }
 
 private fun SolIfStatement.hasAssignment(el: SolNamedElement): Boolean =
-  if (this.statementList.size == 1) {
-    false
-  } else {
-    statementList.all { it.hasAssignment(el) }
-  }
+  statementList.size != 1 && statementList.all { it.hasAssignment(el) }
 
 private fun SolVariableDefinition.hasAssignment(el: SolNamedElement): Boolean =
-  this.variableDeclaration.reference?.resolve() == el
+  variableDeclaration.reference?.resolve() == el
 
 private fun SolYulBlock.hasAssignment(el: SolNamedElement): Boolean =
-  this.yulStatementList.any { it.hasAssignment(el) }
+  yulStatementList.any { it.hasAssignment(el) }
 
-private fun SolYulStatement.hasAssignment(el: SolNamedElement): Boolean {
-  this.yulAssignment?.let {
-    if (it.children.any { identifier -> identifier.text == el.name }) {//todo better
-      return true
-    }
-  }
-  return false
-}
-
-private fun SolDeclarationItem.hasAssignment(el: SolNamedElement): Boolean {
-  return this.identifier?.text == el.name
-}
-
-private fun SolTypedDeclarationItem.hasAssignment(el: SolNamedElement): Boolean {
-  return this.identifier?.text == el.name
-}
+private fun SolYulStatement.hasAssignment(el: SolNamedElement): Boolean =
+  yulAssignment?.children?.any { it.text == el.name } == true //todo better
 
 private fun SolExpression.hasAssignment(el: SolNamedElement): Boolean {
   var hasAssignment = false
-  this.accept(object : PsiRecursiveElementWalkingVisitor() {
+  accept(object : PsiRecursiveElementWalkingVisitor() {
     override fun visitElement(element: PsiElement) {
       hasAssignment = element is SolAssignmentExpression && element.expressionList.any { it.isReferenceTo(el) } ||
         element is SolFunctionCallExpression && element.revert
@@ -241,7 +123,5 @@ private fun SolTryStatement.hasAssignment(el: SolNamedElement): Boolean =
 private val SolTryStatement.returns: Boolean
   get() = block?.returns == true && catchClauseList.all { it.block?.returns == true }
 
-private fun SolElement.isGlobal(): Boolean {
-  val contract = this.findContract()
-  return contract == SolInternalTypeFactory.of(this.project).globalType.ref
-}
+private fun SolElement.isGlobal(): Boolean =
+  findContract() == SolInternalTypeFactory.of(project).globalType.ref

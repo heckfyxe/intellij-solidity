@@ -48,42 +48,36 @@ class SolidityFoldingBuilder : CustomFoldingBuilder(), DumbAware {
       document: Document,
       descriptors: MutableList<FoldingDescriptor>
     ) {
-      val type = node.elementType
-      if (
-        type === SolidityTokenTypes.BLOCK && spanMultipleLines(node, document) ||
-        type === SolidityTokenTypes.COMMENT ||
-        type === SolidityTokenTypes.NAT_SPEC_TAG ||
-        type === SolidityTokenTypes.CONTRACT_DEFINITION && spanMultipleLines(node, document) ||
-        type === SolidityTokenTypes.STRUCT_DEFINITION && spanMultipleLines(node, document) ||
-        type === SolidityTokenTypes.ENUM_DEFINITION && spanMultipleLines(node, document) ||
-        type === SolidityTokenTypes.FUNCTION_DEFINITION &&
-        node.findChildByType(SolidityTokenTypes.PARAMETER_LIST)?.let { spanMultipleLines(it, document) } == true) {
-
-        // NatSpec has to be handled separately to ensure the whole block is folded
-        if (type === SolidityTokenTypes.COMMENT || type === SolidityTokenTypes.NAT_SPEC_TAG) {
-          val prevElementType = node.treePrev?.elementType
-          if (prevElementType != SolidityTokenTypes.COMMENT //
-            && prevElementType != SolidityTokenTypes.NAT_SPEC_TAG
-          ) {
-            var last = node
-            var next = node.treeNext
-            while (next != null && (next.elementType == SolidityTokenTypes.COMMENT //
-                || next.elementType == SolidityTokenTypes.NAT_SPEC_TAG)
-            ) {
-              last = next
-              next = next.treeNext
-            }
-            val range = TextRange(node.startOffset, last.textRange.endOffset)
-            descriptors.add(FoldingDescriptor(node, range))
+      when (node.elementType) {
+        // NatSpec has to be handled separately to ensure the whole block is folded: fold a run of comments once,
+        // from its first comment
+        SolidityTokenTypes.COMMENT, SolidityTokenTypes.NAT_SPEC_TAG -> if (!isComment(node.treePrev)) {
+          var last = node
+          while (isComment(last.treeNext)) {
+            last = last.treeNext
           }
-        } else {
+          descriptors.add(FoldingDescriptor(node, TextRange(node.startOffset, last.textRange.endOffset)))
+        }
+
+        SolidityTokenTypes.BLOCK,
+        SolidityTokenTypes.CONTRACT_DEFINITION,
+        SolidityTokenTypes.STRUCT_DEFINITION,
+        SolidityTokenTypes.ENUM_DEFINITION -> if (spanMultipleLines(node, document)) {
           descriptors.add(FoldingDescriptor(node, node.textRange))
         }
+
+        SolidityTokenTypes.FUNCTION_DEFINITION ->
+          if (node.findChildByType(SolidityTokenTypes.PARAMETER_LIST)?.let { spanMultipleLines(it, document) } == true) {
+            descriptors.add(FoldingDescriptor(node, node.textRange))
+          }
       }
       for (child in node.getChildren(null)) {
         collectDescriptorsRecursively(child, document, descriptors)
       }
     }
+
+    private fun isComment(node: ASTNode?): Boolean =
+      node?.elementType.let { it == SolidityTokenTypes.COMMENT || it == SolidityTokenTypes.NAT_SPEC_TAG }
 
     private fun spanMultipleLines(node: ASTNode, document: Document): Boolean {
       val textRange = node.textRange

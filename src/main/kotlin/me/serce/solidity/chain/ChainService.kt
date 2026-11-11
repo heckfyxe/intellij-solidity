@@ -48,7 +48,7 @@ import java.util.concurrent.TimeoutException
 enum class ChainStatus { STOPPED, STARTING, RUNNING, FAILED }
 
 /** Live state of a chain while the IDE is open. */
-class ChainRuntime(val configId: String) {
+class ChainRuntime {
   @Volatile var status: ChainStatus = ChainStatus.STOPPED
   @Volatile var rpc: JsonRpcClient? = null
   @Volatile var accounts: List<String> = emptyList()
@@ -77,7 +77,7 @@ fun interface ChainListener {
 
 @Service(Service.Level.PROJECT)
 @State(name = "SolidityChains", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
-class ChainService(private val project: Project) : PersistentStateComponent<ChainState>, Disposable {
+class ChainService(val project: Project) : PersistentStateComponent<ChainState>, Disposable {
   private var state = ChainState()
   private val runtimes = ConcurrentHashMap<String, ChainRuntime>()
   /** Immutable copy for background readers (highlighting, executor); replaced after each change on the EDT. */
@@ -107,7 +107,7 @@ class ChainService(private val project: Project) : PersistentStateComponent<Chai
     }
 
   fun chain(id: String) = state.chains.firstOrNull { it.id == id }
-  fun runtime(id: String): ChainRuntime = runtimes.computeIfAbsent(id) { ChainRuntime(it) }
+  fun runtime(id: String): ChainRuntime = runtimes.computeIfAbsent(id) { ChainRuntime() }
   fun isRunning(config: ChainConfig) = runtime(config.id).status == ChainStatus.RUNNING
   fun runningChains(): List<ChainConfig> = chains.filter(::isRunning)
   fun deployments(chainId: String) = deploymentsSnapshot.filter { it.chainId == chainId }

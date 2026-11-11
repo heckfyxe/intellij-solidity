@@ -5,17 +5,16 @@ import com.intellij.execution.process.OSProcessHandler
 import com.intellij.openapi.util.Key
 
 class ForgeTestTransformingProcessHandler(cmdLine: GeneralCommandLine) : OSProcessHandler(cmdLine) {
-  val transformer = ForgetTestOutputTransformer()
+  private val transformer = ForgeTestOutputTransformer()
 
   override fun notifyTextAvailable(text: String, outputType: Key<*>) {
-    val lines = transformer.transformLine(text)
-    lines?.forEach {
+    transformer.transformLine(text)?.forEach {
       super.notifyTextAvailable(it, outputType)
     }
   }
 }
 
-open class ForgetTestOutputTransformer {
+class ForgeTestOutputTransformer {
   val compilerFailRegex = Regex("^Compiler run failed:$")
   val suiteStartRegex = Regex("^Ran \\d+ tests? for (.*\\.t\\.sol):(.*)$")
   val suiteEndRegex =
@@ -31,8 +30,6 @@ open class ForgetTestOutputTransformer {
 
   fun transformLine(text: String): List<String>? {
     val line = text.trimEnd('\n', '\r')
-      .removeSuffix("\n")
-      .removeSuffix("\r")
 
     if (isFail) {
       return listOf("$line\n")

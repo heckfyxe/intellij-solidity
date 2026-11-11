@@ -21,9 +21,22 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
-import kotlin.io.path.readText
 
 class FoundryException(message: String) : Exception(message)
+
+/** The JSON artifacts forge wrote into [outDir]: `<Source>.sol/<Contract>.json`. */
+fun artifactFiles(outDir: Path): List<Path> {
+  if (!outDir.isDirectory()) return emptyList()
+  return Files.list(outDir).use { dirs ->
+    dirs.filter { it.isDirectory() && it.name.endsWith(".sol") }.toList().flatMap { dir ->
+      Files.list(dir).use { files -> files.filter { it.extension == "json" }.toList() }
+    }
+  }
+}
+
+/** The source path (key) and contract name (value) an artifact was compiled for. */
+fun JsonNode.compilationTarget(): Map.Entry<String, JsonNode>? =
+  this["metadata"]?.get("settings")?.get("compilationTarget")?.fields()?.asSequence()?.firstOrNull()
 
 /** A compiled contract read from forge's `out/` directory. */
 class Artifact(
@@ -122,24 +135,12 @@ class FoundryProject(val root: Path, private val forge: String) {
     return BuildResult(success, messages)
   }
 
-  fun artifacts(): List<Artifact> {
-    val outDir = root.resolve(config().out)
-    if (!outDir.isDirectory()) return emptyList()
-    val result = ArrayList<Artifact>()
-    Files.list(outDir).use { dirs ->
-      dirs.filter { it.isDirectory() && it.name.endsWith(".sol") }.forEach { dir ->
-        Files.list(dir).use { files ->
-          files.filter { it.extension == "json" }.forEach { f -> readArtifact(f)?.let { result += it } }
-        }
-      }
-    }
-    return result.sortedBy { it.name }
-  }
+  fun artifacts(): List<Artifact> = artifactFiles(root.resolve(config().out)).mapNotNull { readArtifact(it) }.sortedBy { it.name }
 
   private fun readArtifact(file: Path): Artifact? = try {
-    val json = mapper.readTree(file.readText())
+    val json = mapper.readTree(file.toFile())
     val abi = json["abi"]
-    val target = json["metadata"]?.get("settings")?.get("compilationTarget")?.fields()?.asSequence()?.firstOrNull()
+    val target = json.compilationTarget()
     if (abi == null || target == null) null else {
       val bytecode = json["bytecode"]
       Artifact(
@@ -164,13 +165,14 @@ class FoundryProject(val root: Path, private val forge: String) {
 
   /** Runs a Foundry tool (or solc) in [root]; throws [FoundryException] when it is missing or times out. */
   fun exec(command: List<String>, timeoutMs: Int, stdin: ByteArray? = null): ProcessOutput {
-    if (!File(command[0]).exists()) throw FoundryException("${File(command[0]).name} not found at ${command[0]}. Install Foundry or set its path in Settings | Solidity")
+    val tool = File(command[0])
+    if (!tool.exists()) throw FoundryException("${tool.name} not found at ${command[0]}. Install Foundry or set its path in Settings | Solidity")
     val cmd = GeneralCommandLine(command).withWorkDirectory(root.toFile()).withCharset(Charsets.UTF_8)
       .withEnvironment("NO_COLOR", "1")
     val handler = CapturingProcessHandler(cmd)
     stdin?.let { bytes -> handler.processInput.use { it.write(bytes) } }
     val output = handler.runProcess(timeoutMs)
-    if (output.isTimeout) throw FoundryException("${File(command[0]).name} ${command.getOrNull(1).orEmpty()} timed out")
+    if (output.isTimeout) throw FoundryException("${tool.name} ${command.getOrNull(1).orEmpty()} timed out")
     return output
   }
 

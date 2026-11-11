@@ -176,6 +176,27 @@ class SolFunctionResolveTest : SolResolveTestBase() {
         }
   """)
 
+  /** An import that doesn't resolve (a typo, a missing dependency) must not hide the file's other using-for declarations. */
+  fun testResolveUsingLibraryNextToUnresolvedImport() = checkByCode("""
+        import "./missing.sol";
+
+        library Library {
+            function something(bytes self, uint256 go) internal pure returns (uint256) {
+                    //x
+                return go;
+            }
+        }
+
+        using Library for bytes;
+
+        contract B {
+            function doit(bytes value) {
+                value.something(60);
+                     //^
+            }
+        }
+  """)
+
   fun testResolveUsingLibraryWithInheritance() = checkByCode("""
         library Library {
             function something(bytes self, uint256 go) internal pure returns (uint256) {

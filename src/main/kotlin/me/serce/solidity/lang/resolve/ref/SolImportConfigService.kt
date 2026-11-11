@@ -81,10 +81,7 @@ class SolImportConfigService(val project: Project) {
       fromFile.isDirectory -> fromFile
       else -> fromFile.parent ?: return emptyMap()
     }
-    val foundryRoot = findFoundryRoot(fromDir)
-    if (foundryRoot == null) {
-      return emptyMap()
-    }
+    val foundryRoot = findFoundryRoot(fromDir) ?: return emptyMap()
     return getOrLoadConfig(foundryRoot).reverseRemappings
   }
 
@@ -100,13 +97,11 @@ class SolImportConfigService(val project: Project) {
       return cached.config
     }
 
-    val updated = rootToConfig.compute(rootPath) { _, guarded ->
+    return rootToConfig.compute(rootPath) { _, guarded ->
       if (guarded != null && guarded.remappingsStamp == remappingsStamp && guarded.foundryStamp == foundryStamp) {
         return@compute guarded
       }
-      val remappings = ArrayList<Pair<String, String>>()
-      remappings += parseRemappingsFile(remappingsFile)
-      remappings += remappingsFromFoundryConfigFile(foundryFile)
+      val remappings = parseRemappingsFile(remappingsFile) + remappingsFromFoundryConfigFile(foundryFile)
       CachedConfig(
         remappingsStamp = remappingsStamp,
         foundryStamp = foundryStamp,
@@ -115,8 +110,7 @@ class SolImportConfigService(val project: Project) {
           reverseRemappings = buildReverseRemappings(remappings),
         ),
       )
-    } ?: return emptyConfig
-    return updated.config
+    }!!.config
   }
 
   private fun findFoundryRoot(fromDir: VirtualFile): VirtualFile? {

@@ -9,6 +9,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.util.childrenOfType
 import me.serce.solidity.ide.colors.SolColor
 import me.serce.solidity.ide.hints.startOffset
+import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.SolErrorDefMixin
 import me.serce.solidity.lang.resolve.SolResolver
@@ -17,6 +18,8 @@ class SolidityAnnotator : Annotator {
   override fun annotate(element: PsiElement, holder: AnnotationHolder) {
     if (element is SolElement) {
       highlight(element, holder)
+    } else if (element.node.elementType == SolidityTokenTypes.STRINGLITERAL && isUnterminatedString(element.text)) {
+      holder.newAnnotation(HighlightSeverity.ERROR, "Missing closing quote").range(element).create()
     }
   }
 
@@ -204,4 +207,20 @@ class SolidityAnnotator : Annotator {
       .textAttributes(color.textAttributesKey)
       .create()
   }
+}
+
+/** The lexer turns a string without its closing quote into a string literal running to the end of the line. */
+internal fun isUnterminatedString(text: String): Boolean {
+  val body = text.removePrefix("unicode")
+  val quote = body.firstOrNull() ?: return false
+  if (quote != '"' && quote != '\'') return false
+  var i = 1
+  while (i < body.length) {
+    when (body[i]) {
+      '\\' -> i++
+      quote -> return i != body.length - 1
+    }
+    i++
+  }
+  return true
 }

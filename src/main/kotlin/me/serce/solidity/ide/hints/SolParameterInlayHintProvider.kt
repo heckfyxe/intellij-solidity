@@ -1,6 +1,5 @@
 package me.serce.solidity.ide.hints
 
-
 import com.intellij.codeInsight.hints.InlayInfo
 import com.intellij.codeInsight.hints.InlayParameterHintsProvider
 import com.intellij.psi.PsiElement
@@ -14,7 +13,7 @@ import me.serce.solidity.lang.types.inferDeclType
 class SolParameterInlayHintProvider : InlayParameterHintsProvider {
 
   override fun getParameterHints(element: PsiElement): List<InlayInfo> {
-    return HintType.values().filter { it.isApplicable(element) }.flatMap { it.provideHints(element) }
+    return HintType.entries.filter { it.isApplicable(element) }.flatMap { it.provideHints(element) }
   }
 
   override fun getDefaultBlackList(): Set<String> {
@@ -22,37 +21,27 @@ class SolParameterInlayHintProvider : InlayParameterHintsProvider {
   }
 }
 
-enum class HintType() {
-
-  TUPLE_HINT(
-  ) {
-      override fun provideHints(e: PsiElement): List<InlayInfo> {
-          val item = e as? SolDeclarationItem ?: return emptyList()
-          return listOf(InlayInfo(inferDeclType(item).toString(), e.textOffset))
-      }
-
-      override fun isApplicable(e: PsiElement): Boolean = e is SolDeclarationItem
-  },
-
-    PARAMETER_HINT(
-    ) {
-        override fun provideHints(e: PsiElement): List<InlayInfo> {
-            val callElement = e.parentOfType<SolFunctionCallElement>(true) ?: return emptyList()
-            return provideArgumentNameHints(callElement)
-        }
-
-        override fun isApplicable(e: PsiElement): Boolean = e is SolFunctionCallArguments
-    };
-
-    companion object {
-        private val values = values()
-
-        fun resolve(e: PsiElement): List<HintType> =
-            values.filter { it.isApplicable(e) }
+enum class HintType {
+  TUPLE_HINT {
+    override fun provideHints(e: PsiElement): List<InlayInfo> {
+      val item = e as? SolDeclarationItem ?: return emptyList()
+      return listOf(InlayInfo(inferDeclType(item).toString(), e.textOffset))
     }
 
-    abstract fun isApplicable(e: PsiElement): Boolean
-    open fun provideHints(e: PsiElement): List<InlayInfo> = emptyList()
+    override fun isApplicable(e: PsiElement): Boolean = e is SolDeclarationItem
+  },
+
+  PARAMETER_HINT {
+    override fun provideHints(e: PsiElement): List<InlayInfo> {
+      val callElement = e.parentOfType<SolFunctionCallElement>(true) ?: return emptyList()
+      return provideArgumentNameHints(callElement)
+    }
+
+    override fun isApplicable(e: PsiElement): Boolean = e is SolFunctionCallArguments
+  };
+
+  abstract fun isApplicable(e: PsiElement): Boolean
+  abstract fun provideHints(e: PsiElement): List<InlayInfo>
 }
 
 fun provideArgumentNameHints(element: SolFunctionCallElement): List<InlayInfo> {
@@ -60,10 +49,6 @@ fun provideArgumentNameHints(element: SolFunctionCallElement): List<InlayInfo> {
   // Named arguments already show their parameter names in the source.
   if (args.firstOrNull() is SolMapExpression) return emptyList()
 
-  val params = element.resolveDefinitions().takeIf { it?.size == 1 }?.get(0)?.parseParameters() ?: return emptyList()
-  // if (expressionList.none { it.isUnclearExpression() }) return emptyList()
-
-  return params.zip(args).map { InlayInfo(it.first.let { it.first ?: it.second.toString() }, it.second.startOffset) }
-
-
+  val params = element.resolveDefinitions()?.singleOrNull()?.parseParameters() ?: return emptyList()
+  return params.zip(args).map { (param, arg) -> InlayInfo(param.first ?: param.second.toString(), arg.startOffset) }
 }

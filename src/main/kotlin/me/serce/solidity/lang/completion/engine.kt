@@ -12,6 +12,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.stubs.StubIndex
+import com.intellij.psi.stubs.StubIndexKey
 import me.serce.solidity.ide.SolidityIcons
 import me.serce.solidity.ide.inspections.fixes.ImportFileAction
 import me.serce.solidity.lang.psi.*
@@ -24,40 +25,22 @@ import me.serce.solidity.lang.types.ContextType
 import me.serce.solidity.lang.types.Usage
 import me.serce.solidity.lang.types.getMembers
 import me.serce.solidity.lang.types.type
+import javax.swing.Icon
 
 const val TYPED_COMPLETION_PRIORITY = 15.0
 
 object SolCompleter {
 
-  fun completeEventName(element: PsiElement): Array<out LookupElementBuilder> {
-    val project = element.project
-    val allTypeNames = StubIndex.getInstance().getAllKeys(
-      SolEventIndex.KEY,
-      project
-    )
-    return allTypeNames
-      .map {
-        LookupElementBuilder
-          .create(it, it)
-          .withIcon(SolidityIcons.EVENT)
-      }
-      .toTypedArray()
-  }
+  fun completeEventName(element: PsiElement): Array<out LookupElementBuilder> =
+    indexedNames(SolEventIndex.KEY, element.project, SolidityIcons.EVENT)
 
-  fun completeErrorName(element: PsiElement): Array<out LookupElementBuilder> {
-    val project = element.project
-    val allTypeNames = StubIndex.getInstance().getAllKeys(
-      SolErrorIndex.KEY,
-      project
-    )
-    return allTypeNames
-      .map {
-        LookupElementBuilder
-          .create(it, it)
-          .withIcon(SolidityIcons.ERROR)
-      }
+  fun completeErrorName(element: PsiElement): Array<out LookupElementBuilder> =
+    indexedNames(SolErrorIndex.KEY, element.project, SolidityIcons.ERROR)
+
+  private fun indexedNames(key: StubIndexKey<String, *>, project: Project, icon: Icon): Array<LookupElementBuilder> =
+    StubIndex.getInstance().getAllKeys(key, project)
+      .map { LookupElementBuilder.create(it, it).withIcon(icon) }
       .toTypedArray()
-  }
 
   fun completeTypeName(
     element: PsiElement,
@@ -72,23 +55,13 @@ object SolCompleter {
     val project = element.project
     return SolContractNamesCache.getInstance(project)
       .allNames()
-      .asSequence()
       .filter { matcher == null || matcher.prefixMatches(it) }
       .map { ContractLookupElement(project, it) }
-      .toList()
       .toTypedArray()
   }
 
-  fun completeModifier(element: SolModifierInvocationElement): Array<out LookupElement> {
-    val project = element.project
-    val allModifiers = StubIndex.getInstance().getAllKeys(
-      SolModifierIndex.KEY,
-      project
-    )
-    return allModifiers
-      .map { LookupElementBuilder.create(it, it).withIcon(SolidityIcons.MODIFIER) }
-      .toTypedArray()
-  }
+  fun completeModifier(element: SolModifierInvocationElement): Array<out LookupElement> =
+    indexedNames(SolModifierIndex.KEY, element.project, SolidityIcons.MODIFIER)
 
   fun completeLiteral(
     element: PsiElement,
@@ -141,8 +114,6 @@ object SolCompleter {
       .distinctBy { it.lookupString }
       .toTypedArray()
   }
-
-
 }
 
 class ContractLookupElement(
@@ -180,14 +151,7 @@ class ContractLookupElement(
         GlobalSearchScope.projectScope(project),
         SolNamedElement::class.java
       ).filterIsInstance<SolContractDefinition>()
-      val inCurrentFile = candidates.firstOrNull { it.containingFile == context.file }
-      if (inCurrentFile != null) {
-        return@runReadAction inCurrentFile
-      }
-      if (candidates.size == 1) {
-        return@runReadAction candidates.first()
-      }
-      null
+      candidates.firstOrNull { it.containingFile == context.file } ?: candidates.singleOrNull()
     } ?: return
     if (!ImportFileAction.isImportedAlready(context.file, contract.containingFile)) {
       ImportFileAction.addContractImport(contract, context.file)

@@ -19,8 +19,8 @@ contract MultisigWallet is Multisig, Shareable, DayLimit {
     }
 
     function MultisigWallet(address[] _owners, uint _required, uint _daylimit)
-    Shareable(_owners, _required)
-    DayLimit(_daylimit) {}
+        Shareable(_owners, _required)
+        DayLimit(_daylimit) {}
 
     function kill(address _to) onlymanyowners(sha3(msg.data)) external {
         suicide(_to);

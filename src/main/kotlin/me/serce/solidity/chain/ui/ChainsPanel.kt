@@ -82,7 +82,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     tree.emptyText.appendLine("Connect to a node by URL", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { addChain(ChainKind.EXTERNAL) }
     tree.addTreeSelectionListener { if (!rebuilding) showDetails() }
     tree.addTreeExpansionListener(object : TreeExpansionListener {
-      private fun key(e: TreeExpansionEvent) = ((e.path.lastPathComponent as DefaultMutableTreeNode).userObject as? ChainItem)?.key
+      private fun key(e: TreeExpansionEvent) = e.path.lastPathComponent.chainItem?.key
       override fun treeExpanded(e: TreeExpansionEvent) { if (!rebuilding) key(e)?.let { collapsed -= it } }
       override fun treeCollapsed(e: TreeExpansionEvent) { if (!rebuilding) key(e)?.let { collapsed += it } }
     })
@@ -120,13 +120,13 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     rebuild()
   }
 
-  private fun selected(): ChainItem? = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? ChainItem
+  private fun selected(): ChainItem? = tree.lastSelectedPathComponent.chainItem
 
   private fun selectedChain(): ChainConfig? = selected()?.config ?: service.chains.singleOrNull()
 
   private fun rebuild() {
     val expanded = HashSet<String>()
-    TreeUtil.collectExpandedPaths(tree).forEach { p -> ((p.lastPathComponent as DefaultMutableTreeNode).userObject as? ChainItem)?.let { expanded += it.key } }
+    TreeUtil.collectExpandedPaths(tree).forEach { p -> p.lastPathComponent.chainItem?.let { expanded += it.key } }
     val selectedKey = selected()?.key
     rebuilding = true
     root.removeAllChildren()
@@ -150,16 +150,16 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     var toSelect: TreePath? = null
     TreeUtil.treeNodeTraverser(root).forEach { n ->
       val node = n as DefaultMutableTreeNode
-      val item = node.userObject as? ChainItem ?: return@forEach
+      val item = node.chainItem ?: return@forEach
       val path = TreePath(node.path)
       // chains and contracts are expanded unless the user collapsed them; accounts only when the user opened them
       val expand = if (item is ChainItem.Chain || item is ChainItem.Contract) item.key !in collapsed else item.key in expanded
-      val parentKey = ((node.parent as? DefaultMutableTreeNode)?.userObject as? ChainItem)?.key
+      val parentKey = node.parent.chainItem?.key
       if (expand && parentKey !in collapsed) tree.expandPath(path)
       if (item.key == selectedKey) toSelect = path
     }
     // keep forms only for functions that still exist
-    val liveKeys = TreeUtil.treeNodeTraverser(root).mapNotNull { ((it as DefaultMutableTreeNode).userObject as? ChainItem)?.key }.toSet()
+    val liveKeys = TreeUtil.treeNodeTraverser(root).mapNotNull { it.chainItem?.key }.toSet()
     forms.keys.retainAll(liveKeys)
     rebuilding = false
     if (toSelect != null) tree.selectionPath = toSelect else showDetails()
@@ -231,7 +231,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
   }
 
   private fun navigate(d: Deployment, fn: String?) {
-    ChainUi.navigate(project, FoundryProject.find(project)?.root, d.sourcePath, d.name, fn)
+    ChainUi.navigate(project, d.sourcePath, d.name, fn)
   }
 
   private fun addChain(kind: ChainKind) {
@@ -250,7 +250,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
   private fun selectKey(key: String) {
     TreeUtil.treeNodeTraverser(root).forEach { n ->
       val node = n as DefaultMutableTreeNode
-      if ((node.userObject as? ChainItem)?.key == key) tree.selectionPath = TreePath(node.path)
+      if (node.chainItem?.key == key) tree.selectionPath = TreePath(node.path)
     }
   }
 
@@ -260,7 +260,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
 
   private inner class Renderer : ColoredTreeCellRenderer() {
     override fun customizeCellRenderer(tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean) {
-      when (val item = (value as? DefaultMutableTreeNode)?.userObject as? ChainItem) {
+      when (val item = value.chainItem) {
         is ChainItem.Chain -> {
           val rt = service.runtime(item.config.id)
           icon = when (rt.status) {
@@ -493,3 +493,5 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     Messages.showWarningDialog(project, "No foundry.toml found in this project.", "Foundry Project Not Found")
   }
 }
+
+private val Any?.chainItem: ChainItem? get() = (this as? DefaultMutableTreeNode)?.userObject as? ChainItem

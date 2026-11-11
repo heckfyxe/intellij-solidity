@@ -128,4 +128,54 @@ class SolMemberAccessCompletionTest : SolCompletionTestBase() {
         
   """)
 
+  private val addressMembers = setOf("balance", "code", "codehash", "call", "delegatecall", "send", "staticcall", "transfer")
+
+  fun testAddressMembersOnlyNoKeywords() = checkCompletion(addressMembers, """
+        contract C {
+            function f(address source) public {
+                source./*caret*/
+            }
+        }
+  """, strict = true)
+
+  /** With another statement on the next line, `source.` must not be read as the type of a variable declaration. */
+  fun testAddressMembersBeforeNextStatement() = checkCompletion(addressMembers, """
+        contract C {
+            function f(address source) public returns (uint256) {
+                (bool ok, bytes memory result) = source.call("");
+                source./*caret*/
+                require(ok, "call failed");
+                return 0;
+            }
+        }
+  """, strict = true)
+
+  fun testContractMembersBeforeNextStatement() = checkCompletion(hashSetOf("doSmth"), """
+        contract SomeContract {
+            function doSmth() public {}
+        }
+
+        contract Test {
+            function f(SomeContract c) public {
+                c./*caret*/
+                require(true, "x");
+            }
+        }
+  """)
+
+  fun testTypedPrefixBeforeNextStatement() = checkResultAfterCompletion("""
+        contract C {
+            function f(address source) public {
+                source.bal/*caret*/
+                require(true, "x");
+            }
+        }
+  """, """
+        contract C {
+            function f(address source) public {
+                source.balance<caret>
+                require(true, "x");
+            }
+        }
+  """)
 }

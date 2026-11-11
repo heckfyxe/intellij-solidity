@@ -10,7 +10,11 @@ import me.serce.solidity.chain.abi.ContractAbi
 import me.serce.solidity.chain.abi.RevertDecoder
 import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.abi.toHex
+import me.serce.solidity.chain.debug.CompiledSources
+import me.serce.solidity.chain.debug.RevertTracer
+import me.serce.solidity.chain.debug.TraceTarget
 import me.serce.solidity.chain.foundry.Artifact
+import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import me.serce.solidity.chain.rpc.RpcException
 import me.serce.solidity.chain.rpc.hexToBigInt
@@ -18,7 +22,11 @@ import java.math.BigInteger
 import java.time.Duration
 
 /** Runs deploys, calls and transactions against a running chain and records them. Call off the EDT. */
-class ChainExecutor(private val service: ChainService) {
+class ChainExecutor(
+  private val service: ChainService,
+  /** Where compiled artifacts come from, to name the source line a failure happened at. */
+  private val foundry: () -> FoundryProject? = { FoundryProject.find(service.project) },
+) {
 
   class Outcome(val record: TxRecord, val deployment: Deployment?)
 
@@ -28,10 +36,10 @@ class ChainExecutor(private val service: ChainService) {
     record.args += formatArgs(ctor?.inputs.orEmpty(), args)
     val data = artifact.bytecode.hexToBytes() + AbiCodec.encode(ctor?.inputs.orEmpty().map { it.type }, args)
     var deployment: Deployment? = null
-    run(chain, record, artifact.abi) { rpc ->
+    run(chain, record, artifact.abi, TraceTarget.Call(from, null, data, value)) { rpc ->
       val hash = rpc.sendTransaction(from, null, data, value)
       val receipt = awaitReceipt(chain, rpc, hash)
-      applyReceipt(record, receipt, artifact.abi)
+      applyReceipt(rpc, record, receipt, artifact.abi)
       if (record.status == TxStatus.SUCCESS) {
         val address = AbiCodec.checksum(receipt["contractAddress"].asText())
         record.to = address
@@ -42,7 +50,6 @@ class ChainExecutor(private val service: ChainService) {
           it.sourcePath = artifact.sourcePath
           it.address = address
           it.abiJson = artifact.abiJson
-          it.deployTx = hash
         }
       }
     }
@@ -58,13 +65,20 @@ class ChainExecutor(private val service: ChainService) {
     val record = record(chain, kind, target.name, target.sourcePath, fn.signature, from, target.address, value)
     record.args += formatArgs(fn.inputs, args)
     val data = AbiCodec.encodeCall(fn.selector, fn.inputs.map { it.type }, args)
-    run(chain, record, abi) { rpc ->
+    run(chain, record, abi, TraceTarget.Call(from, target.address, data, value)) { rpc ->
+      // Calling an address without code "succeeds" and returns nothing, e.g. after the chain it was deployed on restarted.
+      if (rpc.code(target.address).isEmpty()) {
+        record.status = TxStatus.FAILED
+        record.error = "There is no contract at ${target.address} on ${chain.name}. " +
+          "It may have been deployed to a chain that has since restarted; deploy it again."
+        return@run
+      }
       // Simulate first: gives the return value of state-changing functions and the revert reason before sending.
       val returned = rpc.ethCall(from, target.address, data, value)
       record.results += formatOutputs(fn.outputs, returned)
       if (kind == TxKind.TRANSACT) {
         val hash = rpc.sendTransaction(from, target.address, data, value)
-        applyReceipt(record, awaitReceipt(chain, rpc, hash), abi)
+        applyReceipt(rpc, record, awaitReceipt(chain, rpc, hash), abi)
       }
     }
     service.addRecord(record)
@@ -72,7 +86,7 @@ class ChainExecutor(private val service: ChainService) {
     return Outcome(record, null)
   }
 
-  private fun run(chain: ChainConfig, record: TxRecord, abi: ContractAbi, body: (JsonRpcClient) -> Unit) {
+  private fun run(chain: ChainConfig, record: TxRecord, abi: ContractAbi, target: TraceTarget, body: (JsonRpcClient) -> Unit) {
     val rpc = service.runtime(chain.id).rpc
     if (rpc == null) {
       record.status = TxStatus.FAILED
@@ -86,7 +100,8 @@ class ChainExecutor(private val service: ChainService) {
       val revertData = e.data?.takeIf { it.startsWith("0x") }
       val message = e.message.orEmpty()
       record.status = if (revertData != null || message.contains("revert", ignoreCase = true)) TxStatus.REVERTED else TxStatus.FAILED
-      record.error = revertData?.let { RevertDecoder.decode(it.hexToBytes(), knownErrors(abi)) } ?: message
+      record.error = revertData?.let { decodeRevert(it.hexToBytes(), abi) } ?: message
+      explain(rpc, record, abi, target) // also EVM failures without revert data: out of gas, invalid opcode
     } catch (e: RuntimeException) { // bad input encoding, or return data that doesn't match the ABI
       record.status = TxStatus.FAILED
       record.error = e.message ?: e.toString()
@@ -124,17 +139,53 @@ class ChainExecutor(private val service: ChainService) {
     )
   }
 
-  private fun applyReceipt(record: TxRecord, receipt: JsonNode, abi: ContractAbi) {
+  /**
+   * Adds where the failure happened, and what else went wrong on the way, by re-running it with the node's tracer.
+   * Nodes without `debug_trace*` (most public RPCs) just leave the decoded reason.
+   */
+  private fun explain(rpc: JsonRpcClient, record: TxRecord, abi: ContractAbi, target: TraceTarget) {
+    val trace = try {
+      RevertTracer(rpc, compiledSources()).trace(target)
+    } catch (e: RpcException) {
+      null
+    } catch (e: RuntimeException) {
+      null
+    } ?: return
+    if (target is TraceTarget.Mined) trace.revertData?.let { record.error = decodeRevert(it, abi) }
+    record.errorFrames = trace.frames.mapTo(ArrayList()) { ErrorFrame.of(it) }
+    record.notes += trace.notes
+    if (record.error == RevertDecoder.NO_REASON && record.notes.isEmpty() && record.errorFrames.none { it.path.isNotEmpty() }) {
+      record.notes += "A revert without a reason comes from require() or revert() without a message, a failed call whose " +
+        "error was passed on empty, or decoding return data that is empty or malformed."
+    }
+  }
+
+  private fun compiledSources(): CompiledSources? = runCatching {
+    foundry()?.let { CompiledSources(it.root, it.root.resolve(it.config().out)) }
+  }.getOrNull()
+
+  /** Decodes revert data with the errors of known deployments first, then of every compiled contract. */
+  private fun decodeRevert(data: ByteArray, abi: ContractAbi): String {
+    val known = knownErrors(abi)
+    RevertDecoder.decodeOrNull(data, known)?.let { return it }
+    val compiled = runCatching { foundry()?.artifacts()?.flatMap { it.abi.errors } }.getOrNull().orEmpty()
+    return RevertDecoder.decode(data, compiled.ifEmpty { known })
+  }
+
+  private fun applyReceipt(rpc: JsonRpcClient, record: TxRecord, receipt: JsonNode, abi: ContractAbi) {
     record.txHash = receipt["transactionHash"]?.asText().orEmpty()
-    record.blockNumber = receipt["blockNumber"]?.asText()?.hexToBigInt()?.toString().orEmpty()
-    record.gasUsed = receipt["gasUsed"]?.asText()?.hexToBigInt()?.toString().orEmpty()
+    record.blockNumber = receipt.quantity("blockNumber")
+    record.gasUsed = receipt.quantity("gasUsed")
     if (receipt["status"]?.asText() == "0x0") {
       record.status = TxStatus.REVERTED
       if (record.error.isEmpty()) record.error = "transaction reverted"
+      explain(rpc, record, abi, TraceTarget.Mined(record.txHash))
     }
     val known = service.allDeployments()
     receipt["logs"]?.forEach { record.events += decodeLog(it, abi, known) }
   }
+
+  private fun JsonNode.quantity(field: String) = this[field]?.asText()?.hexToBigInt()?.toString().orEmpty()
 
   /** Decodes a log with the ABI of whichever known contract emitted it, falling back to [abi]. */
   private fun decodeLog(log: JsonNode, abi: ContractAbi, known: List<Deployment>): String {

@@ -18,11 +18,6 @@ fun revertStartStatement() =
     .inside(SolRevertStatement::class.java)
     .afterLeaf(psiElement(SolidityTokenTypes.REVERT_STATEMENT))
 
-fun stateVarInsideContract(): ElementPattern<PsiElement> =
-  psiElement(SolidityTokenTypes.IDENTIFIER)
-    .inside(psiElement(SolPrimaryExpression::class.java))
-    .inside(SolidityFile::class.java)
-
 fun rootDeclaration(): ElementPattern<PsiElement> = psiElement()
   .withSuperParent(2, SolPrimaryExpression::class.java)
   .withSuperParent(3, SolidityFile::class.java)
@@ -57,8 +52,6 @@ fun insideContract(): ElementPattern<PsiElement> = psiElement()
   .inside(SolidityFile::class.java)
 
 fun insideFunction(): ElementPattern<PsiElement> = psiElement().inside(psiElement(SolFunctionDefinition::class.java))
-
-fun inMemberAccess(): ElementPattern<PsiElement> = psiElement().inside(SolMemberAccessExpression::class.java)
 
 fun inFunctionParameterDef(): ElementPattern<PsiElement> = psiElement()
   .inside(SolParameterDef::class.java)

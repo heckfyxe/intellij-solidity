@@ -6,14 +6,13 @@ import com.intellij.ide.util.treeView.NodeDescriptor
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.IdeActions
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ui.util.CompositeAppearance
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.util.ArrayUtilRt
-import com.jetbrains.rd.util.error
-import com.jetbrains.rd.util.getLogger
 import me.serce.solidity.ide.navigation.findAllImplementations
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.parentOfType
@@ -72,17 +71,16 @@ class SolTypeHierarchyBrowser(element: SolContractDefinition) : TypeHierarchyBro
   override fun isApplicableElement(p0: PsiElement): Boolean = p0 is SolContractDefinition
 
   override fun createHierarchyTreeStructure(typeName: String, psiElement: PsiElement): HierarchyTreeStructure? {
-    if (getSupertypesHierarchyType() == typeName) {
-      return SupertypesHierarchyTreeStructure(psiElement as SolContractDefinition)
-    } else if (getSubtypesHierarchyType() == typeName) {
-      return SubtypesHierarchyTreeStructure(psiElement as SolContractDefinition, currentScopeType)
-    } else if (getTypeHierarchyType() == typeName) {
-      return TypeHierarchyTreeStructure(psiElement as SolContractDefinition, currentScopeType)
-    } else {
-      getLogger<SolTypeHierarchyBrowser>().error { "unexpected type: $typeName" }
-      return null
+    val contract = psiElement as SolContractDefinition
+    return when (typeName) {
+      getSupertypesHierarchyType() -> SupertypesHierarchyTreeStructure(contract)
+      getSubtypesHierarchyType() -> SubtypesHierarchyTreeStructure(contract, currentScopeType)
+      getTypeHierarchyType() -> TypeHierarchyTreeStructure(contract, currentScopeType)
+      else -> {
+        thisLogger().error("unexpected type: $typeName")
+        null
+      }
     }
-
   }
 
   override fun getComparator(): Comparator<NodeDescriptor<*>>? {

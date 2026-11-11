@@ -82,6 +82,10 @@ open class SolFormattingBlock(
 
       type == CONTRACT_DEFINITION && childType.isContractPart() -> Indent.getNormalIndent()
 
+      // header parts after the parameters (visibility, modifiers, `returns (...)`) placed on their own lines
+      type in functionLikeDefinitions && childType != BLOCK && childType != SEMICOLON &&
+        generateSequence(child.treePrev) { it.treePrev }.any { it.elementType == PARAMETER_LIST } -> Indent.getNormalIndent()
+
       // inheritance specifiers
       type == CONTRACT_DEFINITION && childType == INHERITANCE_SPECIFIER -> Indent.getNormalIndent()
 
@@ -129,25 +133,54 @@ open class SolFormattingBlock(
     return SolFormattingBlock(child, alignment, result, null, codeStyleSettings, spacingBuilder, enforceChildIndent, extra)
   }
 
-  private fun newChildIndent(childIndex: Int): Indent? = when {
-    node.elementType in listOf(BLOCK, YUL_BLOCK, CONTRACT_DEFINITION, STRUCT_DEFINITION, ENUM_DEFINITION) -> {
-      val lbraceIndex = subBlocks.indexOfFirst { it is ASTBlock && it.node?.elementType == LBRACE }
-      if (lbraceIndex != -1 && lbraceIndex < childIndex) {
-        Indent.getNormalIndent()
-      } else {
-        Indent.getNoneIndent()
+  private fun newChildIndent(childIndex: Int): Indent? {
+    val type = node.elementType
+    val previous = (subBlocks.getOrNull(childIndex - 1) as? ASTBlock)?.node
+    val previousType = previous?.elementType
+    return when {
+      type == BLOCK && previous != null && previous.firstChildNode == null && previous !is PsiComment &&
+        previousType !in setOf(LBRACE, RBRACE, SEMICOLON) -> {
+        // an unfinished statement (`uint a =`, `foo(a,`): the parser leaves its tokens loose in the block,
+        // so continue it one level deeper than the statements around it
+        doubleIndent()
       }
+
+      type in listOf(BLOCK, YUL_BLOCK, CONTRACT_DEFINITION, STRUCT_DEFINITION, ENUM_DEFINITION) -> {
+        val lbraceIndex = subBlocks.indexOfFirst { it is ASTBlock && it.node?.elementType == LBRACE }
+        if (lbraceIndex != -1 && lbraceIndex < childIndex) {
+          Indent.getNormalIndent()
+        } else {
+          Indent.getNoneIndent()
+        }
+      }
+
+      // the keyword and braces of an unchecked block are already indented one level deeper than the block itself
+      type == UNCHECKED_BLOCK -> doubleIndent()
+
+      // the body of `if (x)`, `else`, `while (x)`, `for (...)` and `do` written without braces
+      type in setOf(IF_STATEMENT, WHILE_STATEMENT, FOR_STATEMENT, DO_WHILE_STATEMENT) &&
+        previousType in setOf(RPAREN, ELSE, DO) -> Indent.getNormalIndent()
+
+      // modifiers, visibility and `returns` moved to their own lines in a function header
+      type in functionLikeDefinitions && childIndex > 0 && previousType != BLOCK -> {
+        val parametersIndex = subBlocks.indexOfFirst { it is ASTBlock && it.node?.elementType == PARAMETER_LIST }
+        if (parametersIndex != -1 && parametersIndex < childIndex) Indent.getNormalIndent() else Indent.getNoneIndent()
+      }
+
+      // inside a function call
+      type == STATEMENT -> Indent.getContinuationIndent()
+      type in listOf(FUNCTION_CALL_ARGUMENTS, FUNCTION_INVOCATION) -> Indent.getNormalIndent()
+
+      // lists and expressions continued on the next line; `uint a =` or `a =` followed by Enter
+      type in setOf(MAP_EXPRESSION, PARAMETER_LIST, INDEXED_PARAMETER_LIST, INLINE_ARRAY_EXPRESSION, TERNARY_EXPRESSION,
+        VARIABLE_DEFINITION, ASSIGNMENT_EXPRESSION) -> Indent.getNormalIndent()
+      else -> Indent.getNoneIndent()
     }
+  }
 
-    // inside a function call
-    node.elementType == STATEMENT -> Indent.getContinuationIndent()
-    node.elementType in listOf(FUNCTION_CALL_ARGUMENTS, FUNCTION_INVOCATION) -> Indent.getNormalIndent()
-
-    node.elementType == MAP_EXPRESSION -> Indent.getNormalIndent()
-    node.elementType == PARAMETER_LIST -> Indent.getNormalIndent()
-    node.elementType == UNCHECKED_BLOCK -> Indent.getNormalIndent()
-    node.elementType == TERNARY_EXPRESSION -> Indent.getNormalIndent()
-    else -> Indent.getNoneIndent()
+  private fun doubleIndent(): Indent {
+    val indentSize = codeStyleSettings.getIndentOptions(node.psi?.containingFile?.fileType).INDENT_SIZE
+    return Indent.getSpaceIndent(indentSize * 2)
   }
 
   override fun getNode(): ASTNode = astNode
@@ -190,3 +223,5 @@ open class SolFormattingBlock(
 class SyntheticSolFormattingBlock(real: SolFormattingBlock) : Block by real {
   override fun getSubBlocks(): List<Block> = emptyList()
 }
+
+private val functionLikeDefinitions = setOf(FUNCTION_DEFINITION, CONSTRUCTOR_DEFINITION, MODIFIER_DEFINITION)

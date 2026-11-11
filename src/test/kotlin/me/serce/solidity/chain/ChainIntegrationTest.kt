@@ -198,6 +198,7 @@ class ChainIntegrationTest : BasePlatformTestCase() {
     assertEquals(rt.error, ChainStatus.RUNNING, waitFor(rt, 30))
     val from = rt.accounts.first()
     val executor = ChainExecutor(service)
+    val historyBefore = service.history().size // tests share the project, and with it the history
 
     val deployed = executor.deploy(chain, artifact, listOf("piggy"), from, BigInteger.ZERO)
     assertEquals(deployed.record.error, TxStatus.SUCCESS, deployed.record.status)
@@ -224,6 +225,107 @@ class ChainIntegrationTest : BasePlatformTestCase() {
     assertEquals(TxStatus.REVERTED, withdraw.record.status)
     assertEquals("nothing to withdraw", withdraw.record.error)
 
-    assertEquals(5, service.history().size)
+    assertEquals(historyBefore + 5, service.history().size)
+  }
+
+  /** Every failure says why and where, including reverts without a reason such as decoding a call to an empty address. */
+  fun testFailuresShowReasonAndLocation() {
+    if (!File(bin, "anvil").canExecute() || !File(bin, "forge").canExecute()) return
+    val root = FileUtil.createTempDirectory("chain-errors", null)
+    File(root, "foundry.toml").writeText("[profile.default]\nsrc = \"src\"\nout = \"out\"\nlibs = []\n")
+    File(root, "src").mkdirs()
+    val source = """
+      // SPDX-License-Identifier: MIT
+      pragma solidity ^0.8.20;
+      interface IMeaning { function meaningOfLifeAndAllExistence() external returns (uint256); }
+      contract Checked {
+          error Negative(int256 value);
+          function check(uint256 x) public pure returns (uint256) {
+              require(x > 0, "x must be positive");
+              return x;
+          }
+      }
+      contract Example {
+          function askTheMeaningOfLife(address source) public returns (uint256) {
+              (bool ok, bytes memory result) = source.call(abi.encodeWithSignature("meaningOfLifeAndAllExistence()"));
+              require(ok, "call failed");
+              return abi.decode(result, (uint256));
+          }
+          function askViaInterface(address source) public returns (uint256) {
+              return IMeaning(source).meaningOfLifeAndAllExistence();
+          }
+          function askChecked(Checked c) public returns (uint256) {
+              return c.check(0);
+          }
+          function divide(uint256 a, uint256 b) public pure returns (uint256) {
+              return a / b;
+          }
+      }
+      contract Broken {
+          constructor() { revert("cannot deploy"); }
+      }
+    """.trimIndent()
+    File(root, "src/Example.sol").writeText(source)
+    fun line(text: String) = "src/Example.sol:" + (source.lines().indexOfFirst { it.contains(text) } + 1)
+
+    val foundry = FoundryProject(root.toPath(), File(bin, "forge").path)
+    val build = foundry.build()
+    assertTrue(build.messages.joinToString { it.formatted }, build.success)
+    val artifacts = foundry.artifacts().associateBy { it.name }
+
+    val port = ServerSocket(0).use { it.localPort }
+    anvil = GeneralCommandLine(File(bin, "anvil").path, "--port", port.toString()).createProcess()
+    val rpc = JsonRpcClient("http://127.0.0.1:$port")
+    for (i in 1..50) if (runCatching { rpc.chainId() }.isSuccess) break else Thread.sleep(200)
+    val service = ChainService.getInstance(project)
+    val chain = ChainConfig().apply { kind = ChainKind.EXTERNAL; url = rpc.url; name = "test" }
+    service.addChain(chain)
+    service.start(chain)
+    val rt = service.runtime(chain.id)
+    assertEquals(rt.error, ChainStatus.RUNNING, waitFor(rt, 30))
+    val from = rt.accounts.first()
+    val executor = ChainExecutor(service) { foundry }
+
+    val example = executor.deploy(chain, artifacts.getValue("Example"), emptyList(), from, BigInteger.ZERO).deployment!!
+    val checked = executor.deploy(chain, artifacts.getValue("Checked"), emptyList(), from, BigInteger.ZERO).deployment!!
+    val fns = example.abi().functions.associateBy { it.name }
+    val nobody = "0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db"
+    fun call(name: String, vararg args: Any) = executor.invoke(chain, example, fns.getValue(name), args.toList(), from, BigInteger.ZERO).record
+
+    // the tutorial's case: the low-level call to an empty address succeeds, decoding its empty result reverts
+    val decoded = call("askTheMeaningOfLife", nobody)
+    assertEquals(TxStatus.REVERTED, decoded.status)
+    assertEquals("reverted without a reason", decoded.error)
+    assertEquals(line("return abi.decode"), decoded.errorFrames.first().label)
+    assertEquals("Example", decoded.errorFrames.first().contract)
+    assertTrue(decoded.errorFrames.first().code, decoded.errorFrames.first().code.contains("abi.decode(result, (uint256))"))
+    assertTrue(decoded.notes.toString(), decoded.notes.any { it.startsWith("No contract at $nobody") })
+
+    // a high-level call checks for code first and reverts without calling
+    val viaInterface = call("askViaInterface", nobody)
+    assertEquals("reverted without a reason", viaInterface.error)
+    assertEquals(line("IMeaning(source)"), viaInterface.errorFrames.first().label)
+    assertTrue(viaInterface.notes.toString(), viaInterface.notes.any { it.startsWith("No contract at $nobody") })
+
+    // a revert inside another contract shows where it started and the call that led there
+    val nested = call("askChecked", checked.address)
+    assertEquals("x must be positive", nested.error)
+    assertEquals(listOf(line("require(x > 0"), line("return c.check(0)")), nested.errorFrames.map { it.label })
+    assertEquals(listOf("Checked", "Example"), nested.errorFrames.map { it.contract })
+
+    val division = call("divide", BigInteger.ONE, BigInteger.ZERO)
+    assertEquals("panic 0x12: division or modulo by zero", division.error)
+    assertEquals(line("return a / b"), division.errorFrames.first().label)
+
+    val broken = executor.deploy(chain, artifacts.getValue("Broken"), emptyList(), from, BigInteger.ZERO).record
+    assertEquals(TxStatus.REVERTED, broken.status)
+    assertEquals("cannot deploy", broken.error)
+    assertEquals(line("revert(\"cannot deploy\")"), broken.errorFrames.first().label)
+
+    // a deployment remembered from a chain that was restarted since
+    val gone = Deployment().apply { chainId = chain.id; name = "Example"; address = nobody; abiJson = example.abiJson }
+    val stale = executor.invoke(chain, gone, fns.getValue("divide"), listOf(BigInteger.ONE, BigInteger.ONE), from, BigInteger.ZERO).record
+    assertEquals(TxStatus.FAILED, stale.status)
+    assertTrue(stale.error, stale.error.startsWith("There is no contract at $nobody"))
   }
 }

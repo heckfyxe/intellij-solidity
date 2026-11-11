@@ -4,6 +4,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBLabel
@@ -27,7 +28,6 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTextField
 import javax.swing.event.DocumentEvent
-import javax.swing.event.DocumentListener
 
 /**
  * Argument form for a constructor or function: one field per parameter (with live unit conversion),
@@ -48,7 +48,7 @@ class FunctionForm(
   private val fromCombo = ComboBox<String>()
   private val valueField = JBTextField("0")
   private val runButton = JButton(actionName)
-  private val result = ResultView()
+  private val result = ResultView(project)
   val component: JComponent
   /** Called after the result area changed size, so a popup can resize to fit. */
   var onResize: () -> Unit = {}
@@ -131,11 +131,8 @@ class FunctionForm(
       foreground = UIUtil.getContextHelpForeground()
     }
     if (unitsHint) {
-      field.document.addDocumentListener(object : DocumentListener {
-        override fun insertUpdate(e: DocumentEvent) = update()
-        override fun removeUpdate(e: DocumentEvent) = update()
-        override fun changedUpdate(e: DocumentEvent) = update()
-        fun update() {
+      field.document.addDocumentListener(object : DocumentAdapter() {
+        override fun textChanged(e: DocumentEvent) {
           val text = field.text.trim()
           if (text.isEmpty() || text.all { it.isDigit() }) {
             hint.text = " "

@@ -84,20 +84,20 @@ sealed class AbiEntry {
     val outputs: List<AbiParam>,
     val mutability: Mutability,
   ) : AbiEntry() {
-    val signature get() = signature(name, inputs)
-    val selector: ByteArray get() = Keccak.hash(signature).copyOf(4)
+    val signature by lazy { signature(name, inputs) }
+    val selector: ByteArray by lazy { Keccak.hash(signature).copyOf(4) }
   }
 
   data class Constructor(override val inputs: List<AbiParam>, val mutability: Mutability) : AbiEntry()
 
   data class Event(val name: String, override val inputs: List<AbiParam>, val anonymous: Boolean) : AbiEntry() {
-    val signature get() = signature(name, inputs)
-    val topic: ByteArray get() = Keccak.hash(signature)
+    val signature by lazy { signature(name, inputs) }
+    val topic: ByteArray by lazy { Keccak.hash(signature) }
   }
 
   data class Error(val name: String, override val inputs: List<AbiParam>) : AbiEntry() {
-    val signature get() = signature(name, inputs)
-    val selector: ByteArray get() = Keccak.hash(signature).copyOf(4)
+    val signature by lazy { signature(name, inputs) }
+    val selector: ByteArray by lazy { Keccak.hash(signature).copyOf(4) }
   }
 
   companion object {
@@ -107,10 +107,10 @@ sealed class AbiEntry {
 }
 
 class ContractAbi(val entries: List<AbiEntry>) {
-  val functions get() = entries.filterIsInstance<AbiEntry.Function>()
-  val events get() = entries.filterIsInstance<AbiEntry.Event>()
-  val errors get() = entries.filterIsInstance<AbiEntry.Error>()
-  val constructor get() = entries.filterIsInstance<AbiEntry.Constructor>().firstOrNull()
+  val functions = entries.filterIsInstance<AbiEntry.Function>()
+  val events = entries.filterIsInstance<AbiEntry.Event>()
+  val errors = entries.filterIsInstance<AbiEntry.Error>()
+  val constructor = entries.filterIsInstance<AbiEntry.Constructor>().firstOrNull()
 
   companion object {
     private val mapper = ObjectMapper()

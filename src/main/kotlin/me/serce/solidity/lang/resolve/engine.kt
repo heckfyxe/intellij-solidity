@@ -13,7 +13,6 @@ import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.SolImportAlias
-import me.serce.solidity.lang.psi.impl.SolNewExpressionElement
 import me.serce.solidity.lang.psi.parentOfType
 import me.serce.solidity.lang.resolve.ref.SolFunctionCallReference
 import me.serce.solidity.lang.resolve.ref.SolReference
@@ -193,13 +192,7 @@ object SolResolver {
   private fun searchElementByStub(
     identifierToFind: String, filesOfScope: Set<VirtualFile>, project: Project
   ): Set<SolNamedElement> {
-    val scope: GlobalSearchScope? = if (filesOfScope.isNotEmpty()) {
-      GlobalSearchScope.filesScope(
-        project, filesOfScope
-      )
-    } else {
-      null
-    }
+    val scope = filesOfScope.takeIf { it.isNotEmpty() }?.let { GlobalSearchScope.filesScope(project, it) }
     return StubIndex.getElements(
       SolNamedElementIndex.KEY, identifierToFind, project, scope, SolNamedElement::class.java
     ).toSet()
@@ -228,10 +221,7 @@ object SolResolver {
 
     val importedNames = collectImportedNames(containingFile)
     fun PsiElement.outerIdentifier() = (this as? SolUserDefinedTypeName)?.findIdentifiers()?.takeIf { it.size == 2 }?.firstOrNull()?.nameOrText
-    fun SolNamedElement.isExportedImportElement(): Boolean {
-      val exported = outerContract() ?: this
-      return exportElements.any { it.isAssignableFrom(exported.javaClass) }
-    }
+    fun SolNamedElement.isExportedImportElement() = isExportElement(outerContract() ?: this)
 
     val used = importedNames.asSequence()
       .filter { importedName -> importedName.target.containingFile.virtualFile?.let(importedVFiles::contains) == true }
@@ -274,13 +264,14 @@ object SolResolver {
 
   data class ImportedName(val ref: SolNamedElement, val target: SolNamedElement)
 
-  fun collectImports(file: PsiFile): Collection<ImportRecord> {
-    val all = hashSetOf<ImportRecord>()
-    for (directive in file.childrenOfType<SolImportDirective>()) {
-      all.addAll(collectImports(directive))
-    }
-    return all
-  }
+  private fun isExportElement(element: PsiElement) = exportElements.any { it.isAssignableFrom(element.javaClass) }
+
+  /** The file an import directive points at, or null when the path doesn't resolve. */
+  private val SolImportDirective.importedFile: PsiFile?
+    get() = importPath?.reference?.resolve()?.containingFile
+
+  fun collectImports(file: PsiFile): Collection<ImportRecord> =
+    file.childrenOfType<SolImportDirective>().flatMapTo(hashSetOf()) { collectImports(it) }
 
   fun collectImports(import: SolImportDirective): Collection<ImportRecord> {
     return CachedValuesManager.getCachedValue(import) {
@@ -307,17 +298,15 @@ object SolResolver {
     }
 
     val result = imports.mapNotNull { import ->
-      val containingFile = import.importPath?.reference?.resolve()?.containingFile ?: return@mapNotNull null
+      val containingFile = import.importedFile ?: return@mapNotNull null
       val aliases = import.importAliasedPairList
       val names = if (aliases.isNotEmpty() || import.importAlias != null) {
-        val exportedDeclarations = containingFile.children.filterIsInstance<SolNamedElement>().filter { element ->
-          exportElements.any { it.isAssignableFrom(element.javaClass) }
-        }
-        aliases.mapNotNull { importAliasPair -> importAliasPair.importAlias } + aliases.mapNotNull { importAliasPair ->
+        val exportedDeclarations = containingFile.children.filterIsInstance<SolNamedElement>().filter(::isExportElement)
+        aliases.mapNotNull { it.importAlias } + aliases.mapNotNull { importAliasPair ->
           importAliasPair.userDefinedTypeName.name?.let { tn ->
             exportedDeclarations.find { it.name == tn }
           }
-        } + if (import.importAlias != null) listOf(import.importAlias!!) else emptyList()
+        } + listOfNotNull(import.importAlias)
       } else {
         // no alias restrictions
         emptyList()
@@ -380,17 +369,13 @@ object SolResolver {
       .flatMap { contract ->
         contract.usingForDeclarationList
       } + psiFile.childrenOfType<SolImportDirective>().flatMap { import ->
-      val resolvedFile: PsiFile = import.importPath?.reference?.resolve()?.containingFile ?: return emptyList()
-      collectUsingForElementFromImports0(resolvedFile, visited)
+      // an unresolved import contributes nothing; it must not discard the declarations collected from the rest
+      import.importedFile?.let { collectUsingForElementFromImports0(it, visited) }.orEmpty()
     }
   }
 
   private val PsiElement.nameOrText
-    get() = if (this is PsiNamedElement) {
-      this.name
-    } else {
-      this.text
-    }
+    get() = if (this is PsiNamedElement) name else text
 
   fun resolveTypeName(element: SolReferenceElement): Collection<SolNamedElement> = StubIndex.getElements(
     SolGotoClassIndex.KEY,
@@ -438,14 +423,6 @@ object SolResolver {
     }
   }
 
-  private fun <T : Any> List<T>.findBest(priorities: (T) -> Int): List<T> {
-    return this
-      .groupBy { priorities(it) }
-      .minByOrNull { it.key }
-      ?.value
-      ?: emptyList()
-  }
-
   fun resolveVarLiteral(element: SolNamedElement): List<SolNamedElement> {
     return when (element.name) {
       "this" -> element.findContract()
@@ -485,36 +462,18 @@ object SolResolver {
     }
   }
 
-  fun isAliasOfFile(import: SolImportDirective ): Boolean {
-    return when (import.importAlias) {
-      null -> false
-      else -> true
-    }
-  }
+  fun isAliasOfFile(import: SolImportDirective): Boolean = import.importAlias != null
 
-  fun isAliasOfFile(alias :SolImportAlias): Boolean {
-    return when (alias.parent) {
-      is SolImportAliasedPair -> false
-      else -> true
-    }
-  }
+  fun isAliasOfFile(alias: SolImportAlias): Boolean = alias.parent !is SolImportAliasedPair
 
   //return the right element to search
   private fun getElementFromAlias(element: SolNamedElement, import: SolImportDirective): SolNamedElement {
-    if (import.importAlias?.name == element.name) {
-        //match import * as A from "path"
-        //match import "path" as A
-        return import.importAlias!!
-    } else {
-      //match import {a as A} from "path"
-      import.importAliasedPairList.forEach { importAliasedPair ->
-        if (importAliasedPair.importAlias?.name == element.name) {
-          return importAliasedPair.userDefinedTypeName
-        }
-      }
-    }
-
-    return element
+    //match import * as A from "path"
+    //match import "path" as A
+    import.importAlias?.takeIf { it.name == element.name }?.let { return it }
+    //match import {a as A} from "path"
+    return import.importAliasedPairList.firstOrNull { it.importAlias?.name == element.name }?.userDefinedTypeName
+      ?: element
   }
 
   fun resolveMemberFunctions(expression: SolMemberAccessExpression): Collection<SolCallable> {
@@ -524,16 +483,17 @@ object SolResolver {
       .let { it?.varLiteral?.let { varLiteral -> resolveAlias(varLiteral) } }
 
     return if (importDirectiveAlias != null && name != null) {
+      val penultimateText = expression.firstChild.lastChild.text
+      //if true, then it's a file level resolution like fileAlias.element
+      if (importDirectiveAlias.importAlias?.text == penultimateText) {
+        val fileToSearch = importDirectiveAlias.importedFile ?: return emptyList()
+        return collectChildrenOfFile(fileToSearch).filter { elem -> elem.getName() == name }
+      }
       //need to check if the penultimate member is an alias of file or a contract to know how to resolve the last member
       val importPenultimateMember =
-        collectImportDirective(importDirectiveAlias).firstOrNull { it.importAlias != null && it.importAlias!!.text == expression.firstChild.lastChild.text }
-      //if true, then it's a file level resolution like fileAlias.element
-      if (importDirectiveAlias.importAlias?.text == expression.firstChild.lastChild.text) {
-        val fileToSearch = importDirectiveAlias.importPath?.reference?.resolve()?.containingFile ?: return emptyList()
-        collectChildrenOfFile(fileToSearch).filter { elem -> elem.getName() == name }
-      } else if (importPenultimateMember != null && isAliasOfFile(importPenultimateMember)) {
-        val fileToSearch =
-          importPenultimateMember.importPath?.reference?.resolve()?.containingFile ?: return emptyList()
+        collectImportDirective(importDirectiveAlias).firstOrNull { it.importAlias?.text == penultimateText }
+      if (importPenultimateMember != null) {
+        val fileToSearch = importPenultimateMember.importedFile ?: return emptyList()
         collectChildrenOfFile(fileToSearch).filter { elem -> elem.getName() == name }
       } else {
         //looking to resolve member of a contract
@@ -545,10 +505,10 @@ object SolResolver {
         }
 
         //resolve member
-        val fileToSearch = importDirectiveAlias.importPath?.reference?.resolve()?.containingFile ?: return emptyList()
-        collectContracts(fileToSearch).filter { contract -> contract.name == contractToLook }.map {
+        val fileToSearch = importDirectiveAlias.importedFile ?: return emptyList()
+        collectContracts(fileToSearch).filter { contract -> contract.name == contractToLook }.flatMap {
           resolveContractMembers(it).filterIsInstance<SolCallable>().filter { member -> member.getName() == name }
-        }.flatten()
+        }
       }
     } else if (name != null) {
       expression.getMembers().filterIsInstance<SolCallable>().filter { it.getName() == name }
@@ -576,24 +536,39 @@ object SolResolver {
     }
   }
 
+  /**
+   * Members of [contract] followed by those of its bases (recursively). Member access on a contract type goes through
+   * here on every highlighting/completion pass, so the full list is cached per contract.
+   */
   fun resolveContractMembers(contract: SolContractDefinition, skipThis: Boolean = false): List<SolMember> {
-    val members = if (!skipThis)
-      contract.stateVariableDeclarationList as List<SolMember> + contract.functionDefinitionList +
-        contract.functionDefinitionList.filter { it.visibility?.let { it == Visibility.PUBLIC || it == Visibility.EXTERNAL || it == Visibility.INTERNAL && contract.contractType == ContractType.LIBRARY } ?: false }.map { SolFunctionReference(it) }  +
+    if (skipThis) {
+      return inheritedMembers(contract)
+    }
+    return CachedValuesManager.getCachedValue(contract) {
+      val functions = contract.functionDefinitionList
+      val isLibrary = contract.contractType == ContractType.LIBRARY
+      val members: List<SolMember> = contract.stateVariableDeclarationList + functions +
+        functions.filter { it.visibility.isExternallyReferenceable(isLibrary) }.map { SolFunctionReference(it) } +
         contract.enumDefinitionList.map { SolEnum(it) } +
-        contract.structDefinitionList.map { SolMemberConstructor(it) } + contract.eventDefinitionList.map { SolMemberConstructor(it) } + contract.errorDefinitionList.map { SolMemberConstructor(it) }
-    else
-      emptyList()
-    return members + contract.supers
-      .map { resolveTypeNameStrict(it).firstOrNull() }
-      .filterIsInstance<SolContractDefinition>()
-      .flatMap { resolveContractMembers(it) }
+        contract.structDefinitionList.map { SolMemberConstructor(it) } +
+        contract.eventDefinitionList.map { SolMemberConstructor(it) } +
+        contract.errorDefinitionList.map { SolMemberConstructor(it) } +
+        inheritedMembers(contract)
+      CachedValueProvider.Result.create(members, PsiModificationTracker.MODIFICATION_COUNT)
+    }
   }
+
+  private fun inheritedMembers(contract: SolContractDefinition): List<SolMember> = contract.supers
+    .map { resolveTypeNameStrict(it).firstOrNull() }
+    .filterIsInstance<SolContractDefinition>()
+    .flatMap { resolveContractMembers(it) }
+
 
   fun resolveUsingForElement(element: SolUserDefinedTypeNameElement): SolCallableElement? {
     val identifiers = element.findIdentifiers()
-    val lexicalFinding = lexicalDeclarations(identifiers.first()).filterIsInstance<SolCallableElement>()
-      .filter { element -> element.name == identifiers.first().text }.firstOrNull()
+    val first = identifiers.first()
+    val lexicalFinding = lexicalDeclarations(first).filterIsInstance<SolCallableElement>()
+      .firstOrNull { it.name == first.text }
     return if (identifiers.size > 1 && lexicalFinding is SolContractDefinition) {
       lexicalFinding.functionDefinitionList.find { function -> function.name == identifiers[1].text }
     } else {
@@ -716,7 +691,7 @@ object SolResolver {
             .filterIsInstance<SolEnumDefinition>()
 
           val imports = scopeChildren.asSequence().filterIsInstance<SolImportDirective>()
-            .mapNotNull {  it.importPath?.reference?.resolve()?.containingFile }
+            .mapNotNull { it.importedFile }
             .map { lexicalDeclarations(visitedScopes, it, place) }
             .flatten()
           imports + contracts + constantVariables + freeFunctions + userDefinedTypes + enums
@@ -747,11 +722,15 @@ object SolResolver {
     }
   }
 
-  fun resolveNewExpression(parentNew: SolNewExpressionElement): Collection<PsiElement> {
-    return parentNew.reference.multiResolve()
-  }
-
 }
+
+/** Whether a member with this visibility can be referenced as `C.member` (a library's internal ones can be too). */
+internal fun Visibility?.isExternallyReferenceable(inLibrary: Boolean) =
+  this == Visibility.PUBLIC || this == Visibility.EXTERNAL || this == Visibility.INTERNAL && inLibrary
+
+/** The elements sharing the lowest [priority] value. */
+internal fun <T> Collection<T>.findBest(priority: (T) -> Int): List<T> =
+  groupBy(priority).minByOrNull { it.key }?.value ?: emptyList()
 
 private fun <T> Sequence<T>.takeWhileInclusive(pred: (T) -> Boolean): Sequence<T> {
   var shouldContinue = true
@@ -762,6 +741,9 @@ private fun <T> Sequence<T>.takeWhileInclusive(pred: (T) -> Boolean): Sequence<T
   }
 }
 
+/** An unknown parameter type accepts anything, since the declaration couldn't be typed. */
+private fun SolType.acceptsArgument(argument: SolType) = this == SolUnknown || isAssignableFrom(argument)
+
 fun SolCallable.canBeApplied(arguments: SolFunctionCallArguments): Boolean {
   val parameterPairs = parseParameters()
   val paramMap = arguments.expressionList.firstOrNull()
@@ -770,20 +752,22 @@ fun SolCallable.canBeApplied(arguments: SolFunctionCallArguments): Boolean {
     if (callArguments.size != parameterPairs.size) {
       return false
     }
-    return !parameterPairs.sortedBy { it.first }.zip(callArguments.sortedBy { it.first })
-          .any { (param, argument) ->
-            param.first != argument.first || param.second != SolUnknown && !param.second.isAssignableFrom(argument.second)
-          }
+    return parameterPairs.sortedBy { it.first }.zip(callArguments.sortedBy { it.first })
+      .none { (param, argument) ->
+        param.first != argument.first || !param.second.acceptsArgument(argument.second)
+      }
   } else {
     val callArgumentTypes = arguments.expressionList.map { it.type }
-    val parameters = parameterPairs
-      .map { it.second }
+    val parameters = parameterPairs.map { it.second }
     val varargs = parameterPairs.find { it.first == SolInternalTypeFactory.varargsId }
     if (parameters.size != callArgumentTypes.size && varargs == null)
       return false
-    return !((parameters.takeIf { varargs == null || callArgumentTypes.size <= parameters.size } ?: (parameters.toMutableList() + List(callArgumentTypes.size - parameters.size) { varargs!!.second })).zip(callArgumentTypes)
-      .any { (paramType, argumentType) ->
-        paramType != SolUnknown && !paramType.isAssignableFrom(argumentType)
-      })
+    // extra arguments are all matched against the varargs parameter
+    val expected = if (varargs != null && callArgumentTypes.size > parameters.size) {
+      parameters + List(callArgumentTypes.size - parameters.size) { varargs.second }
+    } else {
+      parameters
+    }
+    return expected.zip(callArgumentTypes).none { (paramType, argumentType) -> !paramType.acceptsArgument(argumentType) }
   }
 }

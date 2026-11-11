@@ -13,6 +13,7 @@ import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.SolMemberAccessElement
 import me.serce.solidity.lang.resolve.SolResolver
 import me.serce.solidity.lang.resolve.canBeApplied
+import me.serce.solidity.lang.resolve.isExternallyReferenceable
 import me.serce.solidity.lang.resolve.ref.SolFunctionCallReference
 import me.serce.solidity.lang.resolve.ref.toLibraryFunDefinition
 import me.serce.solidity.lang.types.SolArray.SolDynamicArray
@@ -22,11 +23,8 @@ import kotlin.math.max
 fun getSolType(type: SolTypeName?): SolType {
   return when (type) {
     is SolBytesArrayTypeName -> {
-      if (type.bytesNumType.text == "bytes") {
-        SolBytes
-      } else {
-        SolFixedBytes.parse(type.bytesNumType.text)
-      }
+      val text = type.bytesNumType.text
+      if (text == "bytes") SolBytes else SolFixedBytes.parse(text)
     }
     is SolElementaryTypeName -> {
       when (val text = type.firstChild.text) {
@@ -72,16 +70,8 @@ fun getSolType(type: SolTypeName?): SolType {
 }
 
 private fun tryParseStaticArraySize(sizeExpr: SolPrimaryExpression): Int? {
-  val numberLiteral = sizeExpr.numberLiteral
-  val decimal = numberLiteral?.decimalNumber?.text
-  if (decimal != null) {
-    return decimal.tryParseIntLiteral()
-  }
-  val hex = numberLiteral?.hexNumber?.text
-  if (hex != null) {
-    return hex.tryParseIntLiteral()
-  }
-  return null
+  val numberLiteral = sizeExpr.numberLiteral ?: return null
+  return (numberLiteral.decimalNumber ?: numberLiteral.hexNumber)?.text?.tryParseIntLiteral()
 }
 
 private fun String.tryParseIntLiteral(): Int? {
@@ -169,11 +159,7 @@ inline fun <reified T : PsiElement> PsiElement.findParent(): T? {
     .firstOrNull()
 }
 
-inline fun <reified T : PsiElement> PsiElement.findParentOrNull(): T? {
-  return this.ancestors
-    .filterIsInstance<T>()
-    .firstOrNull()
-}
+inline fun <reified T : PsiElement> PsiElement.findParentOrNull(): T? = findParent()
 
 fun PsiElement.findContract(): SolContractDefinition? = this.findParentOrNull()
 
@@ -226,7 +212,7 @@ fun inferExprType(expr: SolExpression?): SolType {
     }
     is SolMemberAccessExpression -> {
       return SolResolver.resolveMemberAccess(expr)
-        .firstOrNull { true }
+        .firstOrNull()
         ?.parseType()
         ?: SolUnknown
     }
@@ -247,7 +233,7 @@ private fun <E> List<E>.secondOrNull(): E? {
 
 private fun getNumericExpressionType(firstType: SolType, secondType: SolType): SolType {
   return if (firstType is SolInteger && secondType is SolInteger) {
-    SolInteger(!(!firstType.unsigned || !secondType.unsigned), max(firstType.size, secondType.size))
+    SolInteger(firstType.unsigned && secondType.unsigned, max(firstType.size, secondType.size))
   } else {
     SolUnknown
   }
@@ -262,8 +248,11 @@ fun SolMemberAccessExpression.getMembers(): List<SolMember> {
         ?: emptyList()
     }
     else -> {
-      val usingFromFunctions = (this as? SolMemberAccessElement)?.collectUsingForLibraryFunctions()?.let { it.map { it.toLibraryFunDefinition() } } ?: emptyList()
-      val stateVarRefs = (expr.reference?.resolve()?.let { it as? SolStateVariableDeclaration }?.takeIf { v -> v.visibility?.let { it == Visibility.PUBLIC || it == Visibility.EXTERNAL || it == Visibility.INTERNAL && v.findContract()?.contractType == ContractType.LIBRARY } ?: false}?.let { SolVariableType(it).getMembers(it.project) } ?: emptyList())
+      val usingFromFunctions = (this as? SolMemberAccessElement)?.collectUsingForLibraryFunctions()
+        ?.map { it.toLibraryFunDefinition() } ?: emptyList()
+      val stateVarRefs = (expr.reference?.resolve() as? SolStateVariableDeclaration)
+        ?.takeIf { v -> v.visibility.isExternallyReferenceable(v.findContract()?.contractType == ContractType.LIBRARY) }
+        ?.let { SolVariableType(it).getMembers(it.project) } ?: emptyList()
       val typeMembers = expr.type.getMembers(this.project)
       if (usingFromFunctions.isEmpty() && stateVarRefs.isEmpty()) typeMembers else typeMembers + usingFromFunctions + stateVarRefs
     }

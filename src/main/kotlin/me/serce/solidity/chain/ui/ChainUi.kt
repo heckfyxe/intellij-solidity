@@ -26,6 +26,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.ui.popup.PopupStep
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.ui.awt.RelativePoint
@@ -33,10 +34,11 @@ import me.serce.solidity.chain.ChainConfig
 import me.serce.solidity.chain.ChainExecutor
 import me.serce.solidity.chain.ChainService
 import me.serce.solidity.chain.Deployment
+import me.serce.solidity.chain.LinePositions
 import me.serce.solidity.chain.TxStatus
-import me.serce.solidity.chain.chainNotification
 import me.serce.solidity.chain.abi.AbiEntry
 import me.serce.solidity.chain.abi.Mutability
+import me.serce.solidity.chain.chainNotification
 import me.serce.solidity.chain.foundry.Artifact
 import me.serce.solidity.chain.foundry.BuildResult
 import me.serce.solidity.chain.foundry.FoundryException
@@ -44,7 +46,6 @@ import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import java.io.File
-import java.nio.file.Path
 
 object ChainUi {
 
@@ -170,9 +171,14 @@ object ChainUi {
     if (where != null) popup.show(where) else popup.showCenteredInCurrentWindow(project)
   }
 
-  fun navigate(project: Project, root: Path?, sourcePath: String, contract: String, function: String? = null) {
-    if (root == null || sourcePath.isEmpty()) return
-    val vf = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(root.resolve(sourcePath).toFile()) ?: return
+  /** Opens [sourcePath] (relative to the Foundry root) at a zero-based [line] and [column]. */
+  fun navigateTo(project: Project, sourcePath: String, line: Int, column: Int) {
+    val vf = findSource(project, sourcePath) ?: return
+    invokeLater { OpenFileDescriptor(project, vf, line, column).navigate(true) }
+  }
+
+  fun navigate(project: Project, sourcePath: String, contract: String, function: String? = null) {
+    val vf = findSource(project, sourcePath) ?: return
     val offset = runReadAction {
       val psi = PsiManager.getInstance(project).findFile(vf) ?: return@runReadAction 0
       val c = PsiTreeUtil.findChildrenOfType(psi, SolContractDefinition::class.java).firstOrNull { it.name == contract }
@@ -181,35 +187,10 @@ object ChainUi {
     }
     invokeLater { OpenFileDescriptor(project, vf, offset).navigate(true) }
   }
-}
 
-object Offsets {
-  /** solc reports UTF-8 byte offsets; IntelliJ wants char offsets. */
-  fun byteToChar(text: String, byteOffset: Int): Int {
-    var bytes = 0
-    var i = 0
-    while (i < text.length && bytes < byteOffset) {
-      val cp = text.codePointAt(i)
-      bytes += when {
-        cp < 0x80 -> 1
-        cp < 0x800 -> 2
-        cp < 0x10000 -> 3
-        else -> 4
-      }
-      i += Character.charCount(cp)
-    }
-    return i
-  }
-
-}
-
-/** Zero-based line and column of solc byte offsets in one file's [text]. */
-class LinePositions(private val text: String) {
-  private val lineStarts = listOf(0) + text.indices.filter { text[it] == '\n' }.map { it + 1 }
-
-  fun lineCol(byteOffset: Int): Pair<Int, Int> {
-    val offset = Offsets.byteToChar(text, byteOffset)
-    val line = lineStarts.binarySearch(offset).let { if (it >= 0) it else -it - 2 }
-    return line to (offset - lineStarts[line])
+  private fun findSource(project: Project, sourcePath: String): VirtualFile? {
+    if (sourcePath.isEmpty()) return null
+    val root = FoundryProject.find(project)?.root ?: return null
+    return LocalFileSystem.getInstance().refreshAndFindFileByIoFile(root.resolve(sourcePath).toFile())
   }
 }
