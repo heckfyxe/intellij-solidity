@@ -51,4 +51,18 @@ class SolImportEventTest : SolQuickFixTestBase() {
     val warnings = myFixture.doHighlighting(com.intellij.lang.annotation.HighlightSeverity.WARNING).map { it.description }
     assertTrue(warnings.toString(), "'Missing' cannot be resolved" in warnings)
   }
+
+  fun testAddsToExistingSelectiveImport() {
+    InlineFile(code = "event Deposited(address who);\nevent Withdrawn(address who);", name = "Events.sol")
+    val body = """
+
+      contract C {
+        function f() public {
+          emit Deposited(msg.sender);
+          emit Withdrawn(msg.sender);
+        }
+      }
+    """.trimIndent()
+    checkQuickFix("import {Deposited} from \"./Events.sol\";\n$body", "import {Deposited, Withdrawn} from \"./Events.sol\";\n$body")
+  }
 }

@@ -277,4 +277,34 @@ class SolImportResolveFoundryTest : SolResolveTestBase() {
         }
     }
 
+    private fun resolvedPath(importPath: String, usagePath: String = "src/Usage.sol"): String? {
+        val usage = myFixture.addFileToProject(usagePath, "import \"$importPath\";\n")
+        return SolImportConfigService.getInstance(project).resolve(importPath, usage.virtualFile)
+            ?.path?.replace("\\", "/")
+    }
+
+    fun testContextRemappingsApplyOnlyUnderTheirContext() {
+        myFixture.addFileToProject("lib/oz-v4/token/ERC20.sol", "contract V4 {}")
+        myFixture.addFileToProject("lib/oz-v5/token/ERC20.sol", "contract V5 {}")
+        myFixture.addFileToProject(
+            "remappings.txt",
+            "@oz/=lib/oz-v5/\nsrc/legacy/:@oz/=lib/oz-v4/\n"
+        )
+        assertTrue(resolvedPath("@oz/token/ERC20.sol", "src/New.sol")!!.endsWith("lib/oz-v5/token/ERC20.sol"))
+        assertTrue(resolvedPath("@oz/token/ERC20.sol", "src/legacy/Old.sol")!!.endsWith("lib/oz-v4/token/ERC20.sol"))
+    }
+
+    fun testFallbackFindsContractsDirectoryAndSoldeerVersions() {
+        myFixture.addFileToProject("foundry.toml", "")
+        myFixture.addFileToProject("lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol", "contract ERC20 {}")
+        myFixture.addFileToProject("dependencies/forge-std-1.9.4/src/Test.sol", "contract Test {}")
+        assertTrue(resolvedPath("openzeppelin-contracts/token/ERC20/ERC20.sol")!!.endsWith("lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol"))
+        assertTrue(resolvedPath("forge-std/Test.sol", "src/Other.sol")!!.endsWith("dependencies/forge-std-1.9.4/src/Test.sol"))
+    }
+
+    fun testRemappingParsing() {
+        assertEquals(SolImportConfigService.Remapping("", "@oz/", "lib/oz/"), SolImportConfigService.Remapping.parse("@oz/=lib/oz/"))
+        assertEquals(SolImportConfigService.Remapping("src/", "@oz/", "lib/oz/"), SolImportConfigService.Remapping.parse("src/:@oz/=lib/oz/"))
+        assertNull(SolImportConfigService.Remapping.parse("no equals sign"))
+    }
 }

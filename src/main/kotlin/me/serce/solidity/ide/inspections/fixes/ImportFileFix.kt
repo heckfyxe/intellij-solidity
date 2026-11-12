@@ -30,7 +30,7 @@ class ImportFileFix(element: SolReferenceElement) : LocalQuickFixOnPsiElement(el
       else -> return false
     }
     HintManager.getInstance().showQuestionHint(editor, fixText, element.textOffset, element.textRange.endOffset,
-      ImportFileAction(editor, element.containingFile, suggestions)
+      ImportFileAction(editor, element.containingFile, suggestions, element.referenceName)
     )
     return true
   }
@@ -57,8 +57,8 @@ class ImportFileFix(element: SolReferenceElement) : LocalQuickFixOnPsiElement(el
   private fun applyImportFix(element: SolReferenceElement, editor: Editor?) {
     val suggestions = resolveSuggestions(element)
     when {
-      suggestions.size == 1 -> ImportFileAction.addImport(element.project, element.containingFile, suggestions.first())
-      suggestions.size > 1 && editor != null -> ImportFileAction(editor, element.containingFile, suggestions).execute()
+      suggestions.size == 1 -> ImportFileAction.addImport(element.project, element.containingFile, suggestions.first(), element.referenceName)
+      suggestions.size > 1 && editor != null -> ImportFileAction(editor, element.containingFile, suggestions, element.referenceName).execute()
     }
   }
 }

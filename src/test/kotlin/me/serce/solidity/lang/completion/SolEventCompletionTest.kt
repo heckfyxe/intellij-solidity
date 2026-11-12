@@ -252,6 +252,27 @@ class SolEventCompletionTest : SolCompletionTestBase() {
     """.trimIndent())
   }
 
+  fun testAddsToExistingSelectiveImport() {
+    myFixture.addFileToProject("Events.sol", "event Deposited(address who);\nevent Withdrawn(address who);")
+    checkResultAfterCompletion("""
+        import {Deposited} from "./Events.sol";
+
+        contract C {
+            function f() public {
+                emit Withdr/*caret*/
+            }
+        }
+    """.trimIndent(), """
+        import {Deposited, Withdrawn} from "./Events.sol";
+
+        contract C {
+            function f() public {
+                emit Withdrawn(<caret>);
+            }
+        }
+    """.trimIndent())
+  }
+
   fun testQualifiesAndImportsEventOfContract() {
     myFixture.addFileToProject("IVault.sol", "interface IVault { event Withdrawn(address who); }")
     checkResultAfterCompletion("""

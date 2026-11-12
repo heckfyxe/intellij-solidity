@@ -35,7 +35,9 @@ import javax.swing.ListCellRenderer
 class ImportFileAction(
   val editor: Editor,
   private val file: PsiFile,
-  private val suggestions: Set<PsiFile>
+  private val suggestions: Set<PsiFile>,
+  /** The name being imported, added to an existing `import {...} from` of the chosen file. */
+  private val name: String? = null,
 ) : QuestionAction {
 
   val project: Project
@@ -46,7 +48,7 @@ class ImportFileAction(
     PsiDocumentManager.getInstance(project).commitAllDocuments()
 
     if (suggestions.size == 1) {
-      addImport(project, file, suggestions.first())
+      addImport(project, file, suggestions.first(), name)
     } else {
       chooseFileToImport()
     }
@@ -76,7 +78,7 @@ class ImportFileAction(
           if (psi == null) {
             return@doFinalStep
           }
-          addImport(project, file, psi)
+          addImport(project, file, psi, name)
         }
       }
 
@@ -130,6 +132,17 @@ class ImportFileAction(
     /** Adds `import {Name} from "path";` for a top-level declaration (contract, event, error, ...) of another file. */
     fun addNamedImport(element: SolNamedElement, file: PsiFile) {
       val project = element.project
+      val name = element.name
+      // `import {A} from "./X.sol";` already there: make it `import {A, B} from "./X.sol";`
+      if (!name.isNullOrBlank()) {
+        val existing = selectiveImportOf(file, element.containingFile)
+        if (existing != null) {
+          if (existing.importAliasedPairList.none { it.importAlias == null && it.userDefinedTypeName.name == name }) {
+            addToSelectiveImport(project, existing, name)
+          }
+          return
+        }
+      }
       insertImport(project, file, afterFirstPragma = true) { factory ->
         val name = element.name
         val path = buildImportPath(project, file.virtualFile, element.containingFile.virtualFile)
@@ -141,7 +154,33 @@ class ImportFileAction(
       }
     }
 
-    fun addImport(project: Project, file: PsiFile, to: PsiFile) {
+    private fun selectiveImportOf(file: PsiFile, target: PsiFile): SolImportDirective? =
+      file.children.filterIsInstance<SolImportDirective>().firstOrNull { import ->
+        import.importAliasedPairList.isNotEmpty() &&
+          nullIfError { import.importPath?.reference?.resolve()?.containingFile }?.virtualFile == target.virtualFile
+      }
+
+    private fun addToSelectiveImport(project: Project, import: SolImportDirective, name: String) {
+      val names = import.importAliasedPairList.map { it.text } + name
+      val path = import.importPath?.text ?: return
+      CommandProcessor.getInstance().runUndoTransparentAction {
+        ApplicationManager.getApplication().runWriteAction {
+          import.replace(SolPsiFactory(project).createImportDirective("{${names.joinToString(", ")}} from $path", false))
+        }
+      }
+    }
+
+    /** Imports [to]; when [file] already imports names from it (`import {A} from`), adds [name] there instead. */
+    fun addImport(project: Project, file: PsiFile, to: PsiFile, name: String? = null) {
+      if (name != null) {
+        val existing = selectiveImportOf(file, to)
+        if (existing != null) {
+          if (existing.importAliasedPairList.none { it.importAlias == null && it.userDefinedTypeName.name == name }) {
+            addToSelectiveImport(project, existing, name)
+          }
+          return
+        }
+      }
       insertImport(project, file, optimize = true) { factory ->
         factory.createImportDirective(buildImportPath(project, file.virtualFile, to.virtualFile))
       }
