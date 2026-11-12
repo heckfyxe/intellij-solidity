@@ -83,6 +83,22 @@ class UnusedElementInspectionTest : SolInspectionsTestBase(UnusedElementInspecti
     )
   }
 
+  fun testUsedNamedImportEvent() {
+    InlineFile(code = "event Deposited(uint amount);", name = "A.sol")
+
+    checkByText(
+      """
+        import {Deposited} from "A.sol";
+        contract C {
+          function run() external {
+            emit Deposited(1);
+          }
+        }
+      """,
+      checkWeakWarn = true
+    )
+  }
+
   fun testUsedNamedImportFreeFunction() {
     InlineFile(
       code = """

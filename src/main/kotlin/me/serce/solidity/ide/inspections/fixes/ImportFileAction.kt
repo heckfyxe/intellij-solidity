@@ -20,6 +20,7 @@ import me.serce.solidity.ide.formatting.layoutImports
 import me.serce.solidity.lang.resolve.ref.SolImportConfigService
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolImportDirective
+import me.serce.solidity.lang.psi.SolNamedElement
 import me.serce.solidity.lang.psi.SolPragmaDirective
 import me.serce.solidity.lang.psi.SolPsiFactory
 import me.serce.solidity.nullIfError
@@ -124,15 +125,18 @@ class ImportFileAction(
       }
     }
 
-    fun addContractImport(contract: SolContractDefinition, file: PsiFile) {
-      val project = contract.project
+    fun addContractImport(contract: SolContractDefinition, file: PsiFile) = addNamedImport(contract, file)
+
+    /** Adds `import {Name} from "path";` for a top-level declaration (contract, event, error, ...) of another file. */
+    fun addNamedImport(element: SolNamedElement, file: PsiFile) {
+      val project = element.project
       insertImport(project, file, afterFirstPragma = true) { factory ->
-        val contractName = contract.name
-        val path = buildImportPath(project, file.virtualFile, contract.containingFile.virtualFile)
-        if (contractName.isNullOrBlank()) {
+        val name = element.name
+        val path = buildImportPath(project, file.virtualFile, element.containingFile.virtualFile)
+        if (name.isNullOrBlank()) {
           factory.createImportDirective(path)
         } else {
-          factory.createContractImportFromDirective(path, contractName)
+          factory.createContractImportFromDirective(path, name)
         }
       }
     }

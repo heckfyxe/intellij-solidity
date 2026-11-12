@@ -211,6 +211,7 @@ object SolResolver {
     SolConstantVariableDeclaration::class.java,
     SolEnumDefinition::class.java,
     SolErrorDefinition::class.java,
+    SolEventDefinition::class.java,
     SolFunctionDefinition::class.java,
     SolStructDefinition::class.java,
     SolUserDefinedValueTypeDefinition::class.java,

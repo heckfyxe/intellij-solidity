@@ -45,7 +45,7 @@ class SolEventCompletionTest : SolCompletionTestBase() {
         }
   """)
 
-  fun testEmitOffersOnlyVisibleEventsAndQualifiers() = checkCompletion(hashSetOf("Mine", "Free", "Other"), """
+  fun testEmitOffersOnlyVisibleEventsAndQualifiers() = checkCompletion(hashSetOf("Mine", "Free", "Other", "OtherEvent"), """
         event Free(uint a);
 
         contract Other {
@@ -228,6 +228,91 @@ class SolEventCompletionTest : SolCompletionTestBase() {
             event E(uint256 a) anonymous<caret>
         }
   """)
+
+  fun testImportsFileLevelEvent() {
+    myFixture.addFileToProject("Events.sol", "event Deposited(address who, uint256 amount);")
+    checkResultAfterCompletion("""
+        pragma solidity ^0.8.24;
+
+        contract C {
+            function f() public {
+                emit Deposi/*caret*/
+            }
+        }
+    """.trimIndent(), """
+        pragma solidity ^0.8.24;
+
+        import {Deposited} from "./Events.sol";
+
+        contract C {
+            function f() public {
+                emit Deposited(<caret>);
+            }
+        }
+    """.trimIndent())
+  }
+
+  fun testQualifiesAndImportsEventOfContract() {
+    myFixture.addFileToProject("IVault.sol", "interface IVault { event Withdrawn(address who); }")
+    checkResultAfterCompletion("""
+        contract C {
+            function f() public {
+                emit Withdra/*caret*/
+            }
+        }
+    """.trimIndent(), """
+        import {IVault} from "./IVault.sol";
+
+        contract C {
+            function f() public {
+                emit IVault.Withdrawn(<caret>);
+            }
+        }
+    """.trimIndent())
+  }
+
+  fun testQualifiesVisibleContractWithoutImport() = checkResultAfterCompletion("""
+        interface IPool {
+            event Swapped();
+        }
+
+        contract C {
+            function f() public {
+                emit Swapp/*caret*/
+            }
+        }
+  """, """
+        interface IPool {
+            event Swapped();
+        }
+
+        contract C {
+            function f() public {
+                emit IPool.Swapped();<caret>
+            }
+        }
+  """)
+
+  fun testNoImportForInheritedEvents() {
+    myFixture.addFileToProject("Base.sol", "contract Base { event Moved(); }")
+    checkResultAfterCompletion("""
+        import "./Base.sol";
+
+        contract C is Base {
+            function f() public {
+                emit Mov/*caret*/
+            }
+        }
+    """, """
+        import "./Base.sol";
+
+        contract C is Base {
+            function f() public {
+                emit Moved();<caret>
+            }
+        }
+    """)
+  }
 
   private fun checkNoCompletion(unexpected: String, @Language("Solidity") code: String) {
     InlineFile(code).withCaret()

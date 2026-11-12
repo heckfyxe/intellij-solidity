@@ -18,7 +18,7 @@ class ResolveNameInspection : LocalInspectionTool() {
             holder.registerProblem(path, "'${path.text}' cannot be resolved", ProblemHighlightType.WARNING)
           } else {
             o.importAliasedPairList.filter { it.userDefinedTypeName.reference?.resolve() == null }.forEach {
-              holder.registerProblem(it.userDefinedTypeName, "'${it.userDefinedTypeName}' cannot be resolved", ProblemHighlightType.WARNING)
+              holder.registerProblem(it.userDefinedTypeName, "'${it.userDefinedTypeName.text}' cannot be resolved", ProblemHighlightType.WARNING)
             }
           }
         }
