@@ -690,13 +690,18 @@ object SolResolver {
           val enums = scopeChildren.asSequence()
             .filterIsInstance<SolEnumDefinition>()
 
+          // file-level events and errors (Solidity 0.8.4 / 0.8.22)
+          val eventsAndErrors = scopeChildren.asSequence()
+            .filter { it is SolEventDefinition || it is SolErrorDefinition }
+            .filterIsInstance<SolNamedElement>()
+
           val imports = scopeChildren.asSequence().filterIsInstance<SolImportDirective>()
             .flatMap { import ->
               val declarations = import.importedFile?.let { lexicalDeclarations(visitedScopes, it, place) } ?: emptySequence()
               val selected = import.importAliasedPairList.mapNotNullTo(hashSetOf()) { it.userDefinedTypeName.name }
               if (selected.isEmpty()) declarations else declarations.filter { it.name in selected }
             }
-          imports + contracts + constantVariables + freeFunctions + userDefinedTypes + enums
+          imports + contracts + constantVariables + freeFunctions + userDefinedTypes + enums + eventsAndErrors
         } ?: emptySequence()
       }
 

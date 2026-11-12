@@ -167,12 +167,6 @@ class SolKeywordCompletionContributor : CompletionContributor(), DumbAware {
 
     extend(
       CompletionType.BASIC,
-      inEventDeclaration(),
-      SolKeywordCompletionProvider("indexed ")
-    )
-
-    extend(
-      CompletionType.BASIC,
       inUsingForDeclaration(),
       SolKeywordCompletionProvider("for ")
     )

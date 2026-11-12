@@ -134,13 +134,6 @@ class SolKeywordCompletion : SolCompletionTestBase() {
   """
   )
 
-  fun testKeywordOnEventCompletion() = checkCompletion(
-    hashSetOf("indexed "), """
-      event /*caret*/
-      
-  """
-  )
-
   fun testKeywordOnUsingCompletion() = checkCompletion(
     hashSetOf("for "), """
       using test /*caret*/

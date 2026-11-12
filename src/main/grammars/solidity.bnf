@@ -308,7 +308,8 @@ UserDefinedValueTypeDefinition ::= type Identifier is ElementaryTypeName ';' {
     elementTypeFactory = "me.serce.solidity.lang.stubs.ImplKt.factory"
 }
 
-IndexedParameterList ::= '(' (  IndexedParamDef (',' IndexedParamDef )*)? ')'
+// pinned so that an unclosed list (`event E(uint a` while typing) stays inside its event or error
+IndexedParameterList ::= '(' (  IndexedParamDef (',' IndexedParamDef )*)? ')' {pin=1}
 IndexedParamDef ::= TypeName indexed?  Identifier?
 ParameterDef ::= TypeName (constant StorageLocationSpecifier? | StorageLocationSpecifier constant?)? Identifier? {
     implements = "me.serce.solidity.lang.psi.SolNamedElement"
