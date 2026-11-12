@@ -73,8 +73,11 @@ private val SolStatement.returns: Boolean
     return returnSt != null || returnTupleStatement != null
   }
 
+// the Yul builtins that end execution; `returndatasize()` and friends only share the prefix
+private val YUL_TERMINATORS = setOf("return", "revert", "stop", "invalid", "selfdestruct")
+
 private val SolYulStatement.returns: Boolean
-  get() = yulFunctionCall?.text?.startsWith("return") == true //todo better
+  get() = yulFunctionCall?.text?.substringBefore('(')?.trim() in YUL_TERMINATORS
 
 private val SolYulBlock.returns: Boolean
   get() = yulStatementList.any { it.returns }

@@ -16,6 +16,7 @@ import com.intellij.psi.stubs.StubIndexKey
 import me.serce.solidity.ide.SolidityIcons
 import me.serce.solidity.ide.inspections.fixes.ImportFileAction
 import me.serce.solidity.lang.psi.*
+import me.serce.solidity.lang.psi.impl.ADDRESS_MEMBER
 import me.serce.solidity.lang.resolve.SolResolver
 import me.serce.solidity.lang.stubs.SolErrorIndex
 import me.serce.solidity.lang.stubs.SolEventIndex
@@ -104,7 +105,7 @@ object SolCompleter {
           }
           Usage.VARIABLE -> it.getName()?.let { name ->
             PrioritizedLookupElement.withPriority(
-              LookupElementBuilder.create(name).withIcon(SolidityIcons.STATE_VAR),
+              LookupElementBuilder.create(if (name == ADDRESS_MEMBER) "address" else name).withIcon(SolidityIcons.STATE_VAR),
               TYPED_COMPLETION_PRIORITY
             )
           }

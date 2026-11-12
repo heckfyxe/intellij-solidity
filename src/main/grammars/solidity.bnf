@@ -232,7 +232,8 @@ StructDefinition ::= struct Identifier '{'
     elementTypeFactory = "me.serce.solidity.lang.stubs.ImplKt.factory"
 }
 
-ModifierDefinition ::= modifier Identifier ParameterList? ( VirtualSpecifier | OverrideSpecifier )* Block {
+// without a body (`modifier m() virtual;`) in abstract contracts and interfaces
+ModifierDefinition ::= modifier Identifier ParameterList? ( VirtualSpecifier | OverrideSpecifier )* ( Block | ';' ) {
     pin = 1
     implements = "me.serce.solidity.lang.psi.SolModifierElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolModifierDefMixin"
@@ -244,7 +245,8 @@ VirtualSpecifier ::= virtual {pin=1}
 OverrideSpecifier ::= override ( '(' UserDefinedTypeName (',' UserDefinedTypeName)* ')' )? {pin=1}
 
 FunctionVisibilitySpecifier ::= VisibilitySpecifier | VirtualSpecifier | OverrideSpecifier
-ModifierInvocation ::= VarLiteral CallArgumentList? {
+// qualified for base constructors: `constructor() Lib.Base(1)`
+ModifierInvocation ::= ( Identifier '.' )* VarLiteral CallArgumentList? {
     implements = "me.serce.solidity.lang.psi.SolModifierInvocationElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolModifierInvocationMixin"
 }
@@ -538,7 +540,8 @@ NewExpression ::= new TypeName {
     pin = 1
 }
 
-MemberAccessExpression ::= Expression '.' Identifier {
+// `f.address` of an external function
+MemberAccessExpression ::= Expression '.' ( Identifier | address ) {
     pin = 2
     implements = "me.serce.solidity.lang.psi.SolReferenceElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolMemberAccessElement"

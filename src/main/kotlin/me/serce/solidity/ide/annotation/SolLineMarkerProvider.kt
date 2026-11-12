@@ -94,5 +94,5 @@ class FunctionCellRenderer(private val file: PsiFile) : PsiElementListCellRender
 
   override fun getIconFlags(): Int = Iconable.ICON_FLAG_VISIBILITY
 
-  override fun getElementText(element: SolFunctionDefinition?): String = element?.contract?.name!!
+  override fun getElementText(element: SolFunctionDefinition?): String = element?.contract?.name ?: element?.name ?: ""
 }

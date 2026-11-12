@@ -209,4 +209,12 @@ class UnusedElementInspectionTest : SolInspectionsTestBase(UnusedElementInspecti
             }
         }
     """, checkWeakWarn = true)
+
+  fun testPublicMembersAreUsedFromOutside() = checkByText("""
+        contract a {
+            uint public total;
+            function deposit() public {}
+            function withdraw() external {}
+        }
+    """, checkWeakWarn = true)
 }

@@ -5,6 +5,7 @@ import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
+import com.intellij.psi.PsiFile
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.SolStateVariableDeclaration
 import me.serce.solidity.lang.psi.SolVisitor
@@ -15,7 +16,8 @@ class VisibilityModifierInspection : LocalInspectionTool() {
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitFunctionDefinition(o: SolFunctionDefinition) {
-        if (o.visibility == null) {
+        // free functions have no visibility
+        if (o.visibility == null && o.parent !is PsiFile) {
           registerProblem((o.identifier ?: return))
         }
       }

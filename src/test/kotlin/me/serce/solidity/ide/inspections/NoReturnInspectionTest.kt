@@ -171,4 +171,25 @@ class NoReturnInspectionTest : SolInspectionsTestBase(NoReturnInspection()) {
           }
       }
     """)
+
+  fun testAssemblyReturndataIsNotAReturn() = checkByText("""
+      contract a {
+          /*@warning descr="No return statement"@*/function f() public returns (uint) {
+              assembly {
+                  let size := returndatasize()
+                  returndatacopy(0, 0, size)
+              }
+          }/*@/warning@*/
+      }
+  """)
+
+  fun testAssemblyRevert() = checkByText("""
+      contract a {
+          function f() public returns (uint) {
+              assembly {
+                  revert(0, 0)
+              }
+          }
+      }
+  """)
 }

@@ -4,7 +4,6 @@ import com.intellij.codeInsight.completion.*
 import com.intellij.codeInsight.completion.impl.CamelHumpMatcher
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
-import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.patterns.*
 import com.intellij.patterns.PlatformPatterns.psiElement
@@ -30,7 +29,8 @@ import java.io.File
  *
  * http://solidity.readthedocs.io/en/develop/units-and-global-variables.html#special-variables-and-functions
  */
-class SolContextCompletionContributor : CompletionContributor(), DumbAware {
+// not DumbAware: names come from resolve and the stub indexes, which aren't available while indexing
+class SolContextCompletionContributor : CompletionContributor() {
   init {
     // beginning of a statement inside a block
     extend(CompletionType.BASIC, startStatementInsideBlock(), LiteralCompletionProvider)

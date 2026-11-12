@@ -45,10 +45,6 @@ class SolInternalTypeFactory(project: Project) {
           */
           bytes data;
           /**
-          * the available gas remaining for a current transaction
-          */
-          uint gas;
-          /**
           * sender of the message (current call)
           */
           address sender;
@@ -231,16 +227,6 @@ class SolInternalTypeFactory(project: Project) {
             */
              uint timestamp;
              
-             /**
-             * hash of the given block when blocknumber is one of the 256 most recent blocks; otherwise returns zero
-             */
-             function blockhash(uint blockNumber) returns (bytes32);
-             
-             /**
-             * versioned hash of the index-th blob associated with the current transaction. A versioned hash consists of a single byte representing the version (currently 0x01), followed by the last 31 bytes of the SHA256 hash of the KZG commitment (<a href="https://eips.ethereum.org/EIPS/EIP-4844">EIP-4844</a>).
-             */
-             function blobhash(uint blockNumber) returns (bytes32);
-
         }      
     """)
   }
@@ -341,10 +327,6 @@ class SolInternalTypeFactory(project: Project) {
           /**
           * compute the SHA-256 hash of the input
           */
-          function sha3(bytes memory input) returns (bytes32);
-          /**
-          * compute the SHA-256 hash of the input
-          */
           function sha256(bytes memory input) returns (bytes32);
           /**
           * compute RIPEMD-160 hash of the input
@@ -388,12 +370,17 @@ class SolInternalTypeFactory(project: Project) {
           /**
           * Returns the amount of gas remaining the current transaction.
           */
-          function gasleft() returns (uint64);
+          function gasleft() returns (uint256);
           
           /**
           * Returns hash of the given block when blocknumber is one of the 256 most recent blocks; otherwise returns zero
           */
           function blockhash(uint blockNumber) returns (bytes32);
+
+          /**
+          * versioned hash of the index-th blob associated with the current transaction. A versioned hash consists of a single byte representing the version (currently 0x01), followed by the last 31 bytes of the SHA256 hash of the KZG commitment (<a href="https://eips.ethereum.org/EIPS/EIP-4844">EIP-4844</a>).
+          */
+          function blobhash(uint index) returns (bytes32);
       }
     """)
   }

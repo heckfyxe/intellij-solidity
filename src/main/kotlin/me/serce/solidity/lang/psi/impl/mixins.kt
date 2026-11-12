@@ -476,9 +476,10 @@ abstract class SolUserDefinedTypeNameImplMixin : SolStubbedElementImpl<SolTypeRe
 
 abstract class SolMemberAccessElement(node: ASTNode) : SolNamedElementImpl(node), SolMemberAccessExpression {
   override val referenceNameElement: PsiElement
-    get() = findChildByType(IDENTIFIER)!!
+    get() = findChildByType(IDENTIFIER) ?: findChildByType(ADDRESS)!!
+  // `address` is a keyword, so the built-in `f.address` member is declared as `__address`
   override val referenceName: String
-    get() = referenceNameElement.text
+    get() = referenceNameElement.text.let { if (it == "address") ADDRESS_MEMBER else it }
 
   override fun getReference() = SolMemberAccessReference(this)
 
@@ -614,3 +615,5 @@ fun List<SolStateMutabilitySpecifier>.parseMutability() =
 private fun SolIndexedParameterList?.parseIndexedParameters(): List<Pair<String?, SolType>> =
   this?.indexedParamDefList?.map { it.identifier?.text to getSolType(it.typeName) } ?: emptyList()
 
+/** The name of the built-in `.address` member of external functions, which can't be declared as `address`. */
+const val ADDRESS_MEMBER = "__address"

@@ -41,4 +41,13 @@ class ValidateEmitEventArgumentsInspectionTest : SolInspectionsTestBase(Validate
             }
         }
     """)
+
+  fun testEventWithoutParameters() = checkByText("""
+        contract a {
+            event Ping();
+            function f() public {
+                emit Ping();
+            }
+        }
+    """)
 }

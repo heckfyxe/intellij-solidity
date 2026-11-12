@@ -31,7 +31,8 @@ class UnusedElementInspection : LocalInspectionTool() {
       }
 
       override fun visitFunctionDefinition(o: SolFunctionDefinition) {
-        o.identifier?.takeIf { o.visibility != Visibility.EXTERNAL }?.checkForUsage(o, holder, "Function '${o.name}' is never used")
+        // public and external functions can be called from outside
+        o.identifier?.takeIf { o.visibility != Visibility.EXTERNAL && o.visibility != Visibility.PUBLIC }?.checkForUsage(o, holder, "Function '${o.name}' is never used")
       }
 
       override fun visitStructDefinition(o: SolStructDefinition) {
@@ -39,6 +40,8 @@ class UnusedElementInspection : LocalInspectionTool() {
       }
 
       override fun visitStateVariableDeclaration(o: SolStateVariableDeclaration) {
+        // a public state variable has a getter that can be called from outside
+        if (o.visibility == Visibility.PUBLIC) return
         o.identifier.checkForUsage(o, holder, "State variable '${o.name}' is never used")
       }
 

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.NullNode
 import com.intellij.codeInsight.codeVision.CodeVisionRelativeOrdering
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.codeInsight.hints.codeVision.CodeVisionProviderBase
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ToggleAction
@@ -14,7 +15,6 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
@@ -35,7 +35,7 @@ import java.awt.event.MouseEvent
 import java.util.*
 
 @Service(Service.Level.PROJECT)
-class SolGasEstimationService(project: Project) {
+class SolGasEstimationService(project: Project) : Disposable {
 
   private val relativePath = "artifacts/build-info"
 
@@ -62,12 +62,16 @@ class SolGasEstimationService(project: Project) {
                 VirtualFileManager.getInstance().asyncRefresh { if (enabled) readCompiledData() }
               }
             null
-          }, Disposer.newDisposable())
+          }, this)
   }
+
+  override fun dispose() {}
 
   private fun readCompiledData() {
     jsonNode = null
-    val compiledOutputFile = hardHatRoot!!.findDirectory(relativePath)?.children?.firstOrNull { it.name.endsWith(".json") }
+    // no Hardhat project: nothing to read (turning estimates on used to throw here)
+    val root = hardHatRoot ?: return
+    val compiledOutputFile = root.findDirectory(relativePath)?.children?.firstOrNull { it.name.endsWith(".json") }
     compiledOutputFile?.inputStream?.use { jsonNode = ObjectMapper().readTree(it) }
   }
 

@@ -16,11 +16,6 @@ class ValidateEmitEventArgumentsInspection : LocalInspectionTool() {
         val call = (o.parent?.children?.firstOrNull() as? SolEmitStatement)?.lastChild as? SolFunctionCallExpression
           ?: return
         val args = call.functionCallArguments.expressionList
-        if (args.isEmpty()) {
-          holder.registerProblem(o, "No arguments")
-          return
-        }
-
         val defs = SolResolver.resolveVarLiteralReference(call).filterIsInstance<SolEventDefinition>()
         if (defs.isEmpty()) {
           holder.registerProblem(o.parent?.firstChild?.lastChild?.firstChild ?: o, "Can't find the event in that contract")
@@ -29,6 +24,11 @@ class ValidateEmitEventArgumentsInspection : LocalInspectionTool() {
 
         val events = defs.filterNot { it.hasNoValidationTag() }
         if (events.isEmpty()) return
+        if (args.isEmpty()) {
+          // `emit Ping();` is fine for `event Ping();`
+          if (events.none { it.parseParameters().isEmpty() }) holder.registerProblem(o, "No arguments")
+          return
+        }
         val matcher = ArgumentMatcher(args)
         if (events.none { event ->
             val params = event.parseParameters()
