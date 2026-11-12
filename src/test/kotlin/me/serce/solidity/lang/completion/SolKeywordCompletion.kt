@@ -229,12 +229,12 @@ class SolKeywordCompletion : SolCompletionTestBase() {
 
   fun testKeywordDoesNotAddSecondSpace() = checkResultAfterCompletion(
     "contract A { function f() public { uint25/*caret*/ x; } }",
-    "contract A { function f() public { uint256 <caret>x; } }"
+    "contract A { function f() public { uint256<caret> x; } }"
   )
 
-  fun testKeywordAddsSpace() = checkResultAfterCompletion(
+  fun testKeywordDoesNotAddSpace() = checkResultAfterCompletion(
     "contract A { function f() public { uint25/*caret*/} }",
-    "contract A { function f() public { uint256 <caret>} }"
+    "contract A { function f() public { uint256<caret>} }"
   )
 
   fun testStatementKeywordsInsideBody() = checkCompletion(hashSetOf("for", "unchecked", "true", "false"), """

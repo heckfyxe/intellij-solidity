@@ -1,7 +1,6 @@
 package me.serce.solidity.lang.completion
 
 import com.intellij.codeInsight.completion.*
-import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.openapi.editor.EditorModificationUtil
 import com.intellij.openapi.project.DumbAware
@@ -87,21 +86,8 @@ class SolKeywordCompletionProvider(private vararg val keywords: String) : Comple
     parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet
   ) {
     if (isAfterDot(parameters.position)) return // `x.` is followed by a member, never by a keyword
-    keywords.forEach { keyword ->
-      val name = keyword.trimEnd()
-      val element = LookupElementBuilder.create(name)
-      // a keyword written with a trailing space is followed by a name; add the space only when none follows
-      result.addElement((if (name != keyword) element.withInsertHandler(SpaceAfter) else element).keywordPrioritised())
-    }
-  }
-
-  private object SpaceAfter : InsertHandler<LookupElement> {
-    override fun handleInsert(context: InsertionContext, item: LookupElement) {
-      val offset = context.tailOffset
-      val text = context.document.charsSequence
-      if (offset >= text.length || !text[offset].isWhitespace()) context.document.insertString(offset, " ")
-      context.editor.caretModel.moveToOffset(offset + 1)
-    }
+    // only the keyword is inserted; what follows it is up to the user
+    keywords.forEach { result.addElement(LookupElementBuilder.create(it.trimEnd()).keywordPrioritised()) }
   }
 
   private fun isAfterDot(position: PsiElement): Boolean =
