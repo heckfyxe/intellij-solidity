@@ -175,6 +175,13 @@
                                         implementationClass="me.serce.solidity.chain.ui.ChainLineMarkerProvider"/>
         <externalAnnotator language="Solidity"
                            implementationClass="me.serce.solidity.chain.compile.SolcExternalAnnotator"/>
+        <externalAnnotator language="Solidity"
+                           implementationClass="me.serce.solidity.ide.annotation.ForgeLintAnnotator"/>
+        <localInspection language="Solidity" groupName="Solidity" shortName="ForgeLint"
+                         displayName="Forge lint"
+                         enabledByDefault="true"
+                         level="WARNING"
+                         implementationClass="me.serce.solidity.ide.annotation.ForgeLintInspection"/>
         <notificationGroup id="Solidity Chains" displayType="BALLOON"/>
 
 
@@ -320,6 +327,11 @@
                              instance="me.serce.solidity.settings.SolidityConfigurable"
                              displayName="Solidity"/>
     </extensions>
+
+    <applicationListeners>
+        <listener class="me.serce.solidity.ide.annotation.ForgeLintOnSaveListener"
+                  topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
+    </applicationListeners>
 
     <actions>
         <action id="solidity.file.create"
