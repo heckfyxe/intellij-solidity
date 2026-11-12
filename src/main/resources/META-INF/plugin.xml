@@ -309,6 +309,24 @@
         <codeInsight.implementMethod language="Solidity"
                                      implementationClass="me.serce.solidity.ide.generation.SolImplementMethodsHandler"/>
 
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Language feature removed in the pragma's Solidity version"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         implementationClass="me.serce.solidity.ide.inspections.RemovedLanguageFeatureInspection"/>
+
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Language feature deprecated in the pragma's Solidity version"
+                         enabledByDefault="true"
+                         level="WARNING"
+                         implementationClass="me.serce.solidity.ide.inspections.DeprecatedLanguageFeatureInspection"/>
+
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Reserved keyword used as an identifier"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         implementationClass="me.serce.solidity.ide.inspections.ReservedKeywordInspection"/>
+
         <!-- Forge Test Runner -->
         <configurationType implementation="me.serce.solidity.ide.run.ForgeTestRunConfigurationType"/>
         <runConfigurationProducer

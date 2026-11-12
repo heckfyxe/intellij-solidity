@@ -8,4 +8,13 @@ class SelfdestructInspectionTest : SolInspectionsTestBase(SelfdestructRenameInsp
             }
         }
     """)
+
+  fun testLeftToRemovedFeatureInspectionFor050() = checkByText("""
+        pragma solidity ^0.5.0;
+        contract a {
+            function f(address payable owner) public {
+                suicide(owner);
+            }
+        }
+    """)
 }

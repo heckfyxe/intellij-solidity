@@ -20,8 +20,13 @@ class VisibilityModifierInspectionTest : SolInspectionsTestBase(VisibilityModifi
     """)
 
   fun testFreeFunctionHasNoVisibility() = checkByText("""
-        function free() pure returns (uint) {
-            return 1;
+        function f() pure returns (uint) { return 1; }
+    """, checkWeakWarn = true)
+
+  fun testFunctionLeftToRemovedFeatureInspectionFor050() = checkByText("""
+        pragma solidity ^0.5.0;
+        contract a {
+            function f() {}
         }
     """, checkWeakWarn = true)
 }
