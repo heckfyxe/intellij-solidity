@@ -192,6 +192,59 @@ class RenameTest : SolTestBase() {
   )
 
 
+  fun testFunctionRenamesOverrideHierarchy() = doTest("withdraw", """
+        interface IVault {
+            function take(uint amount) external;
+        }
+
+        contract Vault is IVault {
+            function take(uint amount) public virtual override {}
+            function take(address to) public {}
+        }
+
+        contract BigVault is Vault {
+            function take(uint amount) public override {
+                super.take(amount);
+            }
+        }
+
+        contract User {
+            function f(IVault v) public {
+                v./*caret*/take(1);
+            }
+        }
+    """, """
+        interface IVault {
+            function withdraw(uint amount) external;
+        }
+
+        contract Vault is IVault {
+            function withdraw(uint amount) public virtual override {}
+            function take(address to) public {}
+        }
+
+        contract BigVault is Vault {
+            function withdraw(uint amount) public override {
+                super.withdraw(amount);
+            }
+        }
+
+        contract User {
+            function f(IVault v) public {
+                v.withdraw(1);
+            }
+        }
+    """)
+
+  fun testNamesValidator() {
+    val validator = SolNamesValidator()
+    assertTrue(validator.isIdentifier("withdraw", project))
+    assertFalse(validator.isIdentifier("function", project))
+    assertTrue(validator.isKeyword("function", project))
+    assertFalse(validator.isIdentifier("1abc", project))
+    assertFalse(validator.isIdentifier("a b", project))
+  }
+
   private fun doTest(
     newName: String,
     @Language("Solidity") before: String,

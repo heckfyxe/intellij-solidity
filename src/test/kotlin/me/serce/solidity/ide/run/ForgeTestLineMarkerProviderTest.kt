@@ -82,4 +82,35 @@ class ForgeTestLineMarkerProviderTest : SolTestBase() {
     assertTrue(gutters.contains("Run Forge Test testNoVisibility"))
     assertEquals(3, gutters.size)
   }
+
+  fun testGutterIconsForInvariantsAndOnlyForTestContracts() {
+    InlineFile("""
+        contract Handler {
+            function deposit() public {}
+        }
+
+        contract VaultInvariants {
+            function invariant_solvent() public {}
+            function testFuzz_deposit(uint256 amount) public {}
+        }/*caret*/
+    """, name = "Vault.t.sol").withCaret()
+
+    val tooltips = myFixture.findAllGutters().map { it.tooltipText }.toSet()
+    assertEquals(
+      setOf("Run Forge Tests in VaultInvariants", "Run Forge Test invariant_solvent", "Run Forge Test testFuzz_deposit"),
+      tooltips
+    )
+  }
+}
+
+class SolidityFileLocationFilterTest : me.serce.solidity.utils.SolTestBase() {
+  fun testLinksCompilerLocations() {
+    val file = myFixture.addFileToProject("test/B.t.sol", "contract B {}").virtualFile
+    val root = file.parent.parent
+    val line = " --> test/B.t.sol:8:33:"
+    val result = SolidityFileLocationFilter(project, root).applyFilter(line, line.length)!!
+    val item = result.resultItems.single()
+    assertEquals("test/B.t.sol:8:33", line.substring(item.highlightStartOffset, item.highlightEndOffset))
+    assertNull(SolidityFileLocationFilter(project, root).applyFilter("no location here", 16))
+  }
 }

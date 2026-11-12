@@ -1,99 +1,96 @@
 package me.serce.solidity.ide.run
 
-import me.serce.solidity.utils.SolTestBase
+import junit.framework.TestCase
+import java.io.File
 
-class ForgeTestOutputTransformerTest : SolTestBase() {
-  private val transformer = ForgeTestOutputTransformer()
+class ForgeTestOutputTransformerTest : TestCase() {
+  /** Output of `forge test -vvvv` (forge 1.9) with unit, fuzz, invariant and skipped tests and compiler warnings. */
+  private val output = """
+    Compiling 3 files with Solc 0.8.38
+    Compiler run successful with warnings:
+    Warning (2072): Unused local variable.
+     --> test/B.t.sol:8:33:
 
-  private val compilerSuccessLine = "Compiler run successful!"
-  private val compilerFailLine = "Compiler run failed:"
-  private val suiteStartLine = { contract: String -> "Ran 3 tests for test/$contract.t.sol:$contract" }
-  private val suiteEndLine = { duration: String -> "Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in ${duration} (868.32µs CPU time)" }
-  private val testPassLine = { fn: String -> "[PASS] $fn() (gas: 34345)" }
-  private val testFailLine = { fn: String, error: String -> "[FAIL: $error] $fn() (gas: 34345)" }
-  private val summaryLine = "Ran 5 test suite in 285.26ms (5.68ms CPU time): 6 tests passed, 2 failed, 0 skipped (8 total tests)"
+    Ran 1 test for test/Other.sol:OtherTest
+    [PASS] testInOther() (gas: 121)
+    Traces:
+      [121] OtherTest::testInOther()
+        └─ ← [Stop]
 
-  private val teamcitySuiteStartLine = { contract: String -> "##teamcity[testSuiteStarted name='$contract']\n" }
-  private val teamcitySuiteEndLine = { contract: String, duration: String -> "##teamcity[testSuiteFinished name='$contract' duration='$duration']\n" }
-  private val teamcityTestStartLine = { fn: String -> "##teamcity[testStarted name='$fn()' captureStandardOutput='true']\n" }
-  private val teamcityTestFailLine = { fn: String, details: String -> "##teamcity[testFailed name='$fn()' message='${transformer.escapeTeamCity(testFailLine(fn, details))}' details='$details']\n" }
-  private val teamcityTestFinishLine = { fn: String -> "##teamcity[testFinished name='$fn()']\n" }
+    Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 5.37ms (1.75ms CPU time)
 
-  fun testCompilerFailed() {
-    transformer.transformLine(compilerFailLine)?.let {
-      assert(transformer.isFail)
-      assertEquals("Expected only one line", it.size, 1)
-      assertEquals("Compiler run failed:\n", it[0])
-    }
+    Ran 4 tests for test/A.t.sol:ATest
+    [FAIL: failed to set up invariant testing environment: No contracts to fuzz.] invariant_x() (runs: 0, calls: 0, reverts: 0)
+    [FAIL: big; counterexample: calldata=0x3c88 args=[1000]] testFuzz_a(uint256) (runs: 0, μ: 0, ~: 0)
+    Traces:
+      [706] ATest::testFuzz_a(1000)
+        └─ ← [Revert] big
 
-    assertEquals(listOf("subsequent line\n"), transformer.transformLine("subsequent line"))
+    [PASS] testOk() (gas: 187)
+    Suite result: FAILED. 1 passed; 2 failed; 0 skipped; finished in 7.30ms (4.54ms CPU time)
+
+    Ran 2 tests for test/B.t.sol:BTest
+    [PASS] testFuzz_ok(uint8,address) (runs: 50, μ: 829, ~: 858)
+    [SKIP] test_skipped() (gas: 0)
+    Suite result: ok. 1 passed; 0 failed; 1 skipped; finished in 2s (7.52ms CPU time)
+
+    Ran 3 test suites in 11.61ms (20.09ms CPU time): 3 tests passed, 2 failed, 1 skipped (6 total tests)
+
+    Failing tests:
+    Fuzz seed: 0x2b57 (use `--fuzz-seed` to reproduce)
+  """.trimIndent()
+
+  private fun transform(): List<String> {
+    val transformer = ForgeTestOutputTransformer(File("/project"))
+    return output.lines().flatMap { transformer.transformLine("$it\n") }
   }
 
-  fun testAllTestsRan() {
-    transformer.transformLine(summaryLine)?.let {
-      assert(transformer.allTestsRan)
-      assertNull("Expected no transformed output", it)
-      assertNull("Subsequent lines should not be transformed", transformer.transformLine("subsequent line"))
-    }
+  private fun messages() = transform().filter { it.startsWith("##teamcity") }.map { it.trimEnd() }
+
+  fun testTreeEvents() {
+    val events = messages().map { it.substringAfter("##teamcity[").substringBefore(" ") + " " + Regex("name='([^']*)'").find(it)!!.groupValues[1] }
+    assertEquals(
+      listOf(
+        "testSuiteStarted OtherTest", "testStarted testInOther()", "testFinished testInOther()", "testSuiteFinished OtherTest",
+        "testSuiteStarted ATest",
+        "testStarted invariant_x()", "testFailed invariant_x()", "testFinished invariant_x()",
+        "testStarted testFuzz_a(uint256)", "testFailed testFuzz_a(uint256)", "testFinished testFuzz_a(uint256)",
+        "testStarted testOk()", "testFinished testOk()", "testSuiteFinished ATest",
+        "testSuiteStarted BTest",
+        "testStarted testFuzz_ok(uint8,address)", "testFinished testFuzz_ok(uint8,address)",
+        "testStarted test_skipped()", "testIgnored test_skipped()", "testFinished test_skipped()",
+        "testSuiteFinished BTest",
+      ),
+      events
+    )
   }
 
-  fun testSuiteStart() {
-    transformer.transformLine(suiteStartLine("Counter"))?.let {
-      assertEquals("Counter", transformer.suiteName)
-      assertEquals("Expected only one line", it.size, 1)
-      assertEquals(teamcitySuiteStartLine("Counter"), it[0])
-    }
+  fun testFuzzFailureKeepsCounterexample() {
+    val failed = messages().first { it.startsWith("##teamcity[testFailed name='testFuzz_a(uint256)'") }
+    assertTrue(failed, failed.contains("message='big; counterexample: calldata=0x3c88 args=|[1000|]'"))
   }
 
-  fun testSuiteEnd() {
-    transformer.suiteName = "Counter"
-
-    transformer.transformLine(suiteEndLine("123µs"))?.let {
-      assertEquals("Expected only one line", it.size, 1)
-      assertEquals(teamcitySuiteEndLine("Counter", "0"), it[0])
-    }
-
-    transformer.transformLine(suiteEndLine("123ms"))?.let {
-      assertEquals("Expected only one line", it.size, 1)
-      assertEquals(teamcitySuiteEndLine("Counter", "123"), it[0])
-    }
-
-    transformer.transformLine(suiteEndLine("123s"))?.let {
-      assertEquals("Expected only one line", it.size, 1)
-      assertEquals(teamcitySuiteEndLine("Counter", "123000"), it[0])
-    }
+  fun testLocationHints() {
+    val messages = messages()
+    assertTrue(messages.any { it.startsWith("##teamcity[testSuiteStarted name='ATest' locationHint='solidity-test:///project/test/A.t.sol::ATest'") })
+    assertTrue(messages.any { it.startsWith("##teamcity[testStarted name='testFuzz_a(uint256)'") && it.contains("locationHint='solidity-test:///project/test/A.t.sol::ATest::testFuzz_a'") })
   }
 
-  fun testTestPassStart() {
-    transformer.transformLine(testPassLine("testIncrementSuccess"))?.let {
-      assertEquals("testIncrementSuccess()", transformer.activeTest)
-      assertEquals("Expected 2 lines", it.size, 2)
-      assertEquals(teamcityTestStartLine("testIncrementSuccess"), it[0])
-      assertEquals("${testPassLine("testIncrementSuccess")}\n", it[1])
-    }
-
-    assertEquals(listOf("subsequent line\n"), transformer.transformLine("subsequent line"))
+  fun testDurations() {
+    val finished = messages().filter { it.startsWith("##teamcity[testSuiteFinished") }
+    assertEquals(listOf("5", "7", "2000"), finished.map { Regex("duration='(\\d+)'").find(it)!!.groupValues[1] })
   }
 
-  fun testTestFailStart() {
-    transformer.transformLine(testFailLine("testIncrementFail", "some error"))?.let {
-      assertEquals("testIncrementFail()", transformer.activeTest)
-      assertEquals("Expected 3 lines", it.size, 3)
-      assertEquals(teamcityTestStartLine("testIncrementFail"), it[0])
-      assertEquals(teamcityTestFailLine("testIncrementFail", "some error"), it[1])
-      assertEquals("${testFailLine("testIncrementFail", "some error")}\n", it[2])
-    }
-
-    assertEquals(listOf("subsequent line\n"), transformer.transformLine("subsequent line"))
+  fun testKeepsOutputOutsideTests() {
+    val plain = transform().filterNot { it.startsWith("##teamcity") }.map { it.trimEnd() }
+    assertTrue(plain.contains("Warning (2072): Unused local variable."))
+    assertTrue(plain.contains("Fuzz seed: 0x2b57 (use `--fuzz-seed` to reproduce)"))
+    assertTrue(plain.contains("  [706] ATest::testFuzz_a(1000)"))
   }
 
-  fun testTestFinish() {
-    transformer.activeTest = "testIncrementSuccess()"
-
-    transformer.transformLine("")?.let {
-      assertEquals("Expected 2 lines", it.size, 2)
-      assertEquals(teamcityTestFinishLine("testIncrementSuccess"), it[0])
-      assertEquals("\n", it[1])
-    }
+  fun testCompilerFailureIsShown() {
+    val transformer = ForgeTestOutputTransformer()
+    assertEquals(listOf("Compiler run failed:\n"), transformer.transformLine("Compiler run failed:\n"))
+    assertEquals(listOf("Error (7576): Undeclared identifier.\n"), transformer.transformLine("Error (7576): Undeclared identifier.\n"))
   }
 }

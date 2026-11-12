@@ -5,16 +5,12 @@ import com.intellij.execution.RunManager
 import com.intellij.execution.actions.ConfigurationContext
 import com.intellij.execution.actions.LazyRunConfigurationProducer
 import com.intellij.execution.executors.DefaultRunExecutor
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Ref
 import com.intellij.psi.PsiElement
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
-import me.serce.solidity.lang.psi.Visibility
 
 class ForgeTestRunConfigurationProducer : LazyRunConfigurationProducer<ForgeTestRunConfiguration>() {
-  private val testNameRegex = Regex("(\\w+)\\.?(\\w+)?")
-
   override fun getConfigurationFactory() = ForgeTestRunConfigurationFactory(ForgeTestRunConfigurationType())
 
   override fun isConfigurationFromContext(
@@ -26,7 +22,7 @@ class ForgeTestRunConfigurationProducer : LazyRunConfigurationProducer<ForgeTest
 
     return when (element) {
       is SolFunctionDefinition -> {
-        element.isTestFunction() &&
+        element.isForgeTest() &&
           configuration.testName == element.name &&
           configuration.contractName == element.contract?.name
       }
@@ -50,11 +46,11 @@ class ForgeTestRunConfigurationProducer : LazyRunConfigurationProducer<ForgeTest
 
     when (element) {
       is SolFunctionDefinition -> {
-        if (element.isTestFunction()) {
+        if (element.isForgeTest()) {
           configuration.name = "${element.contract?.name}.${element.name}"
           configuration.testName = element.name ?: ""
           configuration.contractName = element.contract?.name ?: ""
-          configuration.workingDirectory = project.basePath ?: ""
+          configuration.workingDirectory = forgeWorkingDirectory(element)
           sourceElement.set(element)
           return true
         }
@@ -63,7 +59,7 @@ class ForgeTestRunConfigurationProducer : LazyRunConfigurationProducer<ForgeTest
       is SolContractDefinition -> {
         configuration.name = element.name ?: ""
         configuration.contractName = element.name ?: ""
-        configuration.workingDirectory = project.basePath ?: ""
+        configuration.workingDirectory = forgeWorkingDirectory(element)
         sourceElement.set(element)
         return true
       }
@@ -72,14 +68,14 @@ class ForgeTestRunConfigurationProducer : LazyRunConfigurationProducer<ForgeTest
     return false
   }
 
-  fun runTest(project: Project, fullTestName: String) {
+  /** Runs the tests of [contract], or only [test] when given, from the Foundry project of [element]. */
+  fun runTest(element: PsiElement, contract: String, test: String? = null) {
+    val project = element.project
+    val fullTestName = listOfNotNull(contract, test).joinToString(".")
     val configuration = ForgeTestRunConfiguration(project, configurationFactory, "Forge Test - $fullTestName")
-    configuration.workingDirectory = project.basePath ?: ""
-
-    testNameRegex.matchEntire(fullTestName)?.let { m ->
-      configuration.contractName = m.destructured.component1()
-      configuration.testName = m.destructured.component2()
-    }
+    configuration.workingDirectory = forgeWorkingDirectory(element)
+    configuration.contractName = contract
+    configuration.testName = test ?: ""
 
     val runManager = RunManager.getInstance(project)
     val runnerAndConfigurationSettings = runManager.createConfiguration(configuration, configurationFactory)
@@ -88,10 +84,4 @@ class ForgeTestRunConfigurationProducer : LazyRunConfigurationProducer<ForgeTest
       DefaultRunExecutor.getRunExecutorInstance()
     )
   }
-}
-
-private fun SolFunctionDefinition.isTestFunction(): Boolean {
-  // Check if the function name starts with 'test' and is public/external
-  return name?.startsWith("test") == true &&
-    (visibility == null || visibility == Visibility.PUBLIC || visibility == Visibility.EXTERNAL)
 }

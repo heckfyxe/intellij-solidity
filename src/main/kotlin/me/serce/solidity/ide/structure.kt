@@ -137,9 +137,14 @@ class SolTreeElement(item: PsiFile) : PsiTreeElementBase<PsiFile>(item) {
 
   override fun getChildrenBase(): Collection<StructureViewTreeElement> {
     val el = element ?: return emptyList()
+    // everything a file can declare, in source order
+    val leaves = el.children.filter {
+      it is SolFunctionDefinition || it is SolEventDefinition || it is SolErrorDefinition || it is SolEnumDefinition ||
+        it is SolConstantVariableDeclaration || it is SolUserDefinedValueTypeDefinition
+    }.filterIsInstance<SolNamedElement>()
     return (el.childrenOfType<SolContractDefinition>().map(::SolContractTreeElement) +
       el.childrenOfType<SolStructDefinition>().map(::SolStructTreeElement) +
-      el.childrenOfType<SolEnumDefinition>().map(::SolLeafTreeElement))
+      leaves.map(::SolLeafTreeElement))
       .sortedBy { it.element?.textOffset }
   }
 }
@@ -155,7 +160,7 @@ class SolContractTreeElement(item: SolContractDefinition) : SolNamedPsiTreeEleme
       it.userDefinedValueTypeDefinitionList + it.modifierDefinitionList +
      it.errorDefinitionList + it.enumDefinitionList + it.eventDefinitionList )
       .map(::SolLeafTreeElement) + it.structDefinitionList.map(::SolStructTreeElement)
-  } ?: emptyList()
+  }?.sortedBy { it.element?.textOffset } ?: emptyList()
 }
 
 class SolStructTreeElement(item: SolStructDefinition) : SolNamedPsiTreeElementBase<SolStructDefinition>(item) {
@@ -172,9 +177,14 @@ class SolLeafTreeElement(item: SolNamedElement) : PsiTreeElementBase<SolNamedEle
       is SolFunctionDefinition -> "${it.name ?: it.firstChild.text }${params(it.parameterListList.getOrNull(0))} ${it.returns?.let { "returns ${params(it)}"} ?: ""}"
       is SolVariableDeclaration -> "${it.name} : ${it.typeName?.text}"
       is SolStateVariableDeclaration -> "${it.name} : ${it.typeName.text}"
+      is SolEventDefinition -> "${it.name}${indexedParams(it.indexedParameterList)}"
+      is SolErrorDefinition -> "${it.name}${indexedParams(it.indexedParameterList)}"
       else -> it.name
     }
   }
+
+  private fun indexedParams(list: SolIndexedParameterList?): String =
+    list?.indexedParamDefList.orEmpty().joinToString(", ", "(", ")") { it.text.replace(Regex("\\s+"), " ") }
 
   private fun params(it: SolParameterList?): String {
     if (it == null) return "()"

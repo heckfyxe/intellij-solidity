@@ -195,6 +195,23 @@ class ForgeTestSettingsTest : BasePlatformTestCase() {
         )
     }
 
+    fun testTestAndContractFiltersAreAnchored() {
+        val configuration = ForgeTestRunConfiguration(project, ForgeTestRunConfigurationFactory(ForgeTestRunConfigurationType()), "t")
+        configuration.workingDirectory = myFixture.tempDirPath
+        configuration.testName = "testFoo"
+        configuration.contractName = "FooTest"
+        val settings = RunManager.getInstance(project).createConfiguration(configuration, configuration.factory!!)
+        val env = ExecutionEnvironmentBuilder.create(DefaultRunExecutor.getRunExecutorInstance(), settings).build()
+        val parameters = ForgeTestCommandLineState(configuration, env).generateCommandLine().parametersList.parameters
+        assertEquals("^testFoo\\(", parameters[parameters.indexOf("--match-test") + 1])
+        assertEquals("^FooTest$", parameters[parameters.indexOf("--match-contract") + 1])
+
+        val rerun = ForgeTestCommandLineState(configuration, env, mapOf("ATest" to setOf("testA", "testB"), "BTest" to setOf("testC")))
+            .generateCommandLine().parametersList.parameters
+        assertEquals("^(testA|testB|testC)\\(", rerun[rerun.indexOf("--match-test") + 1])
+        assertEquals("^(ATest|BTest)$", rerun[rerun.indexOf("--match-contract") + 1])
+    }
+
     private fun withUserHome(fakeHome: String, block: () -> Unit) {
         val old = System.getProperty("user.home")
         try {

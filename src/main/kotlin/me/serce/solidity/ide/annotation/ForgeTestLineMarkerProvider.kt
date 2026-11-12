@@ -6,9 +6,11 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.psi.PsiElement
 import me.serce.solidity.ide.run.ForgeTestRunConfigurationProducer
+import me.serce.solidity.ide.run.hasForgeTests
+import me.serce.solidity.ide.run.isForgeTest
+import me.serce.solidity.ide.run.isForgeTestFile
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
-import me.serce.solidity.lang.psi.Visibility
 import javax.swing.Icon
 
 class ForgeTestLineMarkerProvider : LineMarkerProvider {
@@ -23,30 +25,33 @@ class ForgeTestLineMarkerProvider : LineMarkerProvider {
     if (elements.isEmpty()) return
 
     val file = elements[0].containingFile ?: return
-    if (!file.name.endsWith(".t.sol")) return
+    if (!isForgeTestFile(file)) return
 
     for (element in elements) {
       when (element) {
         is SolContractDefinition -> {
+          if (!element.hasForgeTests()) continue
           element.identifier?.let { identifier ->
             result.add(
               createTestLineMarker(
                 identifier,
                 "Run Forge Tests in ${element.name}",
-                element.name ?: ""
+                element.name ?: "",
+                null
               )
             )
           }
         }
 
         is SolFunctionDefinition -> {
-          if (element.isTestFunction()) {
+          if (element.isForgeTest()) {
             element.identifier?.let { identifier ->
               result.add(
                 createTestLineMarker(
                   identifier,
                   "Run Forge Test ${element.name}",
-                  "${element.contract?.name}.${element.name}"
+                  element.contract?.name ?: continue,
+                  element.name
                 )
               )
             }
@@ -59,23 +64,19 @@ class ForgeTestLineMarkerProvider : LineMarkerProvider {
   private fun createTestLineMarker(
       element: PsiElement,
       tooltip: String,
-      testName: String
+      contract: String,
+      test: String?
   ): LineMarkerInfo<PsiElement> {
+    val testName = listOfNotNull(contract, test).joinToString(".")
     val producer = ForgeTestRunConfigurationProducer()
     return object : LineMarkerInfo<PsiElement>(
       element,
       element.textRange,
       testIcon,
       { tooltip },
-      { _, el -> producer.runTest(el.project, testName) },
+      { _, el -> producer.runTest(el, contract, test) },
         GutterIconRenderer.Alignment.LEFT,
       { testName }
     ) {}
-  }
-
-  private fun SolFunctionDefinition.isTestFunction(): Boolean {
-    // Check if function name starts with 'test' and is public/external
-    return name?.startsWith("test") == true &&
-      (visibility == null || visibility == Visibility.PUBLIC || visibility == Visibility.EXTERNAL)
   }
 }
