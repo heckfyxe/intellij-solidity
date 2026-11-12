@@ -313,6 +313,10 @@
         <configurationType implementation="me.serce.solidity.ide.run.ForgeTestRunConfigurationType"/>
         <runConfigurationProducer
                 implementation="me.serce.solidity.ide.run.ForgeTestRunConfigurationProducer" />
+        <configurationType implementation="me.serce.solidity.ide.run.ForgeScriptRunConfigurationType"/>
+        <runConfigurationProducer implementation="me.serce.solidity.ide.run.ForgeScriptRunConfigurationProducer"/>
+        <runLineMarkerContributor language="Solidity"
+                                  implementationClass="me.serce.solidity.ide.run.ForgeScriptRunLineMarkerContributor"/>
 
         <errorHandler implementation="me.serce.solidity.ide.SentryReportSubmitter"/>
 
