@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.hints
 
+import me.serce.solidity.lang.types.SolInternalTypeFactory
 import com.intellij.lang.documentation.AbstractDocumentationProvider
 import com.intellij.lang.documentation.DocumentationMarkup.*
 import com.intellij.openapi.util.ModificationTracker
@@ -220,7 +221,10 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
 
   private fun List<PsiElement>?.doc(separator: String = ", ", prefix: String = "", postfix : String = ""): String {
     return takeIf { it?.isNotEmpty() ?: false }
-      ?.joinToString(separator, prefix, postfix) { e -> e.colorizedTypeText() } ?: ""
+      ?.joinToString(separator, prefix, postfix) { e ->
+        if (e is SolParameterDef && e.identifier?.text == SolInternalTypeFactory.varargsId) varargsText(getSolType(e.typeName))
+        else e.colorizedTypeText()
+      } ?: ""
   }
   private fun SolContractDefinition.doc() : String {
     return "${contractType.docName} ${identifier.idName()}" +

@@ -15,6 +15,8 @@ import me.serce.solidity.ide.SolidityIcons
 import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.psi.*
+import me.serce.solidity.ide.hints.varargsText
+import me.serce.solidity.lang.types.SolInternalTypeFactory
 import me.serce.solidity.lang.types.SolType
 
 class SolFunctionCompletionContributor : CompletionContributor(), DumbAware {
@@ -149,6 +151,7 @@ private fun funcInType(elem: SolCallable): String = elem.parseParameters().joinT
 private fun formatParam(param: Pair<String?, SolType>): String {
   return when (param.first) {
     null -> param.second.toString()
+    SolInternalTypeFactory.varargsId -> varargsText(param.second)
     else -> "${param.first}: ${param.second}"
   }
 }

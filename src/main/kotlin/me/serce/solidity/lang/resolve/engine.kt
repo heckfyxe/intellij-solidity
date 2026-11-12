@@ -165,7 +165,13 @@ object SolResolver {
     }
     val filesOfScope =
       setOfNotNull(currentFile.virtualFile) + importsWithoutFileAliases.mapNotNull { it.file.virtualFile }
-    val elements = searchElementByStub(identifier, filesOfScope, currentFile.project)
+    // `import {A} from "x.sol"` makes only A visible, though members of A (such as its structs) stay reachable
+    val selective = importsWithoutFileAliases.filter { it.names.isNotEmpty() }
+    val fullyImported = importsWithoutFileAliases.filter { it.names.isEmpty() }.mapTo(hashSetOf()) { it.file } + currentFile
+    val elements = searchElementByStub(identifier, filesOfScope, currentFile.project).filterTo(hashSetOf()) { element ->
+      element.parent !is PsiFile || element.containingFile in fullyImported ||
+        selective.none { it.file == element.containingFile && element !in it.names }
+    }
 
     return if (elements.isNotEmpty()) {
       elements to elements.first().containingFile
@@ -317,9 +323,8 @@ object SolResolver {
     return result + result.map { record ->
       val contractsOrLibsInFile = record.file.childrenOfType<SolContractDefinition>()
       //support only with one contract or lib by file
-      if (contractsOrLibsInFile.size == 1 && isExternalLibrary(contractsOrLibsInFile.first()) || record.names.any {
-          it is SolImportAlias
-        }) {
+      // selective and aliased imports don't bring in what the imported file imports itself
+      if (contractsOrLibsInFile.size == 1 && isExternalLibrary(contractsOrLibsInFile.first()) || record.names.isNotEmpty()) {
         emptyList()
       } else {
         collectImports(record.file.childrenOfType<SolImportDirective>(), visited)
@@ -447,7 +452,9 @@ object SolResolver {
           .toList().let {
             if (it.size == 1 || it.any { it !is SolContractDefinition }) it
             // resolve by imports to distinguish elements with the same name
-            else resolveTypeNameUsingImports(element).toList()
+            else resolveTypeNameUsingImports(element).filterNot { found ->
+              found.isPrivateMember() && found.findContract() != element.findContract()
+            }
           }
       }
     }
@@ -634,6 +641,7 @@ object SolResolver {
           .filterNotNull()
           .map { lexicalDeclarations(visitedScopes, it, place) }
           .flatten()
+          .filterNot { it.isPrivateMember() } // private members are visible only inside the contract declaring them
         childrenScope + extendsScope + scope.functionDefinitionList
       }
       is SolFunctionDefinition -> {
@@ -661,16 +669,8 @@ object SolResolver {
           .flatten()
       }
 
-      is SolBlock -> {
-        scope.statementList.asSequence()
-          .map { lexicalDeclarations(visitedScopes, it, place) }
-          .flatten()
-      }
-      is SolUncheckedBlock -> {
-        scope.statementList.asSequence()
-          .map { lexicalDeclarations(visitedScopes, it, place) }
-          .flatten()
-      }
+      is SolBlock -> scope.statementList.declaredBefore(place).flatMap { lexicalDeclarations(visitedScopes, it, place) }
+      is SolUncheckedBlock -> scope.statementList.declaredBefore(place).flatMap { lexicalDeclarations(visitedScopes, it, place) }
 
       is SolidityFile -> {
         RecursionManager.doPreventingRecursion(scope.name, true) {
@@ -691,9 +691,11 @@ object SolResolver {
             .filterIsInstance<SolEnumDefinition>()
 
           val imports = scopeChildren.asSequence().filterIsInstance<SolImportDirective>()
-            .mapNotNull { it.importedFile }
-            .map { lexicalDeclarations(visitedScopes, it, place) }
-            .flatten()
+            .flatMap { import ->
+              val declarations = import.importedFile?.let { lexicalDeclarations(visitedScopes, it, place) } ?: emptySequence()
+              val selected = import.importAliasedPairList.mapNotNullTo(hashSetOf()) { it.userDefinedTypeName.name }
+              if (selected.isEmpty()) declarations else declarations.filter { it.name in selected }
+            }
           imports + contracts + constantVariables + freeFunctions + userDefinedTypes + enums
         } ?: emptySequence()
       }
@@ -722,6 +724,18 @@ object SolResolver {
     }
   }
 
+}
+
+/** The statements of a block visible at [place]: in a block around it, only those that start before it. */
+private fun List<SolStatement>.declaredBefore(place: PsiElement): Sequence<SolStatement> {
+  val offset = place.textRange.startOffset
+  return asSequence().filter { it.containingFile != place.containingFile || it.textRange.startOffset < offset }
+}
+
+private fun SolNamedElement.isPrivateMember(): Boolean = when (this) {
+  is SolStateVariableDeclaration -> visibility == Visibility.PRIVATE
+  is SolFunctionDefinition -> visibility == Visibility.PRIVATE
+  else -> false
 }
 
 /** Whether a member with this visibility can be referenced as `C.member` (a library's internal ones can be too). */

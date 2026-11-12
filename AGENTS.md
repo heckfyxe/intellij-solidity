@@ -60,11 +60,16 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 
 ## Formatter and Typing
 
-* Enter/`}` indentation comes from the formatting model (`SolFormattingBlock.getChildAttributes`), so the model must
-  stay available even when Foundry or no formatter is selected. Don't block it with a `lang.formatter.restriction`;
-  `SolidityFormattingModelBuilder` instead returns a no-op model for `FormattingMode.REFORMAT` in that case.
-* Typing behaviour is covered by `SolAutoIdentationTest` (fixtures in `fixtures/auto_ident/`) and
-  `SolExternalFormatterTypingTest`.
+* The plugin has no formatter of its own: Reformat Code runs `forge fmt` (`SolidityExternalFormatter`), only when
+  forge is installed (automatic mode) or configured; format on save is the platform's Actions on Save.
+* Enter/`}` indentation comes from the formatting model (`SolFormattingBlock.getChildAttributes`), which only computes
+  indents: `SolidityFormattingModelBuilder` returns a no-op model for `FormattingMode.REFORMAT` and blocks have no
+  spacing. Code that edits PSI must therefore produce well-laid-out text itself (e.g. `layoutImports` after adding
+  imports); nothing reformats it afterwards.
+* Tests run with the formatter set to Disabled (`SolLightPlatformCodeInsightFixtureTestCase.setUp`), so they don't
+  depend on forge being installed; formatter tests select it explicitly.
+* Typing behaviour is covered by `SolAutoIdentationTest` (fixtures in `fixtures/auto_ident/`),
+  `SolExternalFormatterTypingTest`, `SolQuoteTypingTest` and `SolBraceTypingTest`.
 
 ## Chain Failures
 

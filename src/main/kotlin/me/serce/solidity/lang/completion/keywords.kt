@@ -1,6 +1,7 @@
 package me.serce.solidity.lang.completion
 
 import com.intellij.codeInsight.completion.*
+import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.openapi.editor.EditorModificationUtil
 import com.intellij.openapi.project.DumbAware
@@ -11,6 +12,9 @@ import com.intellij.util.ProcessingContext
 import me.serce.solidity.lang.core.SolidityTokenTypes
 
 const val KEYWORD_PRIORITY = -1.0
+
+/** The compiler version new `pragma solidity` lines start from. */
+const val LATEST_SOLIDITY = "0.8.38"
 
 val KEYWORD_TYPE = arrayOf(
   "address ",
@@ -29,15 +33,11 @@ val KEYWORD_TYPE = arrayOf(
   "int64 ",
   "int128 ",
   "int256 ",
+  "uint ",
+  "int ",
   "bytes ",
-  "bytes4 ",
-  "bytes8 ",
-  "bytes16 ",
-  "bytes20 ",
-  "bytes32 ",
-  "byte ",
   "bool "
-)
+) + (1..32).map { "bytes$it " }
 
 val KEYWORD_CONTRACT_BODY = arrayOf(
   "constructor", "function ", "modifier ", "fallback", "receive", "mapping", "this"
@@ -67,7 +67,11 @@ val KEYWORD_FUNCTION = arrayOf(
   "continue",
   "try",
   "catch",
-  "emit"
+  "emit",
+  "for",
+  "unchecked",
+  "true",
+  "false"
 )
 
 val KEYWORD_ON_FUNCTION = arrayOf("external ", "internal ", "public ", "private ", "virtual ", "override", "returns")
@@ -83,7 +87,21 @@ class SolKeywordCompletionProvider(private vararg val keywords: String) : Comple
     parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet
   ) {
     if (isAfterDot(parameters.position)) return // `x.` is followed by a member, never by a keyword
-    keywords.forEach { result.addElement(LookupElementBuilder.create(it).keywordPrioritised()) }
+    keywords.forEach { keyword ->
+      val name = keyword.trimEnd()
+      val element = LookupElementBuilder.create(name)
+      // a keyword written with a trailing space is followed by a name; add the space only when none follows
+      result.addElement((if (name != keyword) element.withInsertHandler(SpaceAfter) else element).keywordPrioritised())
+    }
+  }
+
+  private object SpaceAfter : InsertHandler<LookupElement> {
+    override fun handleInsert(context: InsertionContext, item: LookupElement) {
+      val offset = context.tailOffset
+      val text = context.document.charsSequence
+      if (offset >= text.length || !text[offset].isWhitespace()) context.document.insertString(offset, " ")
+      context.editor.caretModel.moveToOffset(offset + 1)
+    }
   }
 
   private fun isAfterDot(position: PsiElement): Boolean =
@@ -117,18 +135,16 @@ class SolKeywordCompletionContributor : CompletionContributor(), DumbAware {
           .bold()
           .withTailText(" ^...")
           .withInsertHandler { ctx, _ ->
-            ctx.document.insertString(ctx.selectionEndOffset, " ^0.8.0;")
-            EditorModificationUtil.moveCaretRelatively(ctx.editor, 9)
+            // the caret lands after `^`, on the version
+            ctx.document.insertString(ctx.selectionEndOffset, " ^$LATEST_SOLIDITY;")
+            EditorModificationUtil.moveCaretRelatively(ctx.editor, 2)
           }
         result.addElement(PrioritizedLookupElement.withPriority(pragmaBuilder, KEYWORD_PRIORITY - 5))
       }
     })
 
-    extend(
-      CompletionType.BASIC,
-      insideFunction(),
-      SolKeywordCompletionProvider(*(KEYWORD_FUNCTION + KEYWORD_ON_FUNCTION + KEYWORD_STATE_MUTABILITY + KEYWORD_TYPE))
-    )
+    extend(CompletionType.BASIC, insideCodeBlock(), SolKeywordCompletionProvider(*(KEYWORD_FUNCTION + KEYWORD_TYPE)))
+    extend(CompletionType.BASIC, inFunctionHeader(), SolKeywordCompletionProvider(*(KEYWORD_ON_FUNCTION + KEYWORD_STATE_MUTABILITY)))
 
     extend(
       CompletionType.BASIC,

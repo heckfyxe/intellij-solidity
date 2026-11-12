@@ -172,7 +172,7 @@ private ContractPart ::=
     | UserDefinedValueTypeDefinition
     | ConstructorDefinition
 
-InheritanceSpecifier ::= UserDefinedTypeName ( '(' Expression ( ',' Expression )* ')' )?
+InheritanceSpecifier ::= UserDefinedTypeName CallArgumentList?
 
 VisibilityModifier ::= ( public | internal | private )
 private transient_kw ::= &('transient' (Identifier | VisibilityModifier)) Identifier
@@ -244,11 +244,12 @@ VirtualSpecifier ::= virtual {pin=1}
 OverrideSpecifier ::= override ( '(' UserDefinedTypeName (',' UserDefinedTypeName)* ')' )? {pin=1}
 
 FunctionVisibilitySpecifier ::= VisibilitySpecifier | VirtualSpecifier | OverrideSpecifier
-ModifierInvocation ::= VarLiteral ('(' ModifierInvocationCallArguments ')')? {
+ModifierInvocation ::= VarLiteral CallArgumentList? {
     implements = "me.serce.solidity.lang.psi.SolModifierInvocationElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolModifierInvocationMixin"
 }
-private ModifierInvocationCallArguments ::= FunctionCallArguments
+// pinned, so that unfinished arguments like `A(` or `A(1, ` stay inside the base or modifier for parameter info
+private CallArgumentList ::= '(' FunctionCallArguments? ')' {pin=1}
 
 ConstructorDefinition ::= constructor ParameterList
                          ( FunctionVisibilitySpecifier | StateMutabilitySpecifier | ModifierInvocation)*
@@ -521,7 +522,8 @@ FunctionCallExpression ::= Expression FunctionInvocation {
 }
 
 FunctionInvocation ::= MapExpression? '(' FunctionCallArguments? ')'
-FunctionCallArguments ::= MapExpression | Expression? ( ',' Expression )*
+FunctionCallArguments ::= MapExpression | Expression? NextCallArgument*
+private NextCallArgument ::= ',' Expression {pin=1}
 MapExpressionClause ::= Identifier ':' (Expression | MapExpression) {pin=2}
 private UnfinishedMapExpression ::= '{' MapExpressionClause (',' MapExpressionClause )* {
     pin=1

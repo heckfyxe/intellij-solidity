@@ -4,7 +4,6 @@ import com.intellij.codeInsight.completion.*
 import com.intellij.codeInsight.completion.impl.CamelHumpMatcher
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
-import com.intellij.openapi.editor.EditorModificationUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.patterns.*
@@ -182,7 +181,16 @@ private inline fun <reified I : PsiElement> psiElement(): PsiElementPattern.Capt
 
 fun LookupElementBuilder.keywordPrioritised(): LookupElement = PrioritizedLookupElement.withPriority(this, KEYWORD_PRIORITY)
 
+/** Adds `()` (and `;` when [finish]) after the name, or steps into the parentheses already there. */
 fun LookupElementBuilder.insertParenthesis(finish: Boolean): LookupElementBuilder = this.withInsertHandler { ctx, _ ->
-  ctx.document.insertString(ctx.selectionEndOffset, if (finish) "();" else "()")
-  EditorModificationUtil.moveCaretRelatively(ctx.editor, 1)
+  val text = ctx.document.charsSequence
+  var next = ctx.tailOffset
+  while (next < text.length && (text[next] == ' ' || text[next] == '\t')) next++
+  if (next < text.length && text[next] == '(') {
+    ctx.editor.caretModel.moveToOffset(next + 1)
+  } else {
+    val tail = ctx.tailOffset
+    ctx.document.insertString(tail, if (finish) "();" else "()")
+    ctx.editor.caretModel.moveToOffset(tail + 1)
+  }
 }

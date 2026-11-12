@@ -53,6 +53,12 @@ fun insideContract(): ElementPattern<PsiElement> = psiElement()
 
 fun insideFunction(): ElementPattern<PsiElement> = psiElement().inside(psiElement(SolFunctionDefinition::class.java))
 
+/** Where statements go: inside the body of a function, constructor or modifier. */
+fun insideCodeBlock(): ElementPattern<PsiElement> = psiElement().inside(SolBlock::class.java)
+
+/** Between a function's name and its body, where visibility and mutability go. */
+fun inFunctionHeader(): ElementPattern<PsiElement> = psiElement().inside(SolFunctionDefinition::class.java).andNot(insideCodeBlock())
+
 fun inFunctionParameterDef(): ElementPattern<PsiElement> = psiElement()
   .inside(SolParameterDef::class.java)
 

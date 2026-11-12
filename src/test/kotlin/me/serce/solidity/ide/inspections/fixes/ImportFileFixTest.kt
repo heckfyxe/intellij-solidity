@@ -15,7 +15,7 @@ class ImportFileFixTest : SolTestBase() {
     val ref = PsiTreeUtil.findChildrenOfType(main, SolReferenceElement::class.java).first { it.text == "B" }
     ImportFileFix(ref).invoke(project, main, ref, ref)
     PsiDocumentManager.getInstance(project).commitAllDocuments()
-    val expected = "import \"./B.sol\";contract Main is B {}"
+    val expected = "import \"./B.sol\";\n\ncontract Main is B {}"
     assertEquals(expected, main.text.trim())
   }
 

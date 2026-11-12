@@ -226,4 +226,24 @@ class SolKeywordCompletion : SolCompletionTestBase() {
      }
   """
   )
+
+  fun testKeywordDoesNotAddSecondSpace() = checkResultAfterCompletion(
+    "contract A { function f() public { uint25/*caret*/ x; } }",
+    "contract A { function f() public { uint256 <caret>x; } }"
+  )
+
+  fun testKeywordAddsSpace() = checkResultAfterCompletion(
+    "contract A { function f() public { uint25/*caret*/} }",
+    "contract A { function f() public { uint256 <caret>} }"
+  )
+
+  fun testStatementKeywordsInsideBody() = checkCompletion(hashSetOf("for", "unchecked", "true", "false"), """
+    contract A { function f() public { /*caret*/ } }
+  """)
+
+  fun testNoVisibilityKeywordsInsideBody() {
+    InlineFile("contract A { function f() public { pu/*caret*/ } }").withCaret()
+    val lookups = myFixture.completeBasic()?.map { it.lookupString }.orEmpty()
+    assertFalse(lookups.toString(), "public" in lookups || "pure" in lookups)
+  }
 }

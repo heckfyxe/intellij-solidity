@@ -8,13 +8,15 @@ enum class ConfigurationMode {
 }
 
 enum class FormatterType {
-  INTELLIJ_SOLIDITY,
+  /** forge fmt runs on Reformat Code (and on save, when Reformat code is enabled in Actions on Save). */
   FOUNDRY,
-  DISABLED
+  DISABLED,
+  /** The plugin's own formatter, which was removed; read from older settings and treated as [FOUNDRY]. */
+  INTELLIJ_SOLIDITY,
 }
 
 class SoliditySettingsState : BaseState() {
-  var formatterType by enum(FormatterType.INTELLIJ_SOLIDITY)
+  var formatterType by enum(FormatterType.FOUNDRY)
   var configurationMode by enum(ConfigurationMode.AUTOMATIC)
   var executablePath by string()
   var configPath by string()

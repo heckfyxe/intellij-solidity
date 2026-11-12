@@ -20,7 +20,6 @@ open class SolFormattingBlock(
   private val indent: Indent,
   private val wrap: Wrap?,
   private val codeStyleSettings: CodeStyleSettings,
-  private val spacingBuilder: SpacingBuilder,
   private val isEnforceChildIndent: Boolean,
   private val extra: Boolean
 ) : ASTBlock {
@@ -130,7 +129,7 @@ open class SolFormattingBlock(
       else -> if (enforceChildIndent) Indent.getNormalIndent() else Indent.getNoneIndent()
     }
     val extra = parentType == TERNARY_EXPRESSION && (childType == QUESTION || childType == COLON) && parent?.treeParent?.elementType != VARIABLE_DEFINITION
-    return SolFormattingBlock(child, alignment, result, null, codeStyleSettings, spacingBuilder, enforceChildIndent, extra)
+    return SolFormattingBlock(child, alignment, result, null, codeStyleSettings, enforceChildIndent, extra)
   }
 
   private fun newChildIndent(childIndex: Int): Indent? {
@@ -189,14 +188,8 @@ open class SolFormattingBlock(
   override fun getIndent(): Indent? = indent
   override fun getAlignment(): Alignment? = alignment
 
-  override fun getSpacing(child1: Block?, child2: Block): Spacing? {
-    val node2 = (child2 as? SolFormattingBlock)?.astNode
-    if (node2 != null && node2.elementType == COMMENT && node2.treeParent?.elementType != YUL_BLOCK) {
-      // SpacingBuilder does not allow to use the KeepingFirstColumnSpacing option, so calling it directly
-      return Spacing.createKeepingFirstColumnSpacing(0, Int.MAX_VALUE, true, 1)
-    }
-    return spacingBuilder.getSpacing(this, child1, child2)
-  }
+  // never used for reformatting (see SolidityFormattingModelBuilder), so whitespace is always kept as typed
+  override fun getSpacing(child1: Block?, child2: Block): Spacing? = null
 
   override fun getChildAttributes(newChildIndex: Int): ChildAttributes =
     ChildAttributes(newChildIndent(newChildIndex), null)

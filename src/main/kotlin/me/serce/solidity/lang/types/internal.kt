@@ -137,22 +137,22 @@ class SolInternalTypeFactory(project: Project) {
             * ABI-encodes the given arguments
             * @custom:no_validation
             */        
-            function encode(data) returns (bytes memory);
+            function encode(data $varargsId) returns (bytes memory);
             /**
             * Performs packed encoding of the given arguments. Note that packed encoding can be ambiguous! 
             * @custom:no_validation
             */        
-            function encodePacked(data) returns (bytes memory); 
+            function encodePacked(data $varargsId) returns (bytes memory); 
             /**
             * ABI-encodes the given arguments starting from the second and prepends the given four-byte selector
             * @custom:no_validation
             */        
-            function encodeWithSelector(bytes4 selector) returns (bytes memory);
+            function encodeWithSelector(bytes4 selector, data $varargsId) returns (bytes memory);
             /**
             * Equivalent to abi.encodeWithSelector(bytes4(keccak256(bytes(signature))), ...)
             * @custom:no_validation
             */        
-            function encodeWithSignature(string memory signature) returns (bytes memory);
+            function encodeWithSignature(string memory signature, data $varargsId) returns (bytes memory);
             /**
             * ABI-encodes a call to functionPointer with the arguments found in the tuple. Performs a full type-check, ensuring the types match the function signature. Result equals abi.encodeWithSelector(functionPointer.selector, (...))                   
             * @custom:no_validation

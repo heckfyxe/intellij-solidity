@@ -27,7 +27,7 @@ class ImportFileActionTest : SolTestBase() {
       val action = ImportFileAction(myFixture.editor, source, setOf(to))
       action.execute()
       PsiDocumentManager.getInstance(project).commitAllDocuments()
-      val expectedText = "import \"$expected\";contract Main {}"
+      val expectedText = "import \"$expected\";\n\ncontract Main {}"
       assertEquals(expectedText, source.text.trim())
     }
 
@@ -57,7 +57,7 @@ class ImportFileActionTest : SolTestBase() {
     action.execute()
     PsiDocumentManager.getInstance(project).commitAllDocuments()
 
-    assertEquals("import \"@oz/token/ERC20.sol\";contract Main {}", source.text.trim())
+    assertEquals("import \"@oz/token/ERC20.sol\";\n\ncontract Main {}", source.text.trim())
   }
 
 }

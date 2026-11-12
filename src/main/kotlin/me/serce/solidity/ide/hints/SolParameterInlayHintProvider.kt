@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.hints
 
+import me.serce.solidity.lang.types.SolInternalTypeFactory
 import com.intellij.codeInsight.hints.InlayInfo
 import com.intellij.codeInsight.hints.InlayParameterHintsProvider
 import com.intellij.psi.PsiElement
@@ -49,6 +50,8 @@ fun provideArgumentNameHints(element: SolFunctionCallElement): List<InlayInfo> {
   // Named arguments already show their parameter names in the source.
   if (args.firstOrNull() is SolMapExpression) return emptyList()
 
-  val params = element.resolveDefinitions()?.singleOrNull()?.parseParameters() ?: return emptyList()
+  // the arguments a variadic parameter takes have no names to show
+  val params = element.resolveDefinitions()?.singleOrNull()?.parseParameters()
+    ?.filter { it.first != SolInternalTypeFactory.varargsId } ?: return emptyList()
   return params.zip(args).map { (param, arg) -> InlayInfo(param.first ?: param.second.toString(), arg.startOffset) }
 }

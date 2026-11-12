@@ -32,9 +32,7 @@ class SolCreateFileActionTest: SolLightPlatformCodeInsightFixtureTestCase() {
       pragma solidity ^0.8.10;
       
       contract myContract {
-          constructor(){
-      
-          }
+          constructor() {}
       }
       
       """.trimIndent()

@@ -40,7 +40,7 @@ class SolidityAnnotator : Annotator {
       is SolMemberAccessExpression -> {
         when (element.expression.firstChild.text) {
           "super" -> applyColor(holder, element.expression.firstChild, SolColor.KEYWORD)
-          "msg", "block", "abi" -> applyColor(holder, element.expression.firstChild, SolColor.GLOBAL)
+          in globalKeywordList() -> applyColor(holder, element.expression.firstChild, SolColor.GLOBAL)
         }
 
         when (val elementRef: SolElement? = element.reference?.resolve()) {
@@ -115,15 +115,14 @@ class SolidityAnnotator : Annotator {
           "keccak256" -> applyColor(holder, element.firstChild, SolColor.GLOBAL_FUNCTION_CALL)
           "require" -> applyColor(holder, element.firstChild, SolColor.KEYWORD)
           "assert" -> applyColor(holder, element.firstChild, SolColor.KEYWORD)
-          else -> when (SolResolver.resolveTypeNameUsingImports(element).firstOrNull()) {
+          // one import-aware resolve answers errors, events and structs; only the rest needs the reference
+          else -> when (val resolved = SolResolver.resolveTypeNameUsingImports(element).firstOrNull()) {
             is SolErrorDefinition -> applyColor(holder, element.referenceNameElement, SolColor.ERROR_NAME)
             is SolEventDefinition -> applyColor(holder, element.referenceNameElement, SolColor.EVENT_NAME)
             else -> element.firstChild.let {
-              if (it is SolPrimaryExpression && SolResolver.resolveTypeNameUsingImports(element.firstChild)
-                  .filterIsInstance<SolStructDefinition>().isNotEmpty()
-              ) {
+              if (it is SolPrimaryExpression && resolved is SolStructDefinition) {
                 applyColor(holder, element.referenceNameElement, SolColor.STRUCT_NAME)
-              } else if (element.referenceNameElement.reference?.resolve() is SolContractDefinition) {
+              } else if (resolved is SolContractDefinition || element.referenceNameElement.reference?.resolve() is SolContractDefinition) {
                 applyColor(holder, element.referenceNameElement, SolColor.CONTRACT_NAME)
               } else {
                 applyColor(holder, element.referenceNameElement, SolColor.FUNCTION_CALL)
@@ -191,7 +190,7 @@ class SolidityAnnotator : Annotator {
   }
 
   private fun globalKeywordList(): List<String> {
-    return listOf("msg", "block", "abi")
+    return listOf("msg", "block", "tx", "abi")
   }
 
   private fun applyColor(holder: AnnotationHolder, element: PsiElement, color: SolColor) {

@@ -137,4 +137,9 @@ class SolFunctionsCompletionTest : SolCompletionTestBase() {
             }
           """
   )
+
+  fun testCompletionStepsIntoExistingParentheses() = checkResultAfterCompletion(
+    "contract A { function bar(uint a) public {} function f() public { ba/*caret*/(1); } }",
+    "contract A { function bar(uint a) public {} function f() public { bar(<caret>1); } }"
+  )
 }

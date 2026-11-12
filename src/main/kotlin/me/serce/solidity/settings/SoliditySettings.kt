@@ -16,7 +16,7 @@ class SoliditySettings :
     }
 
   var formatterType: FormatterType
-    get() = state.formatterType
+    get() = state.formatterType.takeIf { it != FormatterType.INTELLIJ_SOLIDITY } ?: FormatterType.FOUNDRY
     set(value) {
       state.formatterType = value
     }

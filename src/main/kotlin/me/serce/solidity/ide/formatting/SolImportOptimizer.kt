@@ -2,7 +2,10 @@ package me.serce.solidity.ide.formatting
 
 import com.intellij.application.options.CodeStyle
 import com.intellij.lang.ImportOptimizer
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiParserFacade
+import com.intellij.psi.PsiWhiteSpace
 import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.util.childrenOfType
 import com.intellij.psi.util.descendantsOfType
@@ -60,6 +63,7 @@ class SolImportOptimizer : ImportOptimizer {
     list.forEach { it.delete() }
     imports.reversed().forEach { parent.addAfter(it, first) }
     parent.childrenOfType<SolImportDirective>().reversed().filter { SolResolver.collectUsedElements(it).isEmpty() }.forEach { it.delete() }
+    layoutImports(first.containingFile)
   }
 
   private fun processLight(file: PsiFile, list: List<SolImportDirective>): Runnable {
@@ -76,6 +80,38 @@ class SolImportOptimizer : ImportOptimizer {
                     it.first.replace(it.second)
                 }
             }
+            layoutImports(file)
         }
     }
 }
+
+/**
+ * Puts imports on consecutive lines with a blank line around the block, the way forge fmt lays them out. Nothing
+ * reformats PSI edits in Solidity files, so code that adds or removes imports calls this itself.
+ */
+fun layoutImports(file: PsiFile) {
+  val imports = file.children.filterIsInstance<SolImportDirective>()
+  if (imports.isEmpty()) return
+  val facade = PsiParserFacade.getInstance(file.project)
+  fun separate(before: PsiElement, after: PsiElement, lineBreaks: String) {
+    val between = generateSequence(before.nextSibling) { it.nextSibling }.takeWhile { it != after }.toList()
+    if (between.any { it !is PsiWhiteSpace }) return // a comment in between stays where it is
+    // keep the indentation of the line the next element is on
+    val indent = between.joinToString("") { it.text }.let { if ('\n' in it) it.substringAfterLast('\n') else "" }
+    between.forEach { it.delete() }
+    file.addAfter(facade.createWhiteSpaceFromText(lineBreaks + indent), before)
+  }
+  for (import in imports) {
+    val previous = import.prevSiblingSkipping()
+    if (previous == null) { // the file starts with it
+      generateSequence(import.prevSibling) { it.prevSibling }.toList().forEach { it.delete() }
+      continue
+    }
+    separate(previous, import, if (previous is SolImportDirective) "\n" else "\n\n")
+  }
+  val last = imports.last()
+  last.nextSiblingSkipping()?.let { separate(last, it, "\n\n") }
+}
+
+private fun PsiElement.prevSiblingSkipping(): PsiElement? = generateSequence(prevSibling) { it.prevSibling }.firstOrNull { it !is PsiWhiteSpace }
+private fun PsiElement.nextSiblingSkipping(): PsiElement? = generateSequence(nextSibling) { it.nextSibling }.firstOrNull { it !is PsiWhiteSpace }

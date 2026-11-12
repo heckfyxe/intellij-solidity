@@ -19,6 +19,7 @@ import me.serce.solidity.settings.FormatterType
 import me.serce.solidity.settings.SoliditySettings
 import org.jetbrains.annotations.VisibleForTesting
 import java.nio.charset.StandardCharsets
+import java.io.File
 import java.nio.file.Paths
 import java.util.*
 import java.util.concurrent.ExecutionException
@@ -30,20 +31,13 @@ class SolidityExternalFormatter : AsyncDocumentFormattingService() {
     val project = formattingContext.project
     val settings = SoliditySettings.getInstance(project)
 
-    if (settings.formatterType == FormatterType.INTELLIJ_SOLIDITY) {
-      return null
-    }
-
     val psiFile: PsiFile = request.context.containingFile
-    val foundryExePath = resolveForgeExecutable(
-      settings.formatterFoundryExecutablePath,
-      settings.formatterConfigurationMode,
-      SystemInfo.isWindows
-    )
+    val foundryExePath = forgeExecutable(settings)
 
     return try {
-      val projectPath = project.guessProjectDir()?.canonicalPath
-      val cmd = generateCmd(foundryExePath, projectPath, settings)
+      // forge fmt reads the [fmt] section of the foundry.toml it finds from its working directory
+      val workDir = foundryRoot(psiFile) ?: project.guessProjectDir()?.canonicalPath
+      val cmd = generateCmd(foundryExePath, workDir, settings)
       val handler = OSProcessHandler(cmd)
       handler.processInput.use { outputStream ->
         outputStream.write(psiFile.text.toByteArray())
@@ -125,6 +119,10 @@ class SolidityExternalFormatter : AsyncDocumentFormattingService() {
     return EnumSet.noneOf(Feature::class.java)
   }
 
+  /**
+   * Like other external formatters, forge fmt takes over Reformat Code only when it can run: with automatic
+   * configuration that means forge is installed; a manually configured path is always used, so mistakes are reported.
+   */
   override fun canFormat(file: PsiFile): Boolean {
     if (file !is SolidityFile) {
       return false
@@ -132,9 +130,15 @@ class SolidityExternalFormatter : AsyncDocumentFormattingService() {
     val project: Project = file.project
     val settings = SoliditySettings.getInstance(project)
     return when (settings.formatterType) {
-      FormatterType.FOUNDRY -> true
       FormatterType.DISABLED -> false
-      FormatterType.INTELLIJ_SOLIDITY -> false
+      else -> settings.formatterConfigurationMode == ConfigurationMode.MANUAL || File(forgeExecutable(settings)).canExecute()
     }
   }
+
+  private fun forgeExecutable(settings: SoliditySettings): String =
+    resolveForgeExecutable(settings.formatterFoundryExecutablePath, settings.formatterConfigurationMode, SystemInfo.isWindows)
+
+  /** The closest folder above the file that has a foundry.toml. */
+  private fun foundryRoot(file: PsiFile): String? =
+    generateSequence(file.virtualFile?.parent) { it.parent }.firstOrNull { it.findChild("foundry.toml") != null }?.path
 }

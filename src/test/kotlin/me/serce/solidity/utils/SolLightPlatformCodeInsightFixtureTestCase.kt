@@ -7,10 +7,18 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.containers.ContainerUtil
+import me.serce.solidity.settings.FormatterType
+import me.serce.solidity.settings.SoliditySettings
 
 abstract class SolLightPlatformCodeInsightFixtureTestCase : BasePlatformTestCase() {
   private var myBackedUpPlatformPrefix: String? = null
   private val myIsSmallIde: Boolean = false
+
+  override fun setUp() {
+    super.setUp()
+    // forge fmt, the default formatter, runs whenever forge is installed; tests that need it select it themselves
+    SoliditySettings.getInstance(project).formatterType = FormatterType.DISABLED
+  }
 
   protected fun setUpProjectSdk() {
     ApplicationManager.getApplication().runWriteAction {

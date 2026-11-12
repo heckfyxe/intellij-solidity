@@ -2,6 +2,7 @@ package me.serce.solidity.settings
 
 import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.options.BoundSearchableConfigurable
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
@@ -39,17 +40,17 @@ class SolidityConfigurable(internal val project: Project) : BoundSearchableConfi
         lateinit var foundryFormatter: JRadioButton
         buttonsGroup {
           row {
-            radioButton("Intellij-Solidity")
-              .bindSelected(SelectedWhen(settings::formatterType, FormatterType.INTELLIJ_SOLIDITY))
-          }
-          row {
-            foundryFormatter = radioButton("Foundry")
+            foundryFormatter = radioButton("forge fmt")
               .bindSelected(SelectedWhen(settings::formatterType, FormatterType.FOUNDRY)).component
+            helpLabel(
+              "Reformat Code runs forge fmt with the [fmt] settings of the nearest foundry.toml. " +
+                "Typing only indents new lines; it never reformats code."
+            )
           }
           row {
             radioButton("Disabled")
               .bindSelected(SelectedWhen(settings::formatterType, FormatterType.DISABLED))
-            helpLabel("Disable the built-in formatter to enable external formatters such as Prettier")
+            helpLabel("Leave Solidity files to another formatter, such as Prettier")
           }
         }
         val formatterManual = foundryConfiguration(
@@ -59,6 +60,12 @@ class SolidityConfigurable(internal val project: Project) : BoundSearchableConfi
         )
         formatterManual.modeGroup.visibleIf(foundryFormatter.selected)
         formatterManual.manualPanel.visibleIf(formatterManual.manualSelected.and(foundryFormatter.selected))
+        row {
+          link("Format on save…") {
+            ShowSettingsUtil.getInstance().showSettingsDialog(project, "actions.on.save")
+          }
+          comment("Enable Reformat code in Actions on Save")
+        }.visibleIf(foundryFormatter.selected)
       }.expanded = true
 
       collapsibleGroup("Foundry Test Configuration") {

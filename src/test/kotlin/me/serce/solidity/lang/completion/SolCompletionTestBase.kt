@@ -5,7 +5,9 @@ import me.serce.solidity.utils.SolTestBase
 import org.intellij.lang.annotations.Language
 
 abstract class SolCompletionTestBase : SolTestBase() {
-  protected fun checkCompletion(required: Set<String>, @Language("Solidity") code: String, strict: Boolean = false) {
+  protected fun checkCompletion(expected: Set<String>, @Language("Solidity") code: String, strict: Boolean = false) {
+    // keywords written with a trailing space below are looked up without it; the space is added on insert
+    val required = expected.mapTo(hashSetOf()) { it.trimEnd() }
     InlineFile(code).withCaret()
     val variants = myFixture.completeBasic()
     checkNotNull(variants) {
@@ -61,7 +63,6 @@ abstract class SolCompletionTestBase : SolTestBase() {
     "bytes16 ",
     "bytes20 ",
     "bytes32 ",
-    "byte ",
     "bool "
   )
 

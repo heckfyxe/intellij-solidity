@@ -1,6 +1,51 @@
 package me.serce.solidity.lang.core.resolve
 
 class SolVarResolveTest : SolResolveTestBase() {
+  fun testLocalDeclaredLaterDoesNotShadowStateVar() = checkByCode("""
+        contract C {
+            uint total;
+               //x
+            function f() public {
+                total = 1;
+                //^
+                uint total = 2;
+            }
+        }
+  """)
+
+  fun testLocalUsedBeforeItsDeclaration() = checkByCode("""
+        contract C {
+            function f() public {
+                later = 1;
+                //^unresolved
+                uint later;
+            }
+        }
+  """)
+
+  fun testPrivateMemberOfBaseIsNotVisible() = checkByCode("""
+        contract B { uint private secret; }
+        contract C is B {
+            function f() public {
+                secret = 1;
+                //^unresolved
+            }
+        }
+  """)
+
+  fun testSelectiveImportHidesOtherNames() {
+    InlineFile("contract A {}\ncontract Hidden {}", "lib.sol")
+    checkByCode("""
+        import {A} from "./lib.sol";
+        contract C {
+            function f() public {
+                address(Hidden(address(0)));
+                       //^unresolved
+            }
+        }
+    """)
+  }
+
   fun testLocal1() = checkByCode("""
         contract B {
             function B() {

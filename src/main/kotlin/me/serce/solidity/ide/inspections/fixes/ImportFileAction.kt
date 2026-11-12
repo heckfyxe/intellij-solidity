@@ -16,6 +16,7 @@ import com.intellij.psi.PsiManager
 import com.intellij.ui.popup.list.ListPopupImpl
 import com.intellij.ui.popup.list.PopupListElementRenderer
 import me.serce.solidity.ide.formatting.SolImportOptimizer
+import me.serce.solidity.ide.formatting.layoutImports
 import me.serce.solidity.lang.resolve.ref.SolImportConfigService
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolImportDirective
@@ -164,6 +165,7 @@ class ImportFileAction(
           if (optimize) {
             SolImportOptimizer().processFile(file, false).run()
           }
+          layoutImports(file)
         }
       }
     }

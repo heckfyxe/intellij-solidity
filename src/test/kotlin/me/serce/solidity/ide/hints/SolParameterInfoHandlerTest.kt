@@ -544,6 +544,57 @@ class SolParameterInfoHandlerTest : SolTestBase() {
     )
   }
 
+  fun testInheritanceSpecifierEmpty() = checkByText("""
+        abstract contract ERC20 {
+            constructor(string memory _name, string memory _symbol) {}
+        }
+        contract SkillsCoin is ERC20(/*caret*/) {}
+    """, "string _name, string _symbol", 0)
+
+  fun testInheritanceSpecifier2ndParam() = checkByText("""
+        abstract contract ERC20 {
+            constructor(string memory _name, string memory _symbol) {}
+        }
+        contract SkillsCoin is ERC20(foo("a"), /*caret*/) {}
+    """, "string _name, string _symbol", 1)
+
+  fun testInheritanceSpecifierNoConstructor() = checkByText("""
+        contract Base {}
+        contract C is Base(/*caret*/) {}
+    """, "<no parameters>", 0)
+
+  fun testBaseConstructorInConstructorHeader() = checkByText("""
+        abstract contract ERC20 {
+            constructor(string memory _name, string memory _symbol) {}
+        }
+        contract SkillsCoin is ERC20 {
+            constructor() ERC20("Skills", /*caret*/) {}
+        }
+    """, "string _name, string _symbol", 1)
+
+  fun testModifierArguments() = checkByText("""
+        contract A {
+            modifier costs(uint price) { _; }
+            function f() public costs(/*caret*/) {}
+        }
+    """, "uint256 price", 0)
+
+  fun testEncodeWithSignatureTakesMoreArguments() = checkByText("""
+        contract A {
+            function f(address a) public {
+                abi.encodeWithSignature("transfer(address,uint256)", a, /*caret*/);
+            }
+        }
+    """, "string signature, ...", 2)
+
+  fun testStringConcatIsVariadic() = checkByText("""
+        contract A {
+            function f() public {
+                string.concat("a", /*caret*/);
+            }
+        }
+    """, "string...", 1)
+
   private fun checkByText(@Language("Solidity") code: String, hint: String, index: Int) {
     checkByText(code, listOf(hint), index)
   }
