@@ -122,6 +122,10 @@
 
         <!-- Block comment typing support -->
         <enterHandlerDelegate implementation="me.serce.solidity.ide.typing.SolBlockCommentEnterHandler"/>
+        <enterHandlerDelegate implementation="me.serce.solidity.ide.typing.SolLineDocCommentEnterHandler"/>
+
+        <!-- Complete Current Statement -->
+        <lang.smartEnterProcessor language="Solidity" implementationClass="me.serce.solidity.ide.typing.SolSmartEnterProcessor"/>
 
         <!-- Brace Matcher -->
         <lang.braceMatcher language="Solidity" implementationClass="me.serce.solidity.ide.SolBraceMatcher"/>

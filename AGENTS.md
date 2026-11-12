@@ -69,7 +69,12 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * Tests run with the formatter set to Disabled (`SolLightPlatformCodeInsightFixtureTestCase.setUp`), so they don't
   depend on forge being installed; formatter tests select it explicitly.
 * Typing behaviour is covered by `SolAutoIdentationTest` (fixtures in `fixtures/auto_ident/`),
-  `SolExternalFormatterTypingTest`, `SolQuoteTypingTest` and `SolBraceTypingTest`.
+  `SolExternalFormatterTypingTest`, `SolQuoteTypingTest`, `SolBraceTypingTest`, `SolSmartEnterTest` and
+  `SolLineDocCommentEnterHandlerTest` (`///` continuation).
+* Complete Current Statement (`SolSmartEnterProcessor`) works on lexer tokens, not PSI: incomplete statements parse
+  into bare tokens (a state variable without `;` even escapes its contract). It inserts only `)`/`;`/` {}` on one line
+  and lets a real Enter lay out the block; `SmartEnterProcessorWithFixers.plainEnter` is Start New Line, not Enter,
+  and its `reformat` must stay a no-op so forge fmt never runs on half-written code.
 
 ## Chain Failures
 
