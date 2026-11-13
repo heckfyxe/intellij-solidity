@@ -1,0 +1,3 @@
+/// @notice 
+/// @param amount 
+function burn(uint256 amount) external {}

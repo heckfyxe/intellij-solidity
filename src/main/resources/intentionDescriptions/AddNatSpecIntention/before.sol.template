@@ -1,0 +1,1 @@
+function <spot>burn</spot>(uint256 amount) external {}

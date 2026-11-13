@@ -425,6 +425,23 @@
         <lang.structureViewExtension implementation="me.serce.solidity.ide.SolStructureViewExtension"/>
 
         <typeHierarchyProvider language="Solidity" implementationClass="me.serce.solidity.ide.SolHierarchyTypeProvider"/>
+        <intentionAction>
+            <language>Solidity</language>
+            <className>me.serce.solidity.ide.intentions.AddNatSpecIntention</className>
+            <category>Solidity</category>
+        </intentionAction>
+        <intentionAction>
+            <language>Solidity</language>
+            <className>me.serce.solidity.ide.intentions.DigitSeparatorsIntention</className>
+            <category>Solidity</category>
+        </intentionAction>
+        <intentionAction>
+            <language>Solidity</language>
+            <className>me.serce.solidity.ide.intentions.WrapInUncheckedIntention</className>
+            <category>Solidity</category>
+        </intentionAction>
+        <codeInsight.template.postfixTemplateProvider language="Solidity"
+                                                      implementationClass="me.serce.solidity.ide.intentions.SolPostfixTemplateProvider"/>
         <callHierarchyProvider language="Solidity" implementationClass="me.serce.solidity.ide.SolCallHierarchyProvider"/>
         <codeInsight.gotoSuper language="Solidity" implementationClass="me.serce.solidity.ide.navigation.SolGotoSuperHandler"/>
 
