@@ -94,6 +94,63 @@ class SolUsingForCompletionTest : SolCompletionTestBase() {
     """)
   }
 
+  fun testWildcardOffersOnlyFunctionsAcceptingReceiver() = checkNoCompletion("onBool", """
+    pragma solidity ^0.8.26;
+    library L {
+        function onUint(uint256 a) internal pure returns (uint256) { return a; }
+        function onBool(bool a) internal pure returns (bool) { return a; }
+        function noArgs() internal pure {}
+    }
+    contract A {
+        using L for *;
+        function f(uint8 x) public pure {
+            x./*caret*/
+        }
+    }
+  """, present = "onUint")
+
+  fun testWildcardDoesNotOfferFunctionsWithoutParameters() = checkNoCompletion("noArgs", """
+    pragma solidity ^0.8.26;
+    library L {
+        function onUint(uint256 a) internal pure returns (uint256) { return a; }
+        function noArgs() internal pure {}
+    }
+    contract A {
+        using L for *;
+        function f(uint256 x) public pure {
+            x./*caret*/
+        }
+    }
+  """, present = "onUint")
+
+  fun testTypedUsingOffersOnlyMatchingFirstParameter() = checkNoCompletion("narrow", """
+    pragma solidity ^0.8.26;
+    library L {
+        function wide(uint256 a) internal pure returns (uint256) { return a; }
+        function narrow(uint8 a) internal pure returns (uint8) { return a; }
+    }
+    contract A {
+        using L for uint256;
+        function f(uint256 x) public pure {
+            x./*caret*/
+        }
+    }
+  """, present = "wide")
+
+  fun testUnknownFirstParameterTypeKept() = checkCompletion(hashSetOf("onUnknown", "onUint"), """
+    pragma solidity ^0.8.26;
+    library L {
+        function onUint(uint256 a) internal pure returns (uint256) { return a; }
+        function onUnknown(Missing a) internal pure {}
+    }
+    contract A {
+        using L for *;
+        function f(uint256 x) public pure {
+            x./*caret*/
+        }
+    }
+  """)
+
   private fun checkNoCompletion(absent: String, @Language("Solidity") code: String, present: String? = null) {
     InlineFile(code).withCaret()
     val variants = myFixture.completeBasic()

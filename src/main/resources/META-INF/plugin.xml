@@ -316,6 +316,12 @@
                          implementationClass="me.serce.solidity.ide.inspections.ConstantConversionInspection"/>
 
         <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Invalid 'using ... for' at file level or with 'global'"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         implementationClass="me.serce.solidity.ide.inspections.UsingForGlobalInspection"/>
+
+        <localInspection language="Solidity" groupName="Solidity"
                          displayName="Missing override specifier"
                          enabledByDefault="true"
                          level="ERROR"

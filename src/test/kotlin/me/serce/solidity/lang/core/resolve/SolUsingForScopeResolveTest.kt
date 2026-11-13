@@ -239,6 +239,53 @@ class SolUsingForScopeResolveTest : SolResolveTestBase() {
     assertUnresolvedInEditor()
   }
 
+  fun testWildcardResolvesOverloadAcceptingReceiver() = checkByCode("""
+    pragma solidity ^0.8.26;
+    library L {
+        function describe(bool a) internal pure returns (uint256) { return 1; }
+        function describe(uint256 a) internal pure returns (uint256) { return a; }
+                //x
+    }
+    contract A {
+        using L for *;
+        function f(uint8 x) public pure returns (uint256) {
+            return x.describe();
+                    //^
+        }
+    }
+  """)
+
+  fun testWildcardDoesNotResolveFunctionRejectingReceiver() = checkByCode("""
+    pragma solidity ^0.8.26;
+    library L {
+        function onAddress(address a) internal pure returns (address) { return a; }
+    }
+    contract A {
+        using L for *;
+        function f(bytes32 x) public pure {
+            x.onAddress();
+             //^unresolved
+        }
+    }
+  """)
+
+  fun testSafeErc20StyleUsingResolves() = checkByCode("""
+    pragma solidity ^0.8.26;
+    interface IERC20 { function transfer(address to, uint256 v) external returns (bool); }
+    library SafeERC20 {
+        function safeTransfer(IERC20 token, address to, uint256 value) internal {}
+                //x
+    }
+    contract Vault {
+        using SafeERC20 for IERC20;
+        IERC20 token;
+        function pay(address to) external {
+            token.safeTransfer(to, 1);
+                 //^
+        }
+    }
+  """)
+
   private fun assertUnresolvedInEditor() {
     val (refElement, _) = findElementAndDataInEditor<SolNamedElement>("^")
     val resolved = refElement.reference?.resolve()

@@ -492,7 +492,17 @@ abstract class SolMemberAccessElement(node: ASTNode) : SolNamedElementImpl(node)
           usingType == null || usingType == type
         }
       } ?: emptyList()
-    return collectFunctionsFromUsingElements(usingForElementFromImports)
+    return collectFunctionsFromUsingElements(usingForElementFromImports).filter { it.acceptsReceiver(type) }
+  }
+
+  /**
+   * Like solc, a library function is attached only if the receiver converts implicitly to its first parameter.
+   * Parameter types that can't be determined (or compared reliably, like function types) keep the function.
+   */
+  private fun SolFunctionDefinition.acceptsReceiver(receiver: SolType): Boolean {
+    val first = parameters.firstOrNull() ?: return false
+    val paramType = getSolType(first.typeName)
+    return paramType == SolUnknown || paramType is SolFunctionTypeType || paramType.isAssignableFrom(receiver)
   }
 
   private fun collectFunctionsFromUsingElements(usingForDeclarationsList: List<SolUsingForDeclaration>): List<SolFunctionDefinition> {
