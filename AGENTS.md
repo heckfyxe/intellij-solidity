@@ -116,6 +116,10 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   (`SolcExternalAnnotator`, request built by `SolcRequest`) passes forge's `evm_version`, `via_ir` and optimizer
   settings; forge lowers `evm_version` to what the chosen solc supports (default `osaka` becomes `cancun` for 0.8.24),
   and solc rejects unsupported names with a `JSONError`, so `SolcRequest.normalizeEvmVersion` does the same.
+* `remappings.txt` (plain text, `ide/foundry/Remappings.kt`) and `foundry.toml` (`ide/foundry/toml/`, loaded only with
+  the bundled TOML plugin through the optional `META-INF/toml.xml`) get completion and checks. The foundry.toml keys in
+  `FoundryTomlKeys` were generated from `forge config --json`; key paths are relative to a profile, so
+  `[profile.ci.fuzz]`, `[fuzz]` and `fuzz.runs` under `[profile.ci]` are all checked against the same `fuzz` table.
 * `.gas-snapshot` hints (`ForgeGasSnapshotInlayProvider`) are cached on the snapshot file by modification stamp.
   `forge snapshot --check` exits 1 and prints `Diff in "C::test()": consumed "(gas: N)" gas, expected "(gas: M)" gas`
   per changed test (`ForgeSnapshotOutput`).

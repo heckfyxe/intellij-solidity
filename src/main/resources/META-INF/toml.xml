@@ -1,0 +1,11 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <completion.contributor language="TOML"
+                                implementationClass="me.serce.solidity.ide.foundry.toml.FoundryTomlCompletionContributor"/>
+        <localInspection language="TOML" groupName="Solidity" shortName="FoundryTomlUnknownKey"
+                         displayName="Unknown foundry.toml key"
+                         enabledByDefault="true"
+                         level="WARNING"
+                         implementationClass="me.serce.solidity.ide.foundry.toml.FoundryTomlUnknownKeyInspection"/>
+    </extensions>
+</idea-plugin>

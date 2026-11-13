@@ -78,6 +78,7 @@
     <depends optional="true" config-file="spellchecker.xml">intellij.spellchecker</depends>
     <!-- The dependency is necessary because JavaScript-aware IDEs exclude node_modules by default. -->
     <depends optional="true" config-file="javascriptPlugin.xml">JavaScript</depends>
+    <depends optional="true" config-file="toml.xml">org.toml.lang</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <fileType name="Solidity file"

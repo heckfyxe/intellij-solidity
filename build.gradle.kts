@@ -127,7 +127,7 @@ dependencies {
             useInstaller = false
         }
         bundledModule("intellij.spellchecker")
-        bundledPlugins("JavaScript")
+        bundledPlugins("JavaScript", "org.toml.lang")
         testFramework(TestFrameworkType.Platform)
     }
 }
