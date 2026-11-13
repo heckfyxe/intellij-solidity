@@ -1,8 +1,9 @@
 <html>
 <body>
-Reports NatSpec tags in a <code>///</code> or <code>/** */</code> comment directly before a function, modifier, event
-or error that don't match the declaration: a <code>@param</code> naming a parameter that doesn't exist, and more
-<code>@return</code> tags than the function has return values.
+Reports NatSpec tags in a <code>///</code> or <code>/** */</code> comment directly before a function, constructor,
+modifier, event, error or state variable that don't match the declaration: a <code>@param</code> naming a parameter
+that doesn't exist or documenting one twice, more <code>@return</code> tags than the function has return values,
+<code>@param</code> on a state variable and <code>@return</code> on a non-public one (public state variables take one).
 <!-- tooltip end -->
 </body>
 </html>

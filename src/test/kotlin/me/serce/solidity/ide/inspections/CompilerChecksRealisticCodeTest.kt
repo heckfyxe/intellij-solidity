@@ -11,7 +11,15 @@ class CompilerChecksRealisticCodeTest : SolTestBase() {
       StateMutabilityInspection::class.java,
       RestrictableStateMutabilityInspection::class.java,
       ContractShouldBeAbstractInspection::class.java,
-      MissingDataLocationInspection::class.java
+      MissingDataLocationInspection::class.java,
+      ConstantConversionInspection::class.java,
+      UsingForGlobalInspection::class.java,
+      NatSpecParameterInspection::class.java,
+      DeprecatedLanguageFeatureInspection::class.java,
+      RemovedLanguageFeatureInspection::class.java,
+      ValidateFunctionArgumentsInspection::class.java,
+      ValidateEmitEventArgumentsInspection::class.java,
+      ValidateMemberAccessInspection::class.java
     )
     myFixture.checkHighlighting(true, false, true)
   }
@@ -199,6 +207,86 @@ class CompilerChecksRealisticCodeTest : SolTestBase() {
         function encode(uint256[] calldata values, string calldata label) external pure returns (bytes memory) {
             uint256[] memory copy = values;
             return abi.encode(copy, label);
+        }
+    }
+  """)
+
+  fun testSoladyStyleMathAndValueTypes() = checkClean("""
+    pragma solidity ^0.8.31;
+
+    type Price is uint128;
+
+    using PriceLib for Price global;
+    using {add as +} for Price global;
+
+    function add(Price a, Price b) pure returns (Price) {
+        return Price.wrap(Price.unwrap(a) + Price.unwrap(b));
+    }
+
+    /// @notice Fixed point helpers.
+    library FixedPointMathLib {
+        /// @dev The scalar of ETH and most ERC20s.
+        uint256 internal constant WAD = 1e18;
+        uint256 internal constant HALF_WAD = 0.5e18;
+        uint256 internal constant ONE_DAY = 1 days;
+        uint256 internal constant DUST = 0.001 ether;
+        int256 internal constant MIN_INT = -2**255;
+        uint256 internal constant MAX_UINT = 2**256 - 1;
+        uint8 internal constant DECIMALS = 18;
+        bytes32 internal constant SLOT = 0x0000000000000000000000000000000000000000000000000000000000000001;
+
+        /// @dev Returns `x * y / WAD` rounded down.
+        /// @param x the first factor
+        /// @param y the second factor
+        /// @return z the product
+        function mulWad(uint256 x, uint256 y) internal pure returns (uint256 z) {
+            assembly ("memory-safe") {
+                z := div(mul(x, y), WAD)
+            }
+        }
+
+        function halve(uint256 x) internal pure returns (uint256) {
+            return x * HALF_WAD / WAD + x / 2 - x / 2;
+        }
+    }
+
+    library PriceLib {
+        function value(Price p) internal pure returns (uint128) {
+            return Price.unwrap(p);
+        }
+    }
+
+    contract Vault {
+        using FixedPointMathLib for uint256;
+
+        /// @notice The owner
+        /// @return the current owner
+        address public owner;
+        uint64 public lastUpdate;
+        uint8 public fee = 30;
+        int16 public skew = -300;
+        mapping(address => uint256) public balanceOf;
+
+        event Deposit(address indexed who, uint256 amount);
+
+        /// @param owner_ the initial owner
+        constructor(address owner_) {
+            owner = owner_;
+            lastUpdate = uint64(block.timestamp);
+        }
+
+        function deposit(Price p, bytes calldata data) external payable {
+            require(msg.value >= 0.01 ether, "min");
+            (uint256[2] memory pair, bytes32[] memory keys) = abi.decode(data, (uint256[2], bytes32[]));
+            uint256 amount = msg.value.mulWad(1.5e18) + pair[0] + keys.length;
+            balanceOf[msg.sender] += amount + (p + p).value();
+            fee = 25;
+            skew = -1;
+            emit Deposit(msg.sender, amount);
+        }
+
+        function isOwner(address who) external view returns (bool) {
+            return who == owner && address(this) != address(0);
         }
     }
   """)

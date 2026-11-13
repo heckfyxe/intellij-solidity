@@ -78,9 +78,58 @@ class NatSpecParameterInspectionTest : SolInspectionsTestBase(NatSpecParameterIn
             /* @param nope neither is a regular block comment */
             function f(uint a) public pure {}
 
-            /// @param a documented
+            /// <warning descr="'@param' is not valid for state variables">@param</warning> a documented
             uint x;
             function g(uint b) public pure {}
+        }
+    """.trimIndent()
+  )
+
+  fun testConstructor() = checkByText(
+    """
+        contract A {
+            /// @param owner_ the owner
+            /// <warning descr="No parameter named 'admin'">@param</warning> admin nope
+            /// <warning descr="'@return' documents a return value, but there is none">@return</warning> nothing
+            constructor(address owner_) {}
+        }
+    """.trimIndent()
+  )
+
+  fun testStateVariables() = checkByText(
+    """
+        contract A {
+            /// @notice The total supply
+            /// @return the supply
+            uint256 public totalSupply;
+
+            /// @return the first
+            /// <warning descr="A public state variable can have only one '@return' tag">@return</warning> the second
+            mapping(address => uint256) public balanceOf;
+
+            /// @dev internal counter
+            /// <warning descr="'@return' is only valid for public state variables">@return</warning> the count
+            uint256 internal count;
+
+            /// <warning descr="'@param' is not valid for state variables">@param</warning> owner the owner
+            mapping(address => uint256) public allowance;
+        }
+    """.trimIndent()
+  )
+
+  fun testDuplicateParam() = checkByText(
+    """
+        contract A {
+            /// @param a the first
+            /// @param b the second
+            /// <warning descr="Parameter 'a' is documented more than once">@param</warning> a again
+            function f(uint a, uint b) public pure {}
+
+            /**
+             * @param to receiver
+             * <warning descr="Parameter 'to' is documented more than once">@param</warning> to receiver again
+             */
+            event Sent(address to);
         }
     """.trimIndent()
   )
