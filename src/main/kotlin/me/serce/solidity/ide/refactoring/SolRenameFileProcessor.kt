@@ -31,4 +31,6 @@ class SolRenameFileRefactoringSupportProvider : RefactoringSupportProvider() {
   override fun isMemberInplaceRenameAvailable(element: PsiElement, context: PsiElement?): Boolean {
     return true
   }
+
+  override fun getIntroduceVariableHandler() = SolIntroduceVariableHandler()
 }
