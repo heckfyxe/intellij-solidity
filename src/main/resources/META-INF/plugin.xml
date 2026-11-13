@@ -327,6 +327,30 @@
                          level="ERROR"
                          implementationClass="me.serce.solidity.ide.inspections.ReservedKeywordInspection"/>
 
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Function state mutability is violated"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         implementationClass="me.serce.solidity.ide.inspections.StateMutabilityInspection"/>
+
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Function state mutability can be restricted"
+                         enabledByDefault="true"
+                         level="WEAK WARNING"
+                         implementationClass="me.serce.solidity.ide.inspections.RestrictableStateMutabilityInspection"/>
+
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Contract with unimplemented functions is not abstract"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         implementationClass="me.serce.solidity.ide.inspections.ContractShouldBeAbstractInspection"/>
+
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Data location is missing"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         implementationClass="me.serce.solidity.ide.inspections.MissingDataLocationInspection"/>
+
         <!-- Forge Test Runner -->
         <configurationType implementation="me.serce.solidity.ide.run.ForgeTestRunConfigurationType"/>
         <runConfigurationProducer
