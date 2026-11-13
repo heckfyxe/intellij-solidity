@@ -44,9 +44,26 @@ class MemorySafeAssemblyFix(assembly: SolInlineAssemblyStatement) : LocalQuickFi
     documentManager.commitDocument(document)
   }
 
+  /** The `/** ... */` comment [tag] is in, or null for `///` comments. */
+  private fun blockComment(comments: List<PsiElement>, tag: PsiElement, document: Document): TextRange? {
+    val text = document.charsSequence
+    val open = text.lastIndexOf("/**", tag.textRange.startOffset).takeIf { it >= 0 } ?: return null
+    val lastLineComment = text.lastIndexOf("///", tag.textRange.startOffset)
+    if (lastLineComment > open) return null
+    val close = text.indexOf("*/", tag.textRange.endOffset).takeIf { it >= 0 } ?: return null
+    val first = comments.firstOrNull()?.textRange?.startOffset ?: return null
+    if (open < first) return null
+    return TextRange(open, close + 2)
+  }
+
+  private companion object {
+    val TAG = Regex("""@solidity\s+memory-safe-assembly""")
+  }
+
   /**
-   * The text to delete: the whole line of a `/// @solidity memory-safe-assembly` comment (or a block comment holding
-   * only that tag), otherwise just the tag and its argument.
+   * The text to delete: the whole line of a `/// @solidity memory-safe-assembly` comment, a block comment holding
+   * only that tag (on one line or several), or the tag's own line inside a longer block comment; otherwise just the
+   * tag and its argument.
    */
   private fun commentRange(assembly: SolInlineAssemblyStatement, document: Document): TextRange? {
     val comments = (assembly.parent as? SolStatement ?: assembly).comments().sortedBy { it.textRange.startOffset }
@@ -63,6 +80,18 @@ class MemorySafeAssemblyFix(assembly: SolInlineAssemblyStatement) : LocalQuickFi
     val onlyTag = Regex("""(///|/\*\*)\s*@solidity\s+memory-safe-assembly\s*(\*/)?""")
     if (onlyTag.matches(lineText) && (lineText.startsWith("///") || lineText.endsWith("*/"))) {
       return wholeLine
+    }
+    blockComment(comments, tag, document)?.let { block ->
+      val blockText = document.getText(block)
+      val rest = blockText.replace(TAG, "").replace("/**", "").replace("*/", "").replace("*", "")
+      // a block comment holding nothing else: delete it with its lines
+      if (rest.isBlank()) {
+        val start = document.getLineStartOffset(document.getLineNumber(block.startOffset))
+        val endLine = document.getLineNumber(block.endOffset)
+        return TextRange(start, minOf(document.getLineEndOffset(endLine) + 1, document.textLength))
+      }
+      // ` * @solidity memory-safe-assembly` on its own line inside a longer block comment
+      if (Regex("""\*?\s*@solidity\s+memory-safe-assembly""").matches(lineText)) return wholeLine
     }
     val argumentText = argument.text
     val keyword = argumentText.indexOf("memory-safe-assembly")

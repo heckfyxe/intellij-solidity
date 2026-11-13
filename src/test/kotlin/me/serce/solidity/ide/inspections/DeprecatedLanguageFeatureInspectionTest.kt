@@ -156,6 +156,52 @@ class DeprecatedLanguageFeatureInspectionTest : SolInspectionsTestBase(Deprecate
       }
     """.trimIndent())
 
+  fun testMemorySafeAssemblyFixMultiLineBlock() = checkFixByText("Replace with 'assembly (\"memory-safe\")'",
+    """
+      pragma solidity ^0.8.31;
+      contract A {
+          function f() public pure returns (uint r) {
+              /**
+               * <warning descr="The '@solidity memory-safe-assembly' comment is deprecated since Solidity 0.8.31, use 'assembly (\"memory-safe\")'">@soli<caret>dity</warning> memory-safe-assembly
+               */
+              assembly { r := 1 }
+          }
+      }
+    """.trimIndent(),
+    """
+      pragma solidity ^0.8.31;
+      contract A {
+          function f() public pure returns (uint r) {
+              assembly ("memory-safe") { r := 1 }
+          }
+      }
+    """.trimIndent())
+
+  fun testMemorySafeAssemblyFixKeepsOtherBlockLines() = checkFixByText("Replace with 'assembly (\"memory-safe\")'",
+    """
+      pragma solidity ^0.8.31;
+      contract A {
+          function f() public pure returns (uint r) {
+              /**
+               * @dev writes r
+               * <warning descr="The '@solidity memory-safe-assembly' comment is deprecated since Solidity 0.8.31, use 'assembly (\"memory-safe\")'">@soli<caret>dity</warning> memory-safe-assembly
+               */
+              assembly { r := 1 }
+          }
+      }
+    """.trimIndent(),
+    """
+      pragma solidity ^0.8.31;
+      contract A {
+          function f() public pure returns (uint r) {
+              /**
+               * @dev writes r
+               */
+              assembly ("memory-safe") { r := 1 }
+          }
+      }
+    """.trimIndent())
+
   fun testMemorySafeAssemblyFixWithDialect() = checkFixByText("Replace with 'assembly (\"memory-safe\")'",
     """
       pragma solidity ^0.8.31;
