@@ -97,6 +97,11 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   `ResolveNameInspection` skips them, as well as `verbatim_<n>i_<m>o`.
 * A bare identifier statement parses as `YulExpressionStatement` (reported by the annotator) so a name being typed stays
   inside the Yul block; completion there comes from `SolYulCompletionContributor`, which stops other contributors.
+* The lexer has no `->` token: a Yul function's arrow is `-` followed by `>` (see `SolYulFunctionDefMixin`).
+* `YulBuiltins` also holds each built-in's description and EVM version (`EvmVersion`), used by Quick Documentation
+  and `YulEvmVersionInspection`. That inspection reads forge's `evm_version` from `FoundryProject.cachedConfig()` only
+  (never runs forge under a read action); tests set `YulEvmVersionInspection.evmVersionForTests`.
+* Inspections and annotators registered for `Solidity` also run in `.yul` files (`YulLanguage` is a dialect of it).
 
 ## Chain Failures
 

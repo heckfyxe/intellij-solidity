@@ -390,5 +390,30 @@ class SolYulResolveTest : SolResolveTestBase() {
     assertNotNull(path.reference?.resolve())
   }
 
+  fun testLegacyStackAssignment() = checkByCode("""
+        contract C {
+            function f() public {
+                uint b;
+                   //x
+                assembly { =: b }
+                            //^
+            }
+        }
+  """)
+
+  fun testLegacyLabel() = checkByCode("""
+        contract C {
+            function f() public {
+                assembly {
+                    jump(loopend)
+                       //^
+                    loop:
+                    loopend :
+                  //x
+                }
+            }
+        }
+  """)
+
   private fun checkFunctionCall(code: String) = checkByCodeInternal<SolYulFunctionCall, me.serce.solidity.lang.psi.SolNamedElement>(code)
 }

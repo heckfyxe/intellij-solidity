@@ -24,12 +24,15 @@ object SolYulResolver {
     val variables: List<SolYulVariable>,
     val functions: List<SolYulFunctionDefinition>,
     val solidity: List<SolNamedElement>,
+    /** Labels of pre-0.5 inline assembly, visible in their whole block. */
+    val labels: List<SolYulLabel> = emptyList(),
   )
 
   fun resolveVariable(path: SolReferenceElement): List<SolNamedElement> {
     val name = path.referenceName
     val scope = scope(path)
     scope.variables.firstOrNull { it.name == name }?.let { return listOf(it) }
+    scope.labels.firstOrNull { it.name == name }?.let { return listOf(it) }
     return scope.solidity.filter { it.name == name }.findBest {
       when (it) {
         is SolVariableDeclaration, is SolDeclarationItem, is SolTypedDeclarationItem -> 1
@@ -47,6 +50,7 @@ object SolYulResolver {
   fun scope(place: PsiElement, collectSolidity: Boolean = true): Scope {
     val variables = mutableListOf<SolYulVariable>()
     val functions = mutableListOf<SolYulFunctionDefinition>()
+    val labels = mutableListOf<SolYulLabel>()
     val placeOffset = place.textRange.startOffset
     var insideFunction = false
     var prev: PsiElement = place
@@ -62,6 +66,7 @@ object SolYulResolver {
               .forEach { st -> st.yulVariableDeclaration?.let { variables += it.yulVariableList.asReversed() } }
           }
           statements.mapNotNullTo(functions) { it.yulFunctionDefinition }
+          if (!insideFunction) statements.mapNotNullTo(labels) { it.yulLabel }
         }
 
         is SolYulForStatement -> {
@@ -90,7 +95,7 @@ object SolYulResolver {
       current = current.parent
     }
     val solidity = if (collectSolidity && assembly != null) solidityDeclarations(assembly, insideFunction) else emptyList()
-    return Scope(variables, functions, solidity)
+    return Scope(variables, functions, solidity, labels)
   }
 
   private fun solidityDeclarations(assembly: SolInlineAssemblyStatement, insideFunction: Boolean): List<SolNamedElement> {

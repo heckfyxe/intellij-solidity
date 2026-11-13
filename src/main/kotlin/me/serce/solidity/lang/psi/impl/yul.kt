@@ -16,8 +16,9 @@ abstract class SolYulVariableMixin(node: ASTNode) : SolNamedElementImpl(node), S
 }
 
 abstract class SolYulFunctionDefMixin(node: ASTNode) : SolNamedElementImpl(node), SolYulFunctionDefinition {
+  // the lexer splits `->` into `-` and `>`
   private val arrowOffset: Int
-    get() = node.getChildren(null).firstOrNull { it.text == "->" }?.startOffset ?: Int.MAX_VALUE
+    get() = node.getChildren(null).firstOrNull { it.text == "->" || it.text == "-" }?.startOffset ?: Int.MAX_VALUE
 
   val parameters: List<SolYulVariable>
     get() = arrowOffset.let { arrow -> yulVariableList.filter { it.textOffset < arrow } }
@@ -27,6 +28,9 @@ abstract class SolYulFunctionDefMixin(node: ASTNode) : SolNamedElementImpl(node)
 
   override fun getIcon(flags: Int) = SolidityIcons.FUNCTION
 }
+
+/** A label of pre-0.5 inline assembly (`loop:`), visible in its whole block. */
+abstract class SolYulLabelMixin(node: ASTNode) : SolNamedElementImpl(node), SolYulLabel
 
 abstract class SolYulFunctionCallMixin(node: ASTNode) : SolNamedElementImpl(node), SolYulFunctionCall, SolReferenceElement {
   // built-ins such as `return` and `address` are keywords, not identifiers

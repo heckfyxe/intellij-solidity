@@ -21,6 +21,7 @@ class SolidityAnnotator : Annotator {
       if (element is SolYulExpressionStatement) {
         holder.newAnnotation(HighlightSeverity.ERROR, "Only function calls can be used as statements in Yul").range(element).create()
       }
+      if (element is SolYulPath) YulSuffixChecker.check(element, holder)
     } else if (element.node.elementType == SolidityTokenTypes.STRINGLITERAL && isUnterminatedString(element.text)) {
       holder.newAnnotation(HighlightSeverity.ERROR, "Missing closing quote").range(element).create()
     }

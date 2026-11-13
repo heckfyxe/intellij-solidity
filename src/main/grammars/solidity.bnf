@@ -676,7 +676,7 @@ YulAssignment ::=
     YulPath YulAssign YulExpression
     | (YulPath (YulComma YulPath)+) YulAssign YulFunctionCall
     // Only support =: for backwards compatibility
-    | '=:' YulIdentifier
+    | '=:' YulPath
 
 YulIfStatement ::= YulIf YulExpression YulBlock { pin=1 }
 
@@ -707,7 +707,10 @@ YulFunctionDefinition ::=
 
 // TODO: remove as lables have been deprecated, and removed, see
 // https://docs.soliditylang.org/en/v0.5.6/assembly.html#labels
-YulLabel ::= Identifier ':'
+YulLabel ::= Identifier ':' {
+    implements = "me.serce.solidity.lang.psi.SolNamedElement"
+    mixin = "me.serce.solidity.lang.psi.impl.SolYulLabelMixin"
+}
 
 /**
  * While only identifiers without dots can be declared within inline assembly,

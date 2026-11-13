@@ -102,8 +102,7 @@ private fun SolVariableDefinition.hasAssignment(el: SolNamedElement): Boolean =
 // an assignment anywhere in the assembly block counts: Yul control flow isn't analysed
 private fun SolYulBlock.hasAssignment(el: SolNamedElement): Boolean =
   PsiTreeUtil.findChildrenOfType(this, SolYulAssignment::class.java).any { assignment ->
-    assignment.children.any { it is SolYulPath && it.reference?.resolve() == el } ||
-      assignment.identifier?.text == el.name // legacy `=: x`
+    assignment.children.any { it is SolYulPath && it.reference?.resolve() == el } // also legacy `=: x`
   }
 
 private fun SolExpression.hasAssignment(el: SolNamedElement): Boolean {

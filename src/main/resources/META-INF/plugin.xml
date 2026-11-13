@@ -333,6 +333,18 @@
                          level="ERROR"
                          implementationClass="me.serce.solidity.ide.inspections.MissingVirtualInspection"/>
 
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Unused Yul variable"
+                         enabledByDefault="true"
+                         level="WEAK WARNING"
+                         implementationClass="me.serce.solidity.ide.inspections.UnusedYulVariableInspection"/>
+
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Yul built-in not available for the EVM version"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         implementationClass="me.serce.solidity.ide.inspections.YulEvmVersionInspection"/>
+
         <codeInsight.overrideMethod language="Solidity"
                                     implementationClass="me.serce.solidity.ide.generation.SolOverrideMethodsHandler"/>
         <codeInsight.implementMethod language="Solidity"
