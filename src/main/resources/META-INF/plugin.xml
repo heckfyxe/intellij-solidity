@@ -425,6 +425,8 @@
         <lang.structureViewExtension implementation="me.serce.solidity.ide.SolStructureViewExtension"/>
 
         <typeHierarchyProvider language="Solidity" implementationClass="me.serce.solidity.ide.SolHierarchyTypeProvider"/>
+        <callHierarchyProvider language="Solidity" implementationClass="me.serce.solidity.ide.SolCallHierarchyProvider"/>
+        <codeInsight.gotoSuper language="Solidity" implementationClass="me.serce.solidity.ide.navigation.SolGotoSuperHandler"/>
 
         <projectConfigurable id="Settings.Solidity"
                              groupId="language"
