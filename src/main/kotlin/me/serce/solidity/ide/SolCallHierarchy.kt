@@ -27,7 +27,11 @@ import me.serce.solidity.lang.psi.SolFunctionCallExpression
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.SolModifierDefinition
 import me.serce.solidity.lang.psi.SolModifierInvocation
+import me.serce.solidity.lang.psi.SolMemberAccessExpression
+import me.serce.solidity.lang.psi.SolReferenceElement
 import me.serce.solidity.lang.psi.SolStateVariableDeclaration
+import me.serce.solidity.ide.navigation.SolGotoSuperHandler
+import me.serce.solidity.lang.resolve.function.SolFunctionResolver
 import javax.swing.JTree
 
 /** Functions, modifiers and constructors: what Call Hierarchy shows. */
@@ -44,10 +48,23 @@ object SolCallables {
       ?: PsiTreeUtil.getParentOfType(element, false, SolStateVariableDeclaration::class.java)
       ?: PsiTreeUtil.getParentOfType(element, false, SolContractDefinition::class.java)
 
-  /** Where [callable] is called (or a modifier used), grouped by the definition the call is in, in source order. */
+  /**
+   * Where [callable] is called (or a modifier used), grouped by the definition the call is in, in source order.
+   * Calls to a function or modifier it overrides count too, since they dispatch to it, except static ones
+   * (`super.f()`, `Base.f()`), which always reach the base definition.
+   */
   fun callers(callable: PsiElement): List<Pair<PsiElement, List<PsiElement>>> {
     val scope = GlobalSearchScope.projectScope(callable.project)
-    val references = ReferencesSearch.search(callable, scope).findAll().map { it.element }
+    val overridden = when (callable) {
+      is SolFunctionDefinition -> SolFunctionResolver.collectOverridden(callable)
+      is SolModifierDefinition -> SolGotoSuperHandler.superTargets(callable)
+      else -> emptyList()
+    }
+    val direct = ReferencesSearch.search(callable, scope).findAll().map { it.element }
+    val dispatched = overridden.flatMap { base ->
+      ReferencesSearch.search(base, scope).findAll().map { it.element }.filter { !isStaticCall(it) }
+    }
+    val references = (direct + dispatched).distinct()
       .sortedWith(compareBy({ it.containingFile?.name }, { it.textOffset }))
     return references.mapNotNull { ref -> containerOf(ref)?.let { it to ref } }
       .groupBy({ it.first }, { it.second }).toList()
@@ -66,6 +83,17 @@ object SolCallables {
       .sortedBy { it.textOffset }
       .forEach { call -> resolveCallable(call)?.let { calls += it to call } }
     return calls.groupBy({ it.first }, { it.second }).toList()
+  }
+
+  /** `super.f()` or `Base.f()`: a call that names the contract whose definition it reaches. */
+  private fun isStaticCall(reference: PsiElement): Boolean {
+    val call = reference as? SolFunctionCallExpression ?: reference.parent as? SolFunctionCallExpression
+    val callee = (call?.expression ?: reference) as? SolMemberAccessExpression ?: return false
+    val qualifier = callee.expression
+    if (qualifier.text == "super") return true
+    val leaf = PsiTreeUtil.findChildrenOfType(qualifier, SolReferenceElement::class.java).lastOrNull()
+      ?: qualifier as? SolReferenceElement
+    return leaf?.reference?.resolve() is SolContractDefinition
   }
 
   private fun resolveCallable(call: PsiElement): PsiElement? {

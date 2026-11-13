@@ -82,4 +82,34 @@ class SolCallHierarchyTest : SolTestBase() {
       """.trimIndent()
     )
   }
+
+  fun testCallersThroughOverrides() {
+    InlineFile("""
+      contract A {
+          function f() public virtual {}
+          function g() public { f(); }
+      }
+      contract B is A {
+          function f() public virtual override { super.f(); }
+      }
+      contract C is B {
+          function f() public override { A.f(); }
+          function h() public { f(); }
+      }
+      contract User {
+          function u(A a) public { a.f(); }
+      }
+    """.trimIndent())
+    val fInB = PsiTreeUtil.findChildrenOfType(myFixture.file, SolFunctionDefinition::class.java)
+      .first { it.name == "f" && it.text.contains("super") }
+    HierarchyViewTestFixture.doHierarchyTest(
+      SolCallHierarchyTreeStructure(project, fInB, callers = true),
+      """
+      <node text="f()  B" base="true">
+        <node text="g()  A"/>
+        <node text="u(A)  User"/>
+      </node>
+      """.trimIndent()
+    )
+  }
 }
