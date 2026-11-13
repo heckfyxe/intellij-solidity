@@ -15,6 +15,7 @@ import com.intellij.execution.testframework.sm.runner.SMTRunnerConsoleProperties
 import com.intellij.execution.ui.ConsoleView
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.util.execution.ParametersListUtil
 import me.serce.solidity.resolveForgeExecutable
 import me.serce.solidity.settings.ConfigurationMode
 import me.serce.solidity.settings.SoliditySettings
@@ -48,6 +49,10 @@ class ForgeTestCommandLineState(
     val contracts = failedTests?.keys ?: setOfNotNull(configuration.contractName.ifBlank { null })
     if (tests.isNotEmpty()) cmd.addParameters("--match-test", "^${alternatives(tests)}\\(")
     if (contracts.isNotEmpty()) cmd.addParameters("--match-contract", "^${alternatives(contracts)}$")
+    configuration.forkUrl.trim().takeIf { it.isNotEmpty() }?.let { cmd.addParameters("--fork-url", it) }
+    configuration.fuzzSeed.trim().takeIf { it.isNotEmpty() }?.let { cmd.addParameters("--fuzz-seed", it) }
+    cmd.addParameters(ParametersListUtil.parse(configuration.additionalArguments))
+    configuration.profile.trim().takeIf { it.isNotEmpty() }?.let { cmd.withEnvironment("FOUNDRY_PROFILE", it) }
     return cmd
   }
 

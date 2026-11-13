@@ -4,6 +4,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.RawCommandLineEditor
+import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -13,6 +14,10 @@ class ForgeTestRunConfigurationEditor : SettingsEditor<ForgeTestRunConfiguration
   private lateinit var contractNameField: RawCommandLineEditor
   private lateinit var testNameField: RawCommandLineEditor
   private lateinit var workingDirectoryField: TextFieldWithBrowseButton
+  private val profileField = JBTextField()
+  private val forkUrlField = JBTextField()
+  private val fuzzSeedField = JBTextField()
+  private val argumentsField = RawCommandLineEditor()
 
   init {
     createUI()
@@ -34,6 +39,10 @@ class ForgeTestRunConfigurationEditor : SettingsEditor<ForgeTestRunConfiguration
       .addLabeledComponent("Test contract (leave empty for all contracts):", contractNameField)
       .addLabeledComponent("Test name (leave empty for all tests):", testNameField)
       .addLabeledComponent("Working directory:", workingDirectoryField)
+      .addLabeledComponent("Profile (FOUNDRY_PROFILE):", profileField)
+      .addLabeledComponent("Fork URL (--fork-url):", forkUrlField)
+      .addLabeledComponent("Fuzz seed (--fuzz-seed):", fuzzSeedField)
+      .addLabeledComponent("Additional arguments:", argumentsField)
       .addComponentFillVertically(JPanel(), 0)
       .panel
   }
@@ -42,12 +51,20 @@ class ForgeTestRunConfigurationEditor : SettingsEditor<ForgeTestRunConfiguration
     contractNameField.text = configuration.contractName
     testNameField.text = configuration.testName
     workingDirectoryField.text = configuration.workingDirectory
+    profileField.text = configuration.profile
+    forkUrlField.text = configuration.forkUrl
+    fuzzSeedField.text = configuration.fuzzSeed
+    argumentsField.text = configuration.additionalArguments
   }
 
   override fun applyEditorTo(configuration: ForgeTestRunConfiguration) {
     configuration.contractName = contractNameField.text
     configuration.testName = testNameField.text
     configuration.workingDirectory = workingDirectoryField.text
+    configuration.profile = profileField.text
+    configuration.forkUrl = forkUrlField.text
+    configuration.fuzzSeed = fuzzSeedField.text
+    configuration.additionalArguments = argumentsField.text
   }
 
   override fun createEditor(): JComponent = mainPanel

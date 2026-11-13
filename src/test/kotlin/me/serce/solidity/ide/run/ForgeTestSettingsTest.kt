@@ -212,6 +212,35 @@ class ForgeTestSettingsTest : BasePlatformTestCase() {
         assertEquals("^(ATest|BTest)$", rerun[rerun.indexOf("--match-contract") + 1])
     }
 
+    fun testProfileForkSeedAndArguments() {
+        val configuration = ForgeTestRunConfiguration(project, ForgeTestRunConfigurationFactory(ForgeTestRunConfigurationType()), "t")
+        configuration.workingDirectory = myFixture.tempDirPath
+        configuration.profile = "ci"
+        configuration.forkUrl = "mainnet"
+        configuration.fuzzSeed = "0x2a"
+        configuration.additionalArguments = "--gas-report --match-path \"test/a b.t.sol\""
+        val settings = RunManager.getInstance(project).createConfiguration(configuration, configuration.factory!!)
+        val env = ExecutionEnvironmentBuilder.create(DefaultRunExecutor.getRunExecutorInstance(), settings).build()
+        val cmd = ForgeTestCommandLineState(configuration, env).generateCommandLine()
+        val parameters = cmd.parametersList.parameters
+        assertEquals("mainnet", parameters[parameters.indexOf("--fork-url") + 1])
+        assertEquals("0x2a", parameters[parameters.indexOf("--fuzz-seed") + 1])
+        assertEquals(listOf("--gas-report", "--match-path", "test/a b.t.sol"), parameters.takeLast(3))
+        assertEquals("ci", cmd.environment["FOUNDRY_PROFILE"])
+        configuration.checkConfiguration()
+
+        // the new fields survive a save and load
+        val element = org.jdom.Element("configuration")
+        configuration.writeExternal(element)
+        val loaded = ForgeTestRunConfiguration(project, ForgeTestRunConfigurationFactory(ForgeTestRunConfigurationType()), "t")
+        loaded.readExternal(element)
+        assertEquals(listOf("ci", "mainnet", "0x2a", configuration.additionalArguments),
+            listOf(loaded.profile, loaded.forkUrl, loaded.fuzzSeed, loaded.additionalArguments))
+
+        configuration.fuzzSeed = "abc"
+        assertThrows(com.intellij.execution.configurations.RuntimeConfigurationError::class.java) { configuration.checkConfiguration() }
+    }
+
     private fun withUserHome(fakeHome: String, block: () -> Unit) {
         val old = System.getProperty("user.home")
         try {
