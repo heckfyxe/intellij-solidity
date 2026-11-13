@@ -66,6 +66,115 @@ class DeprecatedLanguageFeatureInspectionTest : SolInspectionsTestBase(Deprecate
       }
   """)
 
+  fun testContractComparison() = checkByText("""
+      pragma solidity ^0.8.31;
+      interface IERC20 {}
+      contract A {
+          IERC20 token;
+          address owner;
+          function f(IERC20 other, A a) public view returns (bool) {
+              bool x = /*@warning descr="Comparison of variables of contract type is deprecated since Solidity 0.8.31, compare their addresses"@*/token == other/*@/warning@*/;
+              bool y = /*@warning descr="Comparison of variables of contract type is deprecated since Solidity 0.8.31, compare their addresses"@*/a != this/*@/warning@*/;
+              bool z = address(token) == address(other);
+              bool w = owner == msg.sender;
+              return x && y && z && w;
+          }
+      }
+  """)
+
+  fun testContractComparisonNotReportedBefore0831() = checkByText("""
+      pragma solidity ^0.8.20;
+      interface IERC20 {}
+      contract A {
+          function f(IERC20 a, IERC20 b) public pure returns (bool) { return a == b; }
+      }
+  """)
+
+  fun testContractComparisonFix() = checkFixByText("Compare addresses",
+    """
+      pragma solidity ^0.8.31;
+      interface IERC20 {}
+      contract A {
+          function f(IERC20 a, IERC20 b) public pure returns (bool) {
+              return <warning descr="Comparison of variables of contract type is deprecated since Solidity 0.8.31, compare their addresses">a =<caret>= b</warning>;
+          }
+      }
+    """.trimIndent(),
+    """
+      pragma solidity ^0.8.31;
+      interface IERC20 {}
+      contract A {
+          function f(IERC20 a, IERC20 b) public pure returns (bool) {
+              return address(a) == address(b);
+          }
+      }
+    """.trimIndent())
+
+  fun testMemorySafeAssemblyComment() = checkByText("""
+      pragma solidity ^0.8.31;
+      contract A {
+          function f() public pure returns (uint r) {
+              /// /*@warning descr="The '@solidity memory-safe-assembly' comment is deprecated since Solidity 0.8.31, use 'assembly (\"memory-safe\")'"@*/@solidity/*@/warning@*/ memory-safe-assembly
+              assembly { r := 1 }
+              assembly ("memory-safe") { r := 2 }
+              /// @dev regular docs
+              assembly { r := 3 }
+          }
+      }
+  """)
+
+  fun testMemorySafeAssemblyNotReportedBefore0831() = checkByText("""
+      pragma solidity ^0.8.20;
+      contract A {
+          function f() public pure returns (uint r) {
+              /// @solidity memory-safe-assembly
+              assembly { r := 1 }
+          }
+      }
+  """)
+
+  fun testMemorySafeAssemblyFix() = checkFixByText("Replace with 'assembly (\"memory-safe\")'",
+    """
+      pragma solidity ^0.8.31;
+      contract A {
+          function f() public pure returns (uint r) {
+              /// <warning descr="The '@solidity memory-safe-assembly' comment is deprecated since Solidity 0.8.31, use 'assembly (\"memory-safe\")'">@soli<caret>dity</warning> memory-safe-assembly
+              assembly {
+                  r := 1
+              }
+          }
+      }
+    """.trimIndent(),
+    """
+      pragma solidity ^0.8.31;
+      contract A {
+          function f() public pure returns (uint r) {
+              assembly ("memory-safe") {
+                  r := 1
+              }
+          }
+      }
+    """.trimIndent())
+
+  fun testMemorySafeAssemblyFixWithDialect() = checkFixByText("Replace with 'assembly (\"memory-safe\")'",
+    """
+      pragma solidity ^0.8.31;
+      contract A {
+          function f() public pure returns (uint r) {
+              /** <warning descr="The '@solidity memory-safe-assembly' comment is deprecated since Solidity 0.8.31, use 'assembly (\"memory-safe\")'">@soli<caret>dity</warning> memory-safe-assembly */
+              assembly "evmasm" { r := 1 }
+          }
+      }
+    """.trimIndent(),
+    """
+      pragma solidity ^0.8.31;
+      contract A {
+          function f() public pure returns (uint r) {
+              assembly "evmasm" ("memory-safe") { r := 1 }
+          }
+      }
+    """.trimIndent())
+
   fun testPrevrandaoFix() = checkFixByText("Replace with 'prevrandao'",
     """
       pragma solidity ^0.8.20;

@@ -99,6 +99,28 @@ class RemovedLanguageFeatureInspectionTest : SolInspectionsTestBase(RemovedLangu
       }
   """)
 
+  fun testLogFunctionsRemovedIn080() = checkByText("""
+      pragma solidity ^0.8.0;
+      contract A {
+          function f(bytes32 t) public {
+              /*@error descr="The global function 'log0' was removed in Solidity 0.8.0, use events or inline assembly"@*/log0/*@/error@*/(t);
+              /*@error descr="The global function 'log2' was removed in Solidity 0.8.0, use events or inline assembly"@*/log2/*@/error@*/(t, t, t);
+              assembly { log1(0, 0, t) }
+          }
+      }
+      contract B {
+          function log1(bytes32 a) internal {}
+          function g(bytes32 t) public { log1(t); }
+      }
+  """)
+
+  fun testLogFunctionsAllowedIn07() = checkByText("""
+      pragma solidity ^0.7.0;
+      contract A {
+          function f(bytes32 t) public { log0(t); }
+      }
+  """)
+
   fun testByteAllowedIn07() = checkByText("""
       pragma solidity ^0.7.0;
       contract A {

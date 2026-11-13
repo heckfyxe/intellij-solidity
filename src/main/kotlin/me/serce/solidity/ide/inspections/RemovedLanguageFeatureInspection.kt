@@ -82,6 +82,9 @@ class RemovedLanguageFeatureInspection : LocalInspectionTool() {
           "suicide" -> if (refersToBuiltinOnly(callee)) {
             report(callee, "'suicide' was removed in Solidity 0.5.0, use 'selfdestruct'", ReplaceTextFix(callee, "selfdestruct"))
           }
+          "log0", "log1", "log2", "log3", "log4" -> if (since(SolVersions.V0_8_0) && !o.isInsideAssembly() && refersToBuiltinOnly(callee)) {
+            report(callee, "The global function '${callee.text}' was removed in Solidity 0.8.0, use events or inline assembly")
+          }
         }
         if (o.parent is SolStatement && callee != null) {
           val targets = callee.reference?.multiResolve().orEmpty()
