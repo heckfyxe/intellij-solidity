@@ -310,6 +310,12 @@
                          implementationClass="me.serce.solidity.ide.inspections.NatSpecParameterInspection"/>
 
         <localInspection language="Solidity" groupName="Solidity"
+                         displayName="Number constant doesn't fit the integer type it is assigned to"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         implementationClass="me.serce.solidity.ide.inspections.ConstantConversionInspection"/>
+
+        <localInspection language="Solidity" groupName="Solidity"
                          displayName="Missing override specifier"
                          enabledByDefault="true"
                          level="ERROR"

@@ -74,8 +74,6 @@ data class SolString(val length: Int) : SolPrimitiveType {
   override fun isAssignableFrom(other: SolType): Boolean =
     other is SolString
 
-  override fun getMembers(project: Project) = getSdkMembers(SolInternalTypeFactory.of(project).stringType)
-
   override fun toString() = "string"
 
   companion object {
@@ -149,8 +147,18 @@ data class SolInteger(
       return SolInteger(unsigned, size)
     }
 
-    fun inferType(numberLiteral: SolNumberLiteral): SolInteger {
-      return inferIntegerType(numberLiteral.parseLiteral())
+    /**
+     * The type of a number literal: an integer constant, or a [SolRationalConstant] when its value (after applying the
+     * unit, e.g. `0.5 ether`) is fractional. [SolUnknown] when the value can't be computed (e.g. a huge exponent).
+     */
+    fun inferType(numberLiteral: SolNumberLiteral): SolType {
+      val parsed = numberLiteral.parseLiteral() ?: return SolUnknown
+      val value = parsed.value
+      return if (value.isInteger) {
+        inferIntegerType(LiteralParseResult(value.numerator, parsed.type, parsed.digitCount))
+      } else {
+        SolRationalConstant(value)
+      }
     }
 
     fun inferType(numberLiteral: SolHexLiteral): SolInteger? {
@@ -202,19 +210,54 @@ data class SolInteger(
 
     private class LiteralParseResult(val value: BigInteger, val type: NumericLiteralType, val digitCount: Int? = null)
 
-    private fun SolNumberLiteral.parseLiteral(): LiteralParseResult  {
-      this.decimalNumber?.let {
-        return LiteralParseResult(it.text.replace("_", "").toBigInteger(), NumericLiteralType.DECIMAL)
+    private class NumberLiteralValue(val value: Rational, val type: NumericLiteralType, val digitCount: Int? = null)
+
+    private val UNITS = mapOf(
+      "wei" to BigInteger.ONE,
+      "gwei" to BigInteger.TEN.pow(9),
+      "szabo" to BigInteger.TEN.pow(12),
+      "finney" to BigInteger.TEN.pow(15),
+      "ether" to BigInteger.TEN.pow(18),
+      "seconds" to BigInteger.ONE,
+      "minutes" to BigInteger.valueOf(60),
+      "hours" to BigInteger.valueOf(3600),
+      "days" to BigInteger.valueOf(86400),
+      "weeks" to BigInteger.valueOf(604800),
+      "years" to BigInteger.valueOf(31536000),
+    )
+
+    /** Literals like `1e5000` are far beyond any value solc accepts, so they are left untyped. */
+    private const val MAX_LITERAL_EXPONENT = 1300
+
+    private fun SolNumberLiteral.parseLiteral(): NumberLiteralValue? {
+      val unitElement = numberUnit
+      val unit = unitElement?.text
+      val multiplier = if (unit == null) BigInteger.ONE else UNITS[unit] ?: return null
+      val numberText = (if (unitElement != null) text.substring(0, unitElement.startOffsetInParent) else text)
+        .trim().replace("_", "")
+      if (numberText.startsWith("0x") || numberText.startsWith("0X")) {
+        val digits = numberText.substring(2)
+        val value = digits.toBigIntegerOrNull(16) ?: return null
+        return if (unit == null) NumberLiteralValue(Rational.of(value), NumericLiteralType.HEX, digits.length)
+        else NumberLiteralValue(Rational.of(value * multiplier), NumericLiteralType.DECIMAL)
       }
-      this.hexNumber?.let {
-        val withoutPrefix = it.text.removePrefix("0x")
-        return LiteralParseResult(withoutPrefix.toBigInteger(16), NumericLiteralType.HEX, withoutPrefix.length)
-      }
-      this.scientificNumber?.let {
-        return LiteralParseResult(it.text.replace("_", "").lowercase().toBigDecimal().toBigInteger(), NumericLiteralType.SCIENTIFIC)
-      }
-      //todo
-      return LiteralParseResult(BigInteger.ZERO, NumericLiteralType.ZERO)
+      val lower = numberText.lowercase()
+      val exponentIndex = lower.indexOf('e')
+      val mantissa = if (exponentIndex >= 0) lower.substring(0, exponentIndex) else lower
+      val exponent = if (exponentIndex >= 0) {
+        lower.substring(exponentIndex + 1).removePrefix("+").toIntOrNull() ?: return null
+      } else 0
+      val dot = mantissa.indexOf('.')
+      val intPart = if (dot >= 0) mantissa.substring(0, dot) else mantissa
+      val fracPart = if (dot >= 0) mantissa.substring(dot + 1) else ""
+      val digits = (intPart + fracPart).ifEmpty { return null }
+      val scale = exponent.toLong() - fracPart.length
+      if (kotlin.math.abs(scale) > MAX_LITERAL_EXPONENT) return null
+      var numerator = (digits.toBigIntegerOrNull() ?: return null) * multiplier
+      var denominator = BigInteger.ONE
+      if (scale >= 0) numerator *= BigInteger.TEN.pow(scale.toInt()) else denominator = BigInteger.TEN.pow((-scale).toInt())
+      val type = if (exponentIndex >= 0) NumericLiteralType.SCIENTIFIC else NumericLiteralType.DECIMAL
+      return NumberLiteralValue(Rational.of(numerator, denominator), type)
     }
   }
 
@@ -247,6 +290,71 @@ data class SolInteger(
     }
 
   override fun toString() = "${if (unsigned) "u" else ""}int$size"
+}
+
+/** A rational number, always normalized: the denominator is positive and coprime with the numerator. */
+class Rational private constructor(val numerator: BigInteger, val denominator: BigInteger) {
+  val isInteger: Boolean get() = denominator == BigInteger.ONE
+
+  operator fun plus(other: Rational) = of(numerator * other.denominator + other.numerator * denominator, denominator * other.denominator)
+  operator fun minus(other: Rational) = of(numerator * other.denominator - other.numerator * denominator, denominator * other.denominator)
+  operator fun times(other: Rational) = of(numerator * other.numerator, denominator * other.denominator)
+  /** Requires [other] to be non-zero. */
+  operator fun div(other: Rational) = of(numerator * other.denominator, denominator * other.numerator)
+  operator fun unaryMinus() = Rational(numerator.negate(), denominator)
+
+  override fun equals(other: Any?) = other is Rational && numerator == other.numerator && denominator == other.denominator
+  override fun hashCode() = Objects.hash(numerator, denominator)
+  override fun toString() = if (isInteger) "$numerator" else "$numerator/$denominator"
+
+  companion object {
+    fun of(value: BigInteger) = Rational(value, BigInteger.ONE)
+
+    fun of(numerator: BigInteger, denominator: BigInteger): Rational {
+      require(denominator.signum() != 0) { "zero denominator" }
+      val gcd = numerator.gcd(denominator)
+      val sign = BigInteger.valueOf(denominator.signum().toLong())
+      return Rational(numerator / gcd * sign, denominator / gcd * sign)
+    }
+  }
+}
+
+/**
+ * A fractional number constant like `1/2` or `2.5` (solc's `rational_const`). It isn't implicitly convertible to any
+ * type; constants that fold to an integer (`2.5 * 2`, `0.5 ether`) are typed as [SolInteger] constants instead.
+ */
+data class SolRationalConstant(val value: Rational) : SolNumeric {
+  override fun isAssignableFrom(other: SolType): Boolean = other == this
+
+  override fun toString() = "rational_const ${formatConstant(value.numerator)} / ${formatConstant(value.denominator)}"
+
+  companion object {
+    /** The type of the constant [value]: an integer constant when it is integral. */
+    fun of(value: Rational): SolType =
+      if (value.isInteger) SolInteger.ofConstant(value.numerator) else SolRationalConstant(value)
+  }
+}
+
+/** The value of a number constant type, or `null` if [this] isn't a constant. */
+val SolType.constantValue: Rational?
+  get() = when (this) {
+    is SolInteger -> literalValue?.let { Rational.of(it) }
+    is SolRationalConstant -> value
+    else -> null
+  }
+
+/** Long numbers are abbreviated like solc does, e.g. `1157...(70 digits omitted)...9935`. */
+private fun formatConstant(value: BigInteger): String {
+  val digits = value.abs().toString()
+  val sign = if (value.signum() < 0) "-" else ""
+  if (digits.length <= 32) return sign + digits
+  return "$sign${digits.take(4)}...(${digits.length - 8} digits omitted)...${digits.takeLast(4)}"
+}
+
+/** How this type is named in compiler-style messages: number constants are `int_const 5` / `rational_const 1 / 2`. */
+fun SolType.displayName(): String {
+  val value = (this as? SolInteger)?.literalValue
+  return if (value != null) "int_const ${formatConstant(value)}" else toString()
 }
 
 data class SolContract(val ref: SolContractDefinition, val builtin: Boolean = false) : SolUserType, Linearizable<SolContract> {
@@ -435,16 +543,22 @@ sealed class SolArray(val type: SolType) : SolType {
 
 object SolBytes : SolArray.SolDynamicArray(SolFixedByte(1)) {
   // bytes.concat takes any number of bytes, bytesN and string/hex literals; the arguments are left unchecked
-  private val concatFunction = BuiltinCallable(listOf(SolInternalTypeFactory.varargsId to SolUnknown), SolBytes, "concat", null)
+  internal val concatFunction = BuiltinCallable(listOf(SolInternalTypeFactory.varargsId to SolUnknown), SolBytes, "concat", null)
 
   override fun isAssignableFrom(other: SolType): Boolean =
     other == SolBytes || other is SolString
 
-  override fun getMembers(project: Project): List<SolMember> {
-    return super.getMembers(project) + concatFunction
-  }
-
   override fun toString() = "bytes"
+}
+
+/**
+ * Members of an elementary type name used as an expression, e.g. `bytes` in `bytes.concat(...)`: only `bytes.concat`
+ * and `string.concat` exist, values of these types have no `concat` member.
+ */
+fun elementaryTypeNameMembers(type: SolType, project: Project): List<SolMember> = when (type) {
+  is SolBytes -> listOf(SolBytes.concatFunction)
+  is SolString -> getSdkMembers(SolInternalTypeFactory.of(project).stringType)
+  else -> emptyList()
 }
 
 data class SolFixedByte(val size: Int): SolPrimitiveType {
@@ -492,22 +606,28 @@ data class SolFixedBytes(val size: Int): SolPrimitiveType {
   }
 }
 
-data class SolMetaType(val type: SolType): SolType {
+/**
+ * The type of `type(T)`. [enumMinMax] is false where the pragma rules out `type(E).min`/`max` for enums
+ * (added in Solidity 0.8.8).
+ */
+data class SolMetaType(val type: SolType, val enumMinMax: Boolean = true): SolType {
   override fun isAssignableFrom(other: SolType): Boolean {
     return other is SolMetaType && this.type == other.type
   }
 
   /**
-   * `min`/`max` (of type T) for integer and enum types; `name`, `creationCode`/`runtimeCode` for contracts and
-   * `name`/`interfaceId` for interfaces. An unknown T gets them all.
+   * `min`/`max` (of type T) for integer and enum types; `name`, `creationCode`/`runtimeCode` for contracts (only
+   * `name` for abstract ones) and `name`/`interfaceId` for interfaces. An unknown T gets them all.
    */
   override fun getMembers(project: Project): List<SolMember> {
     val all = getSdkMembers(SolInternalTypeFactory.of(project).metaType)
     fun select(vararg names: String) = all.filter { it.getName() in names }
     return when (type) {
-      is SolInteger, is SolEnum -> select("min", "max").map { SolRetypedMember(it, type) }
-      is SolContract -> when (type.ref.contractType) {
-        ContractType.INTERFACE -> select("name", "interfaceId")
+      is SolInteger -> select("min", "max").map { SolRetypedMember(it, type) }
+      is SolEnum -> if (enumMinMax) select("min", "max").map { SolRetypedMember(it, type) } else emptyList()
+      is SolContract -> when {
+        type.ref.contractType == ContractType.INTERFACE -> select("name", "interfaceId")
+        type.ref.isAbstract -> select("name")
         else -> select("name", "creationCode", "runtimeCode")
       }
       else -> all

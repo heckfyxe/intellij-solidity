@@ -10,6 +10,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.childrenOfType
 import me.serce.solidity.firstOrElse
 import me.serce.solidity.lang.core.SolidityTokenTypes
+import me.serce.solidity.lang.core.solidityVersionRange
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.SolMemberAccessElement
 import me.serce.solidity.lang.resolve.SolResolver
@@ -20,7 +21,6 @@ import me.serce.solidity.lang.resolve.ref.toLibraryFunDefinition
 import me.serce.solidity.lang.types.SolArray.SolDynamicArray
 import me.serce.solidity.lang.types.SolArray.SolStaticArray
 import java.math.BigInteger
-import kotlin.math.max
 
 fun getSolType(type: SolTypeName?): SolType {
   return when (type) {
@@ -231,15 +231,22 @@ fun inferExprType(expr: SolExpression?): SolType {
     }
     is SolUnaryExpression -> {
       val operandType = inferExprType(expr.expression)
-      val literalValue = (operandType as? SolInteger)?.literalValue
+      val constant = operandType.constantValue
       when (expr.firstChild?.text) {
         "!" -> SolBoolean
-        "-" -> if (literalValue != null) SolInteger.ofConstant(literalValue.negate()) else operandType
-        "~" -> if (literalValue != null) SolInteger.ofConstant(literalValue.not()) else operandType
+        "-" -> if (constant != null) SolRationalConstant.of(-constant) else operandType
+        "~" -> when {
+          constant == null -> operandType
+          constant.isInteger -> SolInteger.ofConstant(constant.numerator.not())
+          else -> SolUnknown
+        }
         else -> operandType
       }
     }
-    is SolMetaTypeExpression -> SolMetaType(getSolType(expr.typeName))
+    is SolMetaTypeExpression -> SolMetaType(
+      getSolType(expr.typeName),
+      enumMinMax = expr.containingFile?.solidityVersionRange()?.isBelow("0.8.8") != true
+    )
     else -> SolUnknown
   }
 }
@@ -252,40 +259,65 @@ private fun <E> List<E>.secondOrNull(): E? {
 private const val MAX_CONSTANT_BITS = 4096
 
 /**
- * The type of `first op second`. Constants are folded like solc's rational constants; a constant combined with a
- * typed operand takes the operand's type (`x - 1`), except that a constant shifted or exponentiated by a typed value
- * becomes `uint256`/`int256`.
+ * The type of `first op second`. Constants are folded like solc's rational constants (fractional results are
+ * [SolRationalConstant]s). Otherwise the result has the common type of the operands like in solc, where a constant
+ * converts to its typed operand's type if it fits (`x - 1`) and the typed operand converts to the constant's smallest
+ * type otherwise (`uint8 x; x + 300` is `uint16`). A constant shifted or exponentiated by a typed value becomes
+ * `uint256`/`int256`. Combinations solc rejects are unknown.
  */
 private fun getNumericExpressionType(op: String?, firstType: SolType, secondType: SolType): SolType {
+  val first = firstType.constantValue
+  val second = secondType.constantValue
+  if (first != null && second != null) {
+    return foldConstants(op, first, second)?.let { SolRationalConstant.of(it) } ?: SolUnknown
+  }
   if (firstType !is SolInteger || secondType !is SolInteger) {
     return SolUnknown
   }
-  val first = firstType.literalValue
-  val second = secondType.literalValue
   val isShiftOrExp = op == "<<" || op == ">>" || op == "**"
   return when {
-    first != null && second != null -> foldConstants(op, first, second)?.let { SolInteger.ofConstant(it) } ?: SolUnknown
-    isShiftOrExp -> if (first != null) SolInteger(first.signum() >= 0, 256) else firstType.withoutLiteral()
-    first != null -> secondType.withoutLiteral()
-    second != null -> firstType.withoutLiteral()
-    else -> SolInteger(firstType.unsigned && secondType.unsigned, max(firstType.size, secondType.size))
+    isShiftOrExp -> if (first != null) SolInteger(first.numerator.signum() >= 0, 256) else firstType.withoutLiteral()
+    first != null -> commonTypeWithConstant(secondType, first.numerator)
+    second != null -> commonTypeWithConstant(firstType, second.numerator)
+    firstType.isAssignableFrom(secondType) -> firstType
+    secondType.isAssignableFrom(firstType) -> secondType
+    else -> SolUnknown
   }
 }
 
-private fun foldConstants(op: String?, a: BigInteger, b: BigInteger): BigInteger? {
+/** solc's common type of the (non-constant) integer [type] and the integer constant [constant]. */
+private fun commonTypeWithConstant(type: SolInteger, constant: BigInteger): SolType {
+  val typed = type.withoutLiteral()
+  if (typed.canHold(constant)) return typed
+  val constantType = SolInteger.ofConstant(constant).withoutLiteral()
+  return if (constantType.isAssignableFrom(typed)) constantType else SolUnknown
+}
+
+private fun foldConstants(op: String?, a: Rational, b: Rational): Rational? {
+  val zero = Rational.of(BigInteger.ZERO)
   val result = when (op) {
     "+" -> a + b
     "-" -> a - b
     "*" -> a * b
-    // a fractional result is a rational constant, which isn't modelled
-    "/" -> if (b.signum() == 0 || a.mod(b.abs()).signum() != 0) null else a / b
-    "%" -> if (b.signum() == 0) null else a.rem(b)
-    "**" -> if (b.signum() < 0 || b.bitLength() > 16 || a.bitLength().toLong() * b.toLong() > MAX_CONSTANT_BITS) null else a.pow(b.toInt())
-    "<<" -> if (b.signum() < 0 || b > BigInteger.valueOf(MAX_CONSTANT_BITS.toLong())) null else a.shiftLeft(b.toInt())
-    ">>" -> if (b.signum() < 0 || b.bitLength() > 31) null else a.shiftRight(b.toInt())
+    "/" -> if (b == zero) null else a / b
+    "%" -> if (b == zero || !a.isInteger || !b.isInteger) null else Rational.of(a.numerator.rem(b.numerator))
+    "**" -> {
+      val exp = b.numerator
+      val bits = maxOf(a.numerator.bitLength(), a.denominator.bitLength()).toLong()
+      when {
+        !b.isInteger || exp.bitLength() > 16 || bits * exp.abs().toLong() > MAX_CONSTANT_BITS -> null
+        exp.signum() >= 0 -> Rational.of(a.numerator.pow(exp.toInt()), a.denominator.pow(exp.toInt()))
+        a == zero -> null
+        else -> Rational.of(a.denominator.pow(-exp.toInt()), a.numerator.pow(-exp.toInt()))
+      }
+    }
+    "<<" -> if (!a.isInteger || !b.isInteger || b.numerator.signum() < 0 || b.numerator > BigInteger.valueOf(MAX_CONSTANT_BITS.toLong())) null
+      else Rational.of(a.numerator.shiftLeft(b.numerator.toInt()))
+    ">>" -> if (!a.isInteger || !b.isInteger || b.numerator.signum() < 0 || b.numerator.bitLength() > 31) null
+      else Rational.of(a.numerator.shiftRight(b.numerator.toInt()))
     else -> null
   }
-  return result?.takeIf { it.bitLength() <= MAX_CONSTANT_BITS }
+  return result?.takeIf { it.numerator.bitLength() <= MAX_CONSTANT_BITS && it.denominator.bitLength() <= MAX_CONSTANT_BITS }
 }
 
 private fun SolCallable.isAbiDecode(): Boolean {
@@ -296,9 +328,9 @@ private fun SolCallable.isAbiDecode(): Boolean {
 /** `abi.decode(data, (uint, address))` returns the types listed in its second argument. */
 private fun inferAbiDecodeType(call: SolFunctionCallExpression): SolType {
   val types = when (val typesArg = call.functionCallArguments.expressionList.getOrNull(1)) {
-    is SolSeqExpression -> typesArg.expressionList.map { inferExprType(it) }
+    is SolSeqExpression -> typesArg.expressionList.map { typeOfTypeExpression(it) }
     null -> return SolUnknown
-    else -> listOf(inferExprType(typesArg))
+    else -> listOf(typeOfTypeExpression(typesArg))
   }
   return when (types.size) {
     0 -> SolUnknown
@@ -307,9 +339,38 @@ private fun inferAbiDecodeType(call: SolFunctionCallExpression): SolType {
   }
 }
 
+/**
+ * The type an expression naming a type denotes, as in `abi.decode`'s type list: `uint`, `S`, `L.S`,
+ * `uint[2]`, `bytes32[]`, `S[][3]`.
+ */
+private fun typeOfTypeExpression(expr: SolExpression): SolType = when (expr) {
+  is SolIndexAccessExpression -> {
+    val expressions = expr.expressionList
+    val elementType = expressions.firstOrNull()?.let { typeOfTypeExpression(it) } ?: SolUnknown
+    val hasSlice = expr.node.findChildByType(SolidityTokenTypes.COLON) != null
+    when {
+      elementType == SolUnknown || hasSlice -> SolUnknown
+      expressions.size == 1 -> SolDynamicArray(elementType)
+      else -> {
+        val size = expressions[1].type.constantValue?.takeIf { it.isInteger && it.numerator.signum() > 0 }?.numerator
+        if (size != null && size.bitLength() < 31) SolStaticArray(elementType, size.toInt()) else SolUnknown
+      }
+    }
+  }
+  else -> when (val type = inferExprType(expr)) {
+    is SolUserDefinedValueTypeReferenceType -> SolUserDefinedValueTypeType(type.ref)
+    else -> type
+  }
+}
+
+/** An elementary type name used as an expression, like `bytes` in `bytes.concat(...)` or `uint` in `abi.decode`. */
+private val SolExpression.isElementaryTypeNameExpression: Boolean
+  get() = this is SolPrimaryExpression && elementaryTypeName != null
+
 fun SolMemberAccessExpression.getMembers(): List<SolMember> {
   val expr = expression
   return when {
+    expr.isElementaryTypeNameExpression -> elementaryTypeNameMembers(expr.type, project)
     expr is SolPrimaryExpression && expr.varLiteral?.name == "super" -> {
       val contract = expr.findContract()
       contract?.let { SolResolver.resolveContractMembers(it, true) }

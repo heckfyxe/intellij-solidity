@@ -2,6 +2,16 @@ import me.serce.solidity.ide.inspections.SolInspectionsTestBase
 import me.serce.solidity.ide.inspections.ValidateEmitEventArgumentsInspection
 
 class ValidateEmitEventArgumentsInspectionTest : SolInspectionsTestBase(ValidateEmitEventArgumentsInspection()) {
+  fun testRationalConstantArgument() = checkByText("""
+        contract a {
+            event Paid(uint amount);
+            function f() public {
+                emit Paid(0.5 ether);
+                /*@error descr="Argument of type 'rational_const 1 / 2' is not assignable to parameter of type 'uint256'"@*/emit Paid(1 / 2)/*@/error@*/;
+            }
+        }
+    """)
+
   fun testNoArguments() = checkByText("""
         contract a {
             event TestEvent(uint a);

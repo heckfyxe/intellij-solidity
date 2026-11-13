@@ -48,7 +48,7 @@ class ValidateFunctionArgumentsInspectionTest : SolInspectionsTestBase(ValidateF
         contract a {
             function a() {
                 string r = string.concat('a', 'b', 'c');
-                string r2 = string.concat(/*@error descr="Argument of type 'uint8' is not assignable to parameter of type 'string'"@*/'a', 2, 'c'/*@/error@*/); 
+                string r2 = string.concat(/*@error descr="Argument of type 'int_const 2' is not assignable to parameter of type 'string'"@*/'a', 2, 'c'/*@/error@*/); 
             }
             
             function b(int a) {
@@ -83,9 +83,9 @@ class ValidateFunctionArgumentsInspectionTest : SolInspectionsTestBase(ValidateF
   fun testNumberConstantsOutOfRange() = checkByText("""
         contract a {
             function a() {
-                i8(/*@error descr="Argument of type 'int16' is not assignable to parameter of type 'int8'"@*/-129/*@/error@*/);
-                u(/*@error descr="Argument of type 'int8' is not assignable to parameter of type 'uint256'"@*/-1/*@/error@*/);
-                u8(/*@error descr="Argument of type 'uint16' is not assignable to parameter of type 'uint8'"@*/256/*@/error@*/);
+                i8(/*@error descr="Argument of type 'int_const -129' is not assignable to parameter of type 'int8'"@*/-129/*@/error@*/);
+                u(/*@error descr="Argument of type 'int_const -1' is not assignable to parameter of type 'uint256'"@*/-1/*@/error@*/);
+                u8(/*@error descr="Argument of type 'int_const 256' is not assignable to parameter of type 'uint8'"@*/256/*@/error@*/);
                 u8(/*@error descr="Argument of type 'uint16' is not assignable to parameter of type 'uint8'"@*/type(uint16).max/*@/error@*/);
             }
 
@@ -127,6 +127,37 @@ class ValidateFunctionArgumentsInspectionTest : SolInspectionsTestBase(ValidateF
             }
 
             function b4(bytes4 x) {}
+        }
+    """)
+
+  fun testRationalConstants() = checkByText("""
+        contract a {
+            function a() {
+                u(2.5 * 2);
+                u(1e18);
+                u(0.5 ether);
+                u(1.5 hours);
+                u(7 / 2 * 2);
+                u(/*@error descr="Argument of type 'rational_const 1 / 2' is not assignable to parameter of type 'uint256'"@*/1 / 2/*@/error@*/);
+                u(/*@error descr="Argument of type 'rational_const 5 / 2' is not assignable to parameter of type 'uint256'"@*/2.5/*@/error@*/);
+                u(/*@error descr="Argument of type 'rational_const 1 / 1000' is not assignable to parameter of type 'uint256'"@*/1e-3/*@/error@*/);
+            }
+
+            function u(uint x) {}
+        }
+    """)
+
+  fun testTypedOperandWithLargeConstant() = checkByText("""
+        contract a {
+            function a(uint8 x) {
+                u16(x + 300);
+                u(x + 300);
+                u8(/*@error descr="Argument of type 'uint16' is not assignable to parameter of type 'uint8'"@*/x + 300/*@/error@*/);
+            }
+
+            function u8(uint8 x) {}
+            function u16(uint16 x) {}
+            function u(uint x) {}
         }
     """)
 }

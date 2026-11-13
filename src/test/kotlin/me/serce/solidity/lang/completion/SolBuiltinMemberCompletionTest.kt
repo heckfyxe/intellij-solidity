@@ -73,6 +73,62 @@ class SolBuiltinMemberCompletionTest : SolCompletionTestBase() {
         }
   """)
 
+  fun testStringConcat() = checkCompletion(hashSetOf("concat"), """
+        contract C {
+            function f() public {
+                string./*caret*/;
+            }
+        }
+  """, strict = true)
+
+  fun testNoConcatOnBytesVariable() {
+    InlineFile("""
+        contract C {
+            function f(bytes memory b, string memory s) public {
+                b./*caret*/;
+            }
+        }
+    """).withCaret()
+    val completions = myFixture.completeBasic()?.map { it.lookupString }.orEmpty()
+    assertFalse("$completions shouldn't contain concat", "concat" in completions)
+    assertTrue("$completions should contain length", "length" in completions)
+  }
+
+  fun testNoConcatOnStringVariable() {
+    InlineFile("""
+        contract C {
+            function f(string memory s) public {
+                s./*caret*/;
+            }
+        }
+    """).withCaret()
+    val completions = myFixture.completeBasic()?.map { it.lookupString }.orEmpty()
+    assertFalse("$completions shouldn't contain concat", "concat" in completions)
+  }
+
+  fun testAbstractContractMetaType() = checkCompletion(hashSetOf("name"), """
+        abstract contract A {}
+        contract C {
+            function f() public {
+                type(A)./*caret*/;
+            }
+        }
+  """, strict = true)
+
+  fun testEnumMetaTypeBefore088() {
+    InlineFile("""
+        pragma solidity ^0.8.0 <0.8.8;
+        contract C {
+            enum K { A, B }
+            function f() public {
+                type(K)./*caret*/;
+            }
+        }
+    """).withCaret()
+    val completions = myFixture.completeBasic()?.map { it.lookupString }.orEmpty()
+    assertFalse("$completions shouldn't contain max", "max" in completions)
+  }
+
   fun testBytesConcat() = checkCompletion(hashSetOf("concat"), """
         contract C {
             function f() public {
