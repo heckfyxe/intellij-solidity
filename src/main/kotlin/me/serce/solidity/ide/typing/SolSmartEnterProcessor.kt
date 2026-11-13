@@ -14,6 +14,9 @@ import com.intellij.util.containers.OrderedSet
 import me.serce.solidity.lang.core.SolidityLexer
 import me.serce.solidity.lang.core.SolidityParserDefinition
 import me.serce.solidity.lang.core.SolidityTokenTypes
+import me.serce.solidity.lang.core.SolidityFile
+import me.serce.solidity.lang.core.YulFile
+import me.serce.solidity.ide.inspections.allowsSolidityOlderThan
 
 /**
  * Complete Current Statement (Ctrl/Cmd+Shift+Enter) for Solidity.
@@ -26,7 +29,7 @@ import me.serce.solidity.lang.core.SolidityTokenTypes
  */
 class SolSmartEnterProcessor : SmartEnterProcessorWithFixers() {
   init {
-    addFixers(SolMissingParenFixer(), SolMissingBodyFixer(), SolMissingSemicolonFixer())
+    addFixers(SolConditionParenFixer(), SolMissingParenFixer(), SolMissingBodyFixer(), SolMissingSemicolonFixer(), SolYulFixer())
     addEnterProcessors(SolSmartEnterFinisher())
   }
 
@@ -45,16 +48,50 @@ class SolSmartEnterProcessor : SmartEnterProcessorWithFixers() {
   // the base implementation reformats a PsiCodeBlock (Java), the finisher places the caret itself
   override fun moveCaretInsideBracesIfAny(editor: Editor, file: PsiFile) {}
 
-  internal fun analyze(editor: Editor): SolStatement? {
+  internal fun analyze(editor: Editor, file: PsiElement): SolStatement? {
     val document = editor.document
     val line = document.getLineNumber(editor.caretModel.offset)
-    return SolStatementAnalyzer(document).analyze(line)
+    return analyzer(editor, file).analyze(line)
+  }
+
+  internal fun analyzer(editor: Editor, file: PsiElement) = createAnalyzer(editor.document, file)
+}
+
+internal fun createAnalyzer(document: Document, file: PsiElement): SolStatementAnalyzer {
+  val psiFile = file.containingFile
+  return SolStatementAnalyzer(
+    document,
+    yulFile = psiFile is YulFile,
+    legacyFallback = (psiFile as? SolidityFile)?.allowsSolidityOlderThan(6) == true,
+  )
+}
+
+/** `if x` and `while x` get the parens of their condition: `if (x`, closed by [SolMissingParenFixer]. */
+private class SolConditionParenFixer : SmartEnterProcessorWithFixers.Fixer<SolSmartEnterProcessor>() {
+  override fun apply(editor: Editor, processor: SolSmartEnterProcessor, element: PsiElement) {
+    val st = processor.analyze(editor, element) ?: return
+    if (st.inYul || st.isEmpty || st.kind != Kind.CONDITION || st.last == st.start) return
+    val head = st.tokens[st.start]
+    if (head.text != "if" && head.text != "while") return
+    val first = st.tokens[st.start + 1]
+    if (first.text == "(") return
+    editor.document.insertString(first.start, "(")
+  }
+}
+
+/** Inside inline assembly and Yul files: closes calls and blocks and adds the block of `if`, `for`, `switch` cases and functions. */
+private class SolYulFixer : SmartEnterProcessorWithFixers.Fixer<SolSmartEnterProcessor>() {
+  override fun apply(editor: Editor, processor: SolSmartEnterProcessor, element: PsiElement) {
+    val analyzer = processor.analyzer(editor, element)
+    val line = editor.document.getLineNumber(editor.caretModel.offset)
+    val (offset, text) = analyzer.yulFix(line) ?: return
+    editor.document.insertString(offset, text)
   }
 }
 
 private class SolMissingParenFixer : SmartEnterProcessorWithFixers.Fixer<SolSmartEnterProcessor>() {
   override fun apply(editor: Editor, processor: SolSmartEnterProcessor, element: PsiElement) {
-    val st = processor.analyze(editor) ?: return
+    val st = processor.analyze(editor, element) ?: return
     if (st.inYul || st.unclosed.isEmpty() || st.isEmpty) return
     val closers = st.unclosed.reversed().joinToString("") { closerOf(it.text) }
     val insertAt = if (st.endsWithHeaderBrace) st.tokens[st.last - 1].end else st.lastToken.end
@@ -64,9 +101,9 @@ private class SolMissingParenFixer : SmartEnterProcessorWithFixers.Fixer<SolSmar
 
 private class SolMissingBodyFixer : SmartEnterProcessorWithFixers.Fixer<SolSmartEnterProcessor>() {
   override fun apply(editor: Editor, processor: SolSmartEnterProcessor, element: PsiElement) {
-    val st = processor.analyze(editor) ?: return
+    val st = processor.analyze(editor, element) ?: return
     if (st.inYul || st.unclosed.isNotEmpty() || !st.needsBody()) return
-    val text = if (st.kind == Kind.CALLABLE && st.inInterface) ";" else " {}"
+    val text = if (st.kind == Kind.CALLABLE && (st.inInterface || st.isAbstractVirtualFunction())) ";" else " {}"
     val anchor = if (st.isEmpty) st.tokens[st.resetToken].end else st.lastToken.end
     editor.document.insertString(anchor, text)
   }
@@ -74,7 +111,7 @@ private class SolMissingBodyFixer : SmartEnterProcessorWithFixers.Fixer<SolSmart
 
 private class SolMissingSemicolonFixer : SmartEnterProcessorWithFixers.Fixer<SolSmartEnterProcessor>() {
   override fun apply(editor: Editor, processor: SolSmartEnterProcessor, element: PsiElement) {
-    val st = processor.analyze(editor) ?: return
+    val st = processor.analyze(editor, element) ?: return
     if (st.inYul || st.inEnum || st.isEmpty || st.unclosed.isNotEmpty() || st.kind != Kind.SIMPLE) return
     if (st.lastToken.text in setOf(";", "{", "}", ",")) return
     editor.document.insertString(st.lastToken.end, ";")
@@ -85,7 +122,7 @@ private class SolMissingSemicolonFixer : SmartEnterProcessorWithFixers.Fixer<Sol
 private class SolSmartEnterFinisher : SmartEnterProcessorWithFixers.FixEnterProcessor() {
   override fun doEnter(atCaret: PsiElement, file: PsiFile, editor: Editor, modified: Boolean): Boolean {
     val document = editor.document
-    val analyzer = SolStatementAnalyzer(document)
+    val analyzer = createAnalyzer(document, file)
     val tokens = analyzer.tokens
     var st = analyzer.analyze(document.getLineNumber(editor.caretModel.offset))
     if (st == null) {
@@ -178,9 +215,15 @@ internal class SolStatement(
   val inInterface: Boolean,
   val inEnum: Boolean,
   val inYul: Boolean,
+  /** directly inside an `abstract contract`. */
+  val inAbstract: Boolean = false,
 ) {
   val isEmpty get() = start > last
   val lastToken get() = tokens[last]
+
+  /** A `virtual` function in an abstract contract: unimplemented, it ends with `;`. */
+  fun isAbstractVirtualFunction(): Boolean =
+    inAbstract && !isEmpty && tokens[start].text == "function" && (start..last).any { tokens[it].text == "virtual" }
 
   fun needsBody(): Boolean {
     if (bodyFollows) return false
@@ -194,7 +237,13 @@ internal class SolStatement(
  * Finds the bounds and the shape of the statement on a line from the tokens alone, so that it works on code that
  * doesn't parse.
  */
-internal class SolStatementAnalyzer(private val document: Document) {
+internal class SolStatementAnalyzer(
+  private val document: Document,
+  /** a standalone `.yul` file: everything is Yul. */
+  private val yulFile: Boolean = false,
+  /** the pragma allows Solidity < 0.6, where `function()` is the fallback function. */
+  private val legacyFallback: Boolean = false,
+) {
   val tokens: List<SolToken> = lex(document.charsSequence)
   val braceMatch: IntArray = matchBraces()
 
@@ -266,7 +315,7 @@ internal class SolStatementAnalyzer(private val document: Document) {
     }
     // a closing `}`: nothing to complete
     if (tokens[last].text == "}" && !isNestingBrace(last)) {
-      return SolStatement(tokens, last + 1, last, -1, Kind.SIMPLE, emptyList(), false, false, false, false, inYul(last))
+      return SolStatement(tokens, last + 1, last, -1, Kind.SIMPLE, emptyList(), false, false, false, false, isYul(last))
     }
 
     val boundary = findBoundary(last)
@@ -308,17 +357,20 @@ internal class SolStatementAnalyzer(private val document: Document) {
     }
 
     val unclosed = stack.map { tokens[it] }
-    val kind = if (start > last) Kind.SIMPLE else kindOf(start)
-    val enclosing = enclosingHeader(minOf(start, last + 1) - 1)
+    val enclosingOpen = enclosingBrace(minOf(start, last + 1) - 1)
+    val enclosing = if (enclosingOpen >= 0) headerKeyword(enclosingOpen) else null
+    val kind = if (start > last) Kind.SIMPLE else kindOf(start, last, enclosing)
     val inInterface = enclosing == "interface"
     val inEnum = enclosing == "enum"
+    val inAbstract = enclosingOpen >= 0 && isAbstractHeader(enclosingOpen)
     val partial = SolStatement(
       tokens, start, last, resetToken, kind, unclosed, headerBrace,
-      bodyFollows = false, inInterface = inInterface, inEnum = inEnum, inYul = inYul(last)
+      bodyFollows = false, inInterface = inInterface, inEnum = inEnum, inYul = isYul(last), inAbstract = inAbstract
     )
     return SolStatement(
       tokens, start, last, resetToken, kind, unclosed, headerBrace,
-      bodyFollows = bodyFollows(partial), inInterface = inInterface, inEnum = inEnum, inYul = partial.inYul
+      bodyFollows = bodyFollows(partial), inInterface = inInterface, inEnum = inEnum, inYul = partial.inYul,
+      inAbstract = inAbstract
     )
   }
 
@@ -337,19 +389,35 @@ internal class SolStatementAnalyzer(private val document: Document) {
     return false
   }
 
-  private fun kindOf(start: Int): Kind {
+  private fun kindOf(start: Int, last: Int, enclosing: String?): Kind {
     val first = tokens[start].text
     val second = tokens.getOrNull(start + 1)?.text
     return when (first) {
       "if", "for" -> Kind.CONDITION
       "while" -> if (isDoWhile(start)) Kind.SIMPLE else Kind.CONDITION
       "try", "catch", "unchecked", "assembly" -> Kind.BLOCK_HEADER
-      // `function (uint) external f;` is a variable of a function type
-      "function" -> if (second == "(") Kind.SIMPLE else Kind.CALLABLE
+      // `function (uint) external f;` is a variable of a function type, `function() payable` a pre-0.6 fallback
+      "function" -> if (second != "(") Kind.CALLABLE else if (isLegacyFallback(start, last, enclosing)) Kind.CALLABLE else Kind.SIMPLE
       "constructor", "modifier", "fallback", "receive" -> Kind.CALLABLE
       "contract", "interface", "library", "abstract", "struct", "enum" -> Kind.TYPE_HEADER
       else -> Kind.SIMPLE
     }
+  }
+
+  /**
+   * `function() external payable` directly in a contract, when the pragma allows Solidity < 0.6. A variable of a
+   * function type always ends with its name (or has an initializer), which a fallback header never does.
+   */
+  private fun isLegacyFallback(start: Int, last: Int, enclosing: String?): Boolean {
+    if (!legacyFallback || enclosing !in setOf("contract", "library", "interface")) return false
+    if ((start..last).any { tokens[it].text == "=" }) return false
+    val end = tokens[last]
+    return end.type != SolidityTokenTypes.IDENTIFIER || end.text in FUNCTION_HEADER_WORDS
+  }
+
+  private fun isAbstractHeader(open: Int): Boolean {
+    val boundary = findBoundaryBefore(open - 1)
+    return tokens.getOrNull(boundary + 1)?.text == "abstract"
   }
 
   /** `do { ... } while (x)` */
@@ -427,6 +495,108 @@ internal class SolStatementAnalyzer(private val document: Document) {
     return -1
   }
 
+  private fun isYul(idx: Int): Boolean = yulFile || inYul(idx)
+
+  /**
+   * The one insertion that completes the Yul statement on [line]: the `)` and `}` it leaves open, otherwise the
+   * missing block of `if cond`, `for {} cond {}`, `switch x case 0`, `default` and `function f(a) -> r`.
+   */
+  fun yulFix(line: Int): Pair<Int, String>? {
+    if (line < 0 || line >= document.lineCount) return null
+    val lineStart = document.getLineStartOffset(line)
+    val lineEnd = document.getLineEndOffset(line)
+    val last = tokens.indexOfLast { it.start in lineStart..lineEnd }.takeIf { it >= 0 } ?: return null
+    if (!isYul(last)) return null
+    var start = yulStatementStart(tokens.indexOfFirst { it.start >= lineStart })
+    if (tokens[start].text == "assembly") return null
+
+    // open parens and blocks, from the first token of the statement
+    val stack = ArrayList<Int>()
+    for (i in start..last) {
+      when (tokens[i].text) {
+        "(", "{" -> stack.add(i)
+        ")" -> if (stack.lastOrNull()?.let { tokens[it].text } == "(") stack.removeLast()
+        "}" -> {
+          while (stack.isNotEmpty() && tokens[stack.last()].text == "(") stack.removeLast()
+          if (stack.isEmpty()) start = i + 1 else stack.removeLast()
+        }
+      }
+    }
+    if (start > last) return null
+    val closers = StringBuilder()
+    for (open in stack.asReversed()) {
+      if (tokens[open].text == "(") {
+        closers.append(")")
+      } else if (open != last && isUnclosedYulBlock(open, start)) {
+        closers.append(" }")
+      } else {
+        break
+      }
+    }
+    if (closers.isNotEmpty()) return tokens[last].end to closers.toString()
+    if (stack.isNotEmpty()) return null
+
+    // the block of a control statement or function
+    val next = tokens.getOrNull(last + 1)
+    if (next?.text == "{" && lineOf(next.start) != line) return null
+    val shape = StringBuilder()
+    var i = start + 1
+    while (i <= last) {
+      if (tokens[i].text == "{") {
+        shape.append('B')
+        i = braceMatch[i].takeIf { it in i..last } ?: return null
+      } else if (shape.lastOrNull() != 'E') {
+        shape.append('E')
+      }
+      i++
+    }
+    val lastText = tokens[last].text
+    val body = when (tokens[start].text) {
+      "if", "case" -> shape.toString() == "E"
+      "function" -> 'B' !in shape && tokens.getOrNull(start + 1)?.type == SolidityTokenTypes.IDENTIFIER
+      "default" -> shape.isEmpty()
+      "switch" -> lastText == "default" || (last - 1 > start && tokens[last - 1].text == "case")
+      "for" -> return when (shape.toString()) {
+        "BEB" -> tokens[last].end to " {}"
+        "BE" -> tokens[last].end to " {} {}"
+        else -> null
+      }
+      else -> false
+    }
+    return if (body) tokens[last].end to " {}" else null
+  }
+
+  /** The first token of the Yul statement that [first], the first token of a line, belongs to. */
+  private fun yulStatementStart(first: Int): Int {
+    var start = first
+    while (true) {
+      var depth = 0
+      var i = start - 1
+      var opener = -1
+      while (i >= 0) {
+        val text = tokens[i].text
+        if (text == ")") depth++
+        else if (text == "(") {
+          if (depth == 0) {
+            opener = i
+            break
+          }
+          depth--
+        } else if ((text == "{" || text == "}") && depth == 0) break
+        i--
+      }
+      if (opener < 0) return start
+      val openerLine = document.getLineStartOffset(lineOf(tokens[opener].start))
+      start = tokens.indexOfFirst { it.start >= openerLine }
+    }
+  }
+
+  /** A `{` followed by more tokens on its line whose block isn't closed by a `}` at the statement's indent or deeper. */
+  private fun isUnclosedYulBlock(open: Int, start: Int): Boolean {
+    val close = braceMatch[open]
+    return close < 0 || indentOf(tokens[close].start) < indentOf(tokens[start].start)
+  }
+
   private fun inYul(idx: Int): Boolean {
     var open = enclosingBrace(idx)
     while (open >= 0) {
@@ -494,6 +664,9 @@ internal class SolStatementAnalyzer(private val document: Document) {
   companion object {
     private const val MAX_LINES = 50
     private val CONDITION_KEYWORDS = setOf("if", "while", "for")
+    private val FUNCTION_HEADER_WORDS = setOf(
+      "payable", "external", "public", "internal", "private", "pure", "view", "constant", "virtual", "override"
+    )
     private val NESTING_BRACE_PREDECESSORS = setOf("(", ",", "=", "[", ":", "?", "return", "using", "import")
 
     private fun lex(text: CharSequence): List<SolToken> {

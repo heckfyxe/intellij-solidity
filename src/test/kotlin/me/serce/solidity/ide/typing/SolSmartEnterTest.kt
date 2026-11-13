@@ -694,4 +694,327 @@ class SolSmartEnterTest : SolTestBase() {
       <caret>
     """
   )
+
+  // conditions without parens
+
+  fun testIfWithoutParens() = doFunctionTest(
+    "if x > 1<caret>",
+    """
+      if (x > 1) {
+          <caret>
+      }
+    """
+  )
+
+  fun testWhileWithoutParens() = doFunctionTest(
+    "while i < n<caret>",
+    """
+      while (i < n) {
+          <caret>
+      }
+    """
+  )
+
+  fun testElseIfWithoutParens() = doFunctionTest(
+    """
+      if (x) {
+          foo();
+      } else if f(y<caret>
+    """,
+    """
+      if (x) {
+          foo();
+      } else if (f(y)) {
+          <caret>
+      }
+    """
+  )
+
+  // pre-0.6 fallback functions
+
+  fun testLegacyFallbackGetsBody() = doTest(
+    """
+      pragma solidity ^0.4.24;
+      contract A {
+          function() external payable<caret>
+      }
+    """,
+    """
+      pragma solidity ^0.4.24;
+      contract A {
+          function() external payable {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testLegacyFunctionTypeVariableGetsSemicolon() = doTest(
+    """
+      pragma solidity ^0.5.0;
+      contract A {
+          function (uint) external callback<caret>
+      }
+    """,
+    """
+      pragma solidity ^0.5.0;
+      contract A {
+          function (uint) external callback;
+          <caret>
+      }
+    """
+  )
+
+  fun testModernUnnamedFunctionHeaderGetsSemicolon() = doTest(
+    """
+      pragma solidity ^0.8.0;
+      contract A {
+          function() external payable<caret>
+      }
+    """,
+    """
+      pragma solidity ^0.8.0;
+      contract A {
+          function() external payable;
+          <caret>
+      }
+    """
+  )
+
+  // abstract functions
+
+  fun testAbstractVirtualFunctionGetsSemicolon() = doTest(
+    """
+      abstract contract A {
+          function f(uint a) public virtual<caret>
+      }
+    """,
+    """
+      abstract contract A {
+          function f(uint a) public virtual;
+          <caret>
+      }
+    """
+  )
+
+  fun testAbstractContractNonVirtualFunctionGetsBody() = doTest(
+    """
+      abstract contract A {
+          function f(uint a) public<caret>
+      }
+    """,
+    """
+      abstract contract A {
+          function f(uint a) public {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testVirtualFunctionInContractGetsBody() = doTest(
+    """
+      contract A {
+          function f(uint a) public virtual<caret>
+      }
+    """,
+    """
+      contract A {
+          function f(uint a) public virtual {
+              <caret>
+          }
+      }
+    """
+  )
+
+  // Yul
+
+  fun testYulCallParens() = doFunctionTest(
+    """
+      assembly {
+          mstore(0, add(x, 1<caret>
+      }
+    """,
+    """
+      assembly {
+          mstore(0, add(x, 1))
+          <caret>
+      }
+    """
+  )
+
+  fun testYulMultilineCallParens() = doFunctionTest(
+    """
+      assembly {
+          let x := 1
+          mstore(0,
+              add(x, 1<caret>
+      }
+    """,
+    """
+      assembly {
+          let x := 1
+          mstore(0,
+              add(x, 1))
+          <caret>
+      }
+    """
+  )
+
+  fun testYulIf() = doFunctionTest(
+    """
+      assembly {
+          if lt(x, 1<caret>
+      }
+    """,
+    """
+      assembly {
+          if lt(x, 1) {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testYulIfWithUnclosedBlock() = doFunctionTest(
+    """
+      assembly {
+          if x { mstore(0, 1<caret>
+      }
+    """,
+    """
+      assembly {
+          if x { mstore(0, 1) }
+          <caret>
+      }
+    """
+  )
+
+  fun testYulFor() = doFunctionTest(
+    """
+      assembly {
+          for { let i := 0 } lt(i, 10) { i := add(i, 1) }<caret>
+      }
+    """,
+    """
+      assembly {
+          for { let i := 0 } lt(i, 10) { i := add(i, 1) } {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testYulForWithoutPost() = doFunctionTest(
+    """
+      assembly {
+          for {} lt(i, 10<caret>
+      }
+    """,
+    """
+      assembly {
+          for {} lt(i, 10) {} {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testYulSwitchCase() = doFunctionTest(
+    """
+      assembly {
+          switch x case 0<caret>
+      }
+    """,
+    """
+      assembly {
+          switch x case 0 {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testYulCaseAndDefault() = doFunctionTest(
+    """
+      assembly {
+          switch x
+          case 0 { y := 1 }
+          default<caret>
+      }
+    """,
+    """
+      assembly {
+          switch x
+          case 0 { y := 1 }
+          default {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testYulFunction() = doFunctionTest(
+    """
+      assembly {
+          function g(a, b) -> r<caret>
+      }
+    """,
+    """
+      assembly {
+          function g(a, b) -> r {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testYulFunctionWithUnclosedParameters() = doFunctionTest(
+    """
+      assembly {
+          function g(a, b<caret>
+      }
+    """,
+    """
+      assembly {
+          function g(a, b) {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testYulIfWithBlockOnNextLine() = doFunctionTest(
+    """
+      assembly {
+          if x<caret>
+          {
+          }
+      }
+    """,
+    """
+      assembly {
+          if x
+          {
+              <caret>
+          }
+      }
+    """
+  )
+
+  fun testStandaloneYulFile() {
+    myFixture.configureByText("main.yul", """
+      {
+          function g(a) -> r<caret>
+      }
+    """.trimIndent())
+    myFixture.performEditorAction(IdeActions.ACTION_EDITOR_COMPLETE_STATEMENT)
+    myFixture.checkResult("""
+      {
+          function g(a) -> r {
+              <caret>
+          }
+      }
+    """.trimIndent())
+  }
 }

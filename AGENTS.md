@@ -74,7 +74,8 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * Complete Current Statement (`SolSmartEnterProcessor`) works on lexer tokens, not PSI: incomplete statements parse
   into bare tokens (a state variable without `;` even escapes its contract). It inserts only `)`/`;`/` {}` on one line
   and lets a real Enter lay out the block; `SmartEnterProcessorWithFixers.plainEnter` is Start New Line, not Enter,
-  and its `reformat` must stay a no-op so forge fmt never runs on half-written code.
+  and its `reformat` must stay a no-op so forge fmt never runs on half-written code. Inside assembly and in `.yul`
+  files only `SolYulFixer` (`SolStatementAnalyzer.yulFix`) changes the text: Yul statements have no `;`.
 
 ## Types
 
