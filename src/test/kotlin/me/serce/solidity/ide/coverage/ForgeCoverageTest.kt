@@ -1,6 +1,8 @@
 package me.serce.solidity.ide.coverage
 
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.markup.ActiveGutterRenderer
 import me.serce.solidity.utils.SolTestBase
 
 class ForgeCoverageTest : SolTestBase() {
@@ -54,6 +56,63 @@ class ForgeCoverageTest : SolTestBase() {
     assertEquals(mapOf(1 to 3L, 2 to 0L), report.lineHits)
   }
 
+  fun testTooltips() {
+    val report = Lcov.parse(lcov)
+    val branchy = report.getValue("src/Branchy.sol")
+    assertEquals("Hit once", branchy.tooltip(5))
+    assertEquals("Hit once, branches: 0 of 1 taken", branchy.tooltip(6))
+    assertEquals("Not covered", branchy.tooltip(7))
+    assertEquals("Hits: 258", report.getValue("src/Counter.sol").tooltip(8))
+  }
+
+  fun testSummary() {
+    assertEquals("Lines: 83.3% (5/6), branches: 0.0% (0/1)", CoverageSummary.of(Lcov.parse(lcov)).toString())
+    assertEquals("Lines: 100.0% (1/1)", CoverageSummary.of(Lcov.parse("SF:a.sol\nDA:1,1\nend_of_record\n")).toString())
+    assertEquals("Lines: n/a (0/0)", CoverageSummary.of(emptyMap()).toString())
+  }
+
+  fun testEditingAFileDropsItsMarkers() {
+    val service = configureBranchy()
+    try {
+      assertEquals(4, markers(myFixture.editor).size)
+      WriteCommandAction.runWriteCommandAction(project) { myFixture.editor.document.insertString(0, "\n") }
+      assertEmpty(markers(myFixture.editor))
+      assertNull(service.coverageFor(myFixture.file.virtualFile.path))
+      // reopening the editor doesn't bring them back
+      service.apply(myFixture.editor)
+      assertEmpty(markers(myFixture.editor))
+    } finally {
+      service.clear()
+    }
+  }
+
+  fun testFilesChangedAfterTheRunAreNotMarked() {
+    val service = configureBranchy(startedAt = 0L)
+    try {
+      assertEmpty(markers(myFixture.editor))
+    } finally {
+      service.clear()
+    }
+  }
+
+  fun testMarkersHaveTooltips() {
+    val service = configureBranchy()
+    try {
+      val tooltips = markers(myFixture.editor).sortedBy { it.startOffset }.map { (it.lineMarkerRenderer as ActiveGutterRenderer).tooltipText }
+      assertEquals(listOf("Hit once", "Hit once, branches: 0 of 1 taken", "Not covered", "Hit once"), tooltips)
+    } finally {
+      service.clear()
+    }
+  }
+
+  private fun configureBranchy(startedAt: Long = Long.MAX_VALUE): ForgeCoverageService {
+    val file = myFixture.configureByText("Branchy.sol", BRANCHY)
+    val vFile = file.virtualFile
+    val service = ForgeCoverageService.getInstance(project)
+    service.setReport(vFile.parent.path, Lcov.parse(lcov.replace("src/Branchy.sol", vFile.name)), startedAt)
+    return service
+  }
+
   fun testServiceMapsRelativePathsAndMarksEditors() {
     val file = myFixture.configureByText(
       "Branchy.sol",
@@ -92,6 +151,20 @@ class ForgeCoverageTest : SolTestBase() {
     assertFalse(service.isActive)
     assertEmpty(markers(myFixture.editor))
   }
+
+  private val BRANCHY = """
+    // SPDX-License-Identifier: UNLICENSED
+    pragma solidity ^0.8.13;
+
+    contract Branchy {
+        function f(uint256 x) public pure returns (uint256) {
+            if (x > 10) {
+                return 1;
+            }
+            return 2;
+        }
+    }
+  """.trimIndent()
 
   private fun markers(editor: Editor) =
     editor.markupModel.allHighlighters.filter { it.isValid && it.lineMarkerRenderer?.javaClass?.simpleName == "CoverageRenderer" }

@@ -118,7 +118,9 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   and solc rejects unsupported names with a `JSONError`, so `SolcRequest.normalizeEvmVersion` does the same.
 * `.gas-snapshot` hints (`ForgeGasSnapshotInlayProvider`) are cached on the snapshot file by modification stamp.
 * `forge coverage --report lcov` writes `lcov.info` in the Foundry root, with `SF:` paths relative to it, even when a
-  test fails (exit code 1); `ForgeCoverageService` keeps the result and paints it in editors.
+  test fails (exit code 1); `ForgeCoverageService` keeps the result and paints it in editors. A file's markers
+  are dropped once it is edited (document listener) or its timestamp is newer than the run's start, since its lines no
+  longer match the report.
 
 ## Common Mistakes and How to Avoid Them
 

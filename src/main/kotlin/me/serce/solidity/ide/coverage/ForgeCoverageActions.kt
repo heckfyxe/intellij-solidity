@@ -1,5 +1,7 @@
 package me.serce.solidity.ide.coverage
 
+import com.intellij.notification.Notification
+import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -47,18 +49,30 @@ class RunForgeCoverageAction : DumbAwareAction() {
         val lcov = Lcov.parse(report.readText())
         LocalFileSystem.getInstance().refreshIoFiles(listOf(report), true, false, null)
         ApplicationManager.getApplication().invokeLater({
-          ForgeCoverageService.getInstance(project).setReport(foundry.root.toString(), lcov)
+          ForgeCoverageService.getInstance(project).setReport(foundry.root.toString(), lcov, started)
         }, project.disposed)
-        if (output.exitCode != 0) {
-          notify(project, "forge coverage exited with code ${output.exitCode}; showing the report it wrote", NotificationType.WARNING)
+        val summary = CoverageSummary.of(lcov).toString()
+        val (content, type) = if (output.exitCode != 0) {
+          "$summary<br>forge coverage exited with code ${output.exitCode} (a test failed?); showing the report it wrote" to NotificationType.WARNING
+        } else {
+          summary to NotificationType.INFORMATION
         }
+        notification(content, type).addAction(object : NotificationAction("Hide") {
+          override fun actionPerformed(e: AnActionEvent, notification: Notification) {
+            ForgeCoverageService.getInstance(project).clear()
+            notification.expire()
+          }
+        }).notify(project)
       }
     }.queue()
   }
 
-  private fun notify(project: Project, content: String, type: NotificationType) {
+  private fun notification(content: String, type: NotificationType): Notification =
     NotificationGroupManager.getInstance().getNotificationGroup("Solidity Foundry")
-      .createNotification("Forge coverage", content, type).notify(project)
+      .createNotification("Forge coverage", content, type)
+
+  private fun notify(project: Project, content: String, type: NotificationType) {
+    notification(content, type).notify(project)
   }
 }
 

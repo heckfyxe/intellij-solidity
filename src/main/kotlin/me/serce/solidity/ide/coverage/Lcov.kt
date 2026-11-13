@@ -20,8 +20,39 @@ class FileCoverage(
     }
   }
 
+  /** What the gutter marker of [line] says: hits and branches, or that it never ran. */
+  fun tooltip(line: Int): String {
+    val hits = lineHits[line] ?: 0L
+    val branch = branches[line]
+    if (state(line) == LineCoverage.UNCOVERED) return "Not covered"
+    val parts = mutableListOf(if (hits == 1L) "Hit once" else "Hits: $hits")
+    if (branch != null) parts += "branches: ${branch.first} of ${branch.second} taken"
+    return parts.joinToString(", ")
+  }
+
   /** Every line lcov reported, with its state. */
   fun states(): Map<Int, LineCoverage> = (lineHits.keys + branches.keys).associateWith { state(it)!! }
+}
+
+/** Line and branch totals of a report, as `forge coverage --report summary` counts them. */
+class CoverageSummary(val linesHit: Int, val lines: Int, val branchesHit: Int, val branches: Int) {
+  private fun percent(hit: Int, total: Int) = if (total == 0) "n/a" else "%.1f%%".format(java.util.Locale.ROOT, hit * 100.0 / total)
+
+  override fun toString(): String =
+    "Lines: ${percent(linesHit, lines)} ($linesHit/$lines)" +
+      if (branches == 0) "" else ", branches: ${percent(branchesHit, branches)} ($branchesHit/$branches)"
+
+  companion object {
+    fun of(report: Map<String, FileCoverage>): CoverageSummary {
+      val files = report.values
+      return CoverageSummary(
+        linesHit = files.sumOf { f -> f.lineHits.values.count { it > 0 } },
+        lines = files.sumOf { it.lineHits.size },
+        branchesHit = files.sumOf { f -> f.branches.values.sumOf { it.first } },
+        branches = files.sumOf { f -> f.branches.values.sumOf { it.second } },
+      )
+    }
+  }
 }
 
 /** Reads the lcov tracefile `forge coverage --report lcov` writes. */

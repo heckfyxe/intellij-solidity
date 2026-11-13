@@ -7,10 +7,12 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.EditorFactoryEvent
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.event.EditorFactoryListener
+import com.intellij.openapi.editor.markup.ActiveGutterRenderer
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.HighlighterTargetArea
-import com.intellij.openapi.editor.markup.LineMarkerRenderer
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
@@ -20,13 +22,21 @@ import com.intellij.util.ui.JBUI
 import java.awt.Color
 import java.awt.Graphics
 import java.awt.Rectangle
+import java.awt.event.MouseEvent
 
-/** Holds the last `forge coverage` result and paints it in the gutter of the source files' editors. */
+/**
+ * Holds the last `forge coverage` result and paints it in the gutter of the source files' editors. A file's markers are
+ * dropped as soon as it is edited, or when it changed on disk after the run, since its lines no longer match the report.
+ */
 @Service(Service.Level.PROJECT)
 class ForgeCoverageService(private val project: Project) : Disposable {
   /** Absolute source path (VFS form, `/`-separated) to its coverage. */
   @Volatile
   private var coverage: Map<String, FileCoverage> = emptyMap()
+
+  /** When the run that produced [coverage] started (ms); files modified later are not marked. */
+  @Volatile
+  private var reportTime: Long = Long.MAX_VALUE
 
   val isActive get() = coverage.isNotEmpty()
 
@@ -36,10 +46,18 @@ class ForgeCoverageService(private val project: Project) : Disposable {
         if (event.editor.project == project && isActive) apply(event.editor)
       }
     }, this)
+    EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
+      override fun documentChanged(event: DocumentEvent) {
+        if (!isActive) return
+        val path = FileDocumentManager.getInstance().getFile(event.document)?.path ?: return
+        if (path in coverage) dropFile(path)
+      }
+    }, this)
   }
 
   /** Replaces the coverage with an lcov report whose `SF:` paths are relative to [root], then repaints open editors. */
-  fun setReport(root: String, lcov: Map<String, FileCoverage>) {
+  fun setReport(root: String, lcov: Map<String, FileCoverage>, startedAt: Long = Long.MAX_VALUE) {
+    reportTime = startedAt
     val base = root.replace('\\', '/').trimEnd('/')
     coverage = lcov.mapKeys { (path, _) -> if (path.startsWith("/") || path.matches(Regex("^[A-Za-z]:/.*"))) path else "$base/$path" }
     refreshEditors()
@@ -51,6 +69,12 @@ class ForgeCoverageService(private val project: Project) : Disposable {
   }
 
   fun coverageFor(path: String): FileCoverage? = coverage[path]
+
+  /** Forgets [path]'s coverage and removes its markers: its lines no longer match the report. */
+  private fun dropFile(path: String) {
+    coverage = coverage - path
+    refreshEditors()
+  }
 
   private fun refreshEditors() {
     val run = { EditorFactory.getInstance().allEditors.filter { it.project == project || it.project == null }.forEach { apply(it) } }
@@ -64,6 +88,8 @@ class ForgeCoverageService(private val project: Project) : Disposable {
     editor.putUserData(HIGHLIGHTERS, null)
     val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return
     val fileCoverage = coverage[file.path] ?: return
+    // changed on disk after the run (e.g. a branch switch) or edited and not saved yet
+    if (file.timeStamp > reportTime || FileDocumentManager.getInstance().isDocumentUnsaved(editor.document)) return
     val document = editor.document
     val added = fileCoverage.states().mapNotNull { (line, state) ->
       val index = line - 1
@@ -71,18 +97,23 @@ class ForgeCoverageService(private val project: Project) : Disposable {
       editor.markupModel.addRangeHighlighter(
         document.getLineStartOffset(index), document.getLineEndOffset(index),
         HighlighterLayer.SELECTION - 1, null, HighlighterTargetArea.LINES_IN_RANGE
-      ).apply { lineMarkerRenderer = CoverageRenderer(state) }
+      ).apply { lineMarkerRenderer = CoverageRenderer(state, fileCoverage.tooltip(line)) }
     }
     editor.putUserData(HIGHLIGHTERS, added)
   }
 
   override fun dispose() {}
 
-  private class CoverageRenderer(val state: LineCoverage) : LineMarkerRenderer {
+  private class CoverageRenderer(val state: LineCoverage, private val tooltip: String) : ActiveGutterRenderer {
     override fun paint(editor: Editor, g: Graphics, r: Rectangle) {
       g.color = state.color
       g.fillRect(r.x, r.y, JBUI.scale(3), r.height)
     }
+
+    override fun getTooltipText(): String = tooltip
+    override fun getAccessibleName(): String = tooltip
+    override fun canDoAction(e: MouseEvent): Boolean = false
+    override fun doAction(editor: Editor, e: MouseEvent) {}
   }
 
   companion object {
