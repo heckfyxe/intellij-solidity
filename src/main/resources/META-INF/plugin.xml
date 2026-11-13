@@ -366,6 +366,12 @@
                          level="ERROR"
                          implementationClass="me.serce.solidity.ide.inspections.MissingDataLocationInspection"/>
 
+        <localInspection language="Solidity" groupName="Solidity"
+                         displayName="vm.expectRevert or vm.prank is not followed by an external call"
+                         enabledByDefault="true"
+                         level="WARNING"
+                         implementationClass="me.serce.solidity.ide.inspections.CheatcodeWithoutCallInspection"/>
+
         <!-- Forge Test Runner -->
         <configurationType implementation="me.serce.solidity.ide.run.ForgeTestRunConfigurationType"/>
         <runConfigurationProducer
