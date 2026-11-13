@@ -195,6 +195,7 @@
                          level="WARNING"
                          implementationClass="me.serce.solidity.ide.annotation.ForgeLintInspection"/>
         <notificationGroup id="Solidity Chains" displayType="BALLOON"/>
+        <notificationGroup id="Solidity Foundry" displayType="BALLOON"/>
 
 
         <internalFileTemplate name="Solidity Contract"/>
@@ -413,6 +414,18 @@
                 text="Show Gas Estimation" description="Show gas estimation for functions as calculated by solc compiler">
             <add-to-group group-id="AnalyzeActions" anchor="last"/>
         </action>
+        <group id="solidity.forge.coverage" text="Forge Coverage" popup="false">
+            <action id="solidity.forge.coverage.run"
+                    class="me.serce.solidity.ide.coverage.RunForgeCoverageAction"
+                    text="Run Forge Coverage"
+                    description="Run forge coverage and mark covered and uncovered lines in the gutter"/>
+            <action id="solidity.forge.coverage.hide"
+                    class="me.serce.solidity.ide.coverage.HideForgeCoverageAction"
+                    text="Hide Forge Coverage"
+                    description="Remove the forge coverage markers from the editors"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <add-to-group group-id="EditorGutterPopupMenu" anchor="last"/>
+        </group>
 
     </actions>
 
