@@ -191,6 +191,13 @@
                            implementationClass="me.serce.solidity.chain.compile.SolcExternalAnnotator"/>
         <externalAnnotator language="Solidity"
                            implementationClass="me.serce.solidity.ide.annotation.ForgeLintAnnotator"/>
+        <completion.contributor language="TEXT" order="first"
+                                implementationClass="me.serce.solidity.ide.foundry.RemappingsCompletionContributor"/>
+        <localInspection language="TEXT" groupName="Solidity" shortName="ForgeRemappings"
+                         displayName="Invalid remapping in remappings.txt"
+                         enabledByDefault="true"
+                         level="WARNING"
+                         implementationClass="me.serce.solidity.ide.foundry.RemappingsInspection"/>
         <localInspection language="Solidity" groupName="Solidity" shortName="ForgeLint"
                          displayName="Forge lint"
                          enabledByDefault="true"
