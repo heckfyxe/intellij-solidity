@@ -458,6 +458,17 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <add-to-group group-id="EditorGutterPopupMenu" anchor="last"/>
         </group>
+        <group id="solidity.forge.snapshot" text="Forge Snapshot" popup="false">
+            <action id="solidity.forge.snapshot.run"
+                    class="me.serce.solidity.ide.run.RunForgeSnapshotAction"
+                    text="Run Forge Snapshot"
+                    description="Run forge snapshot and update .gas-snapshot"/>
+            <action id="solidity.forge.snapshot.check"
+                    class="me.serce.solidity.ide.run.CheckForgeSnapshotAction"
+                    text="Check Forge Snapshot"
+                    description="Run forge snapshot --check and report tests whose gas differs from .gas-snapshot"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </group>
 
     </actions>
 

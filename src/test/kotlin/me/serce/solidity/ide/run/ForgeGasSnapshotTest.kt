@@ -23,6 +23,19 @@ class ForgeGasSnapshotTest : DeclarativeInlayHintsProviderTestCase() {
     assertEquals("runs: 256, calls: 128000, reverts: 0", entries[3].measurement)
   }
 
+  fun testCheckOutput() {
+    // forge 1.9 `forge snapshot --check` after a test got more expensive
+    val output = """
+      Ran 2 tests for test/A.t.sol:ATest
+      [PASS] test_A() (gas: 22347)
+      [PASS] test_B(uint8) (runs: 256, μ: 20504, ~: 22526)
+      Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 1.86ms (1.74ms CPU time)
+      Diff in "ATest::test_A()": consumed "(gas: 22347)" gas, expected "(gas: 22234)" gas 
+    """.trimIndent()
+    assertEquals(listOf(GasSnapshotDiff("ATest::test_A()", "gas: 22347", "gas: 22234")), ForgeSnapshotOutput.diffs(output))
+    assertEmpty(ForgeSnapshotOutput.diffs("Suite result: ok."))
+  }
+
   fun testFindTellsOverloadsApart() {
     val entries = GasSnapshot.parse("A:test_x() (gas: 1)\nA:test_x(uint256) (runs: 256, μ: 2, ~: 2)")
     assertEquals("gas: 1", GasSnapshot.find(entries, "A", "test_x", 0)?.measurement)

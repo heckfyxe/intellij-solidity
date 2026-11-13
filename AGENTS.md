@@ -117,6 +117,8 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   settings; forge lowers `evm_version` to what the chosen solc supports (default `osaka` becomes `cancun` for 0.8.24),
   and solc rejects unsupported names with a `JSONError`, so `SolcRequest.normalizeEvmVersion` does the same.
 * `.gas-snapshot` hints (`ForgeGasSnapshotInlayProvider`) are cached on the snapshot file by modification stamp.
+  `forge snapshot --check` exits 1 and prints `Diff in "C::test()": consumed "(gas: N)" gas, expected "(gas: M)" gas`
+  per changed test (`ForgeSnapshotOutput`).
 * `forge coverage --report lcov` writes `lcov.info` in the Foundry root, with `SF:` paths relative to it, even when a
   test fails (exit code 1); `ForgeCoverageService` keeps the result and paints it in editors. A file's markers
   are dropped once it is edited (document listener) or its timestamp is newer than the run's start, since its lines no
