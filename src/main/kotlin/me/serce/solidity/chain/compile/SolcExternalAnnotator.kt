@@ -43,23 +43,20 @@ class SolcExternalAnnotator : ExternalAnnotator<SolcExternalAnnotator.Input, Lis
     return try {
       val config = input.foundry.config()
       val solc = SolcLocator.find(config.solc, input.text) ?: return emptyList()
-      val sources = mapper.createObjectNode()
-      sources.putObject(input.relativePath).put("content", input.text)
-      input.unsaved.forEach { (path, text) -> sources.putObject(path).put("content", text) }
-      val request = mapper.createObjectNode().apply {
-        put("language", "Solidity")
-        set<JsonNode>("sources", sources)
-        putObject("settings").apply {
-          putArray("remappings").apply { config.remappings.forEach { add(it) } }
-          putObject("outputSelection") // nothing: solc stops after analysis
-        }
-      }
+      val solcVersion = SolcRequest.versionOf(solc.path)
       val root = input.foundry.root.toFile()
       val allowed = (listOf(root) + config.libs.map { File(root, it) }).joinToString(",") { it.path }
       val command = listOf(solc.path, "--standard-json", "--base-path", root.path, "--allow-paths", allowed)
-      val output = input.foundry.exec(command, timeoutMs = 15_000, stdin = mapper.writeValueAsBytes(request))
-      if (output.stdout.isBlank()) return emptyList()
-      val json = mapper.readTree(output.stdout)
+      fun compile(withEvmVersion: Boolean): JsonNode? {
+        val request = SolcRequest.build(input.relativePath, input.text, input.unsaved, config, solcVersion, withEvmVersion)
+        val output = input.foundry.exec(command, timeoutMs = 15_000, stdin = mapper.writeValueAsBytes(request))
+        return if (output.stdout.isBlank()) null else mapper.readTree(output.stdout)
+      }
+      var json = compile(withEvmVersion = true) ?: return emptyList()
+      // a solc whose version we couldn't tell may reject the configured EVM version: fall back to its default
+      if (json["errors"]?.any { it["type"]?.asText() == "JSONError" && it["message"]?.asText().orEmpty().contains("EVM version") } == true) {
+        json = compile(withEvmVersion = false) ?: return emptyList()
+      }
       json["errors"]?.mapNotNull { err ->
         val loc = err["sourceLocation"] ?: return@mapNotNull null
         if (loc["file"]?.asText() != input.relativePath) return@mapNotNull null

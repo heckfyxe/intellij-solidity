@@ -59,6 +59,11 @@ data class ForgeConfig(
   val remappings: List<String>,
   /** Explicit solc version or path from foundry.toml, if any. */
   val solc: String?,
+  /** forge's `evm_version`; forge lowers it to what the chosen solc supports, see `SolcRequest.normalizeEvmVersion`. */
+  val evmVersion: String? = null,
+  val viaIr: Boolean = false,
+  val optimizer: Boolean = false,
+  val optimizerRuns: Int = 200,
 )
 
 data class CompilerMessage(
@@ -111,14 +116,7 @@ class FoundryProject(val root: Path, private val forge: String) {
       if (o.exitCode != 0) throw FoundryException("forge config failed: $text")
       text
     }
-    val json = mapper.readTree(out.substring(out.indexOf('{')))
-    return ForgeConfig(
-      src = json["src"]?.asText() ?: "src",
-      out = json["out"]?.asText() ?: "out",
-      libs = json["libs"]?.map { it.asText() } ?: listOf("lib"),
-      remappings = json["remappings"]?.map { it.asText() } ?: emptyList(),
-      solc = (json["solc"]?.takeIf { !it.isNull } ?: json["solc_version"]?.takeIf { !it.isNull })?.asText(),
-    )
+    return parseConfig(out.substring(out.indexOf('{')))
   }
 
   fun build(): BuildResult {
@@ -193,6 +191,22 @@ class FoundryProject(val root: Path, private val forge: String) {
     private val mapper = ObjectMapper()
     private val configCache = ConcurrentHashMap<Path, Pair<List<Long>, Result<ForgeConfig>>>()
     private val loading = ConcurrentHashMap.newKeySet<Path>()
+
+    /** Parses `forge config --json` output. */
+    fun parseConfig(jsonText: String): ForgeConfig {
+      val json = mapper.readTree(jsonText)
+      return ForgeConfig(
+        src = json["src"]?.asText() ?: "src",
+        out = json["out"]?.asText() ?: "out",
+        libs = json["libs"]?.map { it.asText() } ?: listOf("lib"),
+        remappings = json["remappings"]?.map { it.asText() } ?: emptyList(),
+        solc = (json["solc"]?.takeIf { !it.isNull } ?: json["solc_version"]?.takeIf { !it.isNull })?.asText(),
+        evmVersion = json["evm_version"]?.takeIf { it.isTextual }?.asText(),
+        viaIr = json["via_ir"]?.asBoolean() ?: false,
+        optimizer = json["optimizer"]?.asBoolean() ?: false,
+        optimizerRuns = json["optimizer_runs"]?.takeIf { it.canConvertToInt() }?.asInt() ?: 200,
+      )
+    }
 
     fun forgePath(project: Project): String {
       val s = SoliditySettings.getInstance(project)
