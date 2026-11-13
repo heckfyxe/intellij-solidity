@@ -33,4 +33,6 @@ class SolRenameFileRefactoringSupportProvider : RefactoringSupportProvider() {
   }
 
   override fun getIntroduceVariableHandler() = SolIntroduceVariableHandler()
+
+  override fun getExtractMethodHandler() = SolExtractFunctionHandler()
 }

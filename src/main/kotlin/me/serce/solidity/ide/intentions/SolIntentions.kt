@@ -14,7 +14,7 @@ import me.serce.solidity.lang.psi.*
 private const val FAMILY = "Solidity"
 
 /** The indentation of the line [offset] is on. */
-private fun indentAt(text: CharSequence, offset: Int): String {
+internal fun indentAt(text: CharSequence, offset: Int): String {
   var start = offset
   while (start > 0 && text[start - 1] != '\n') start--
   var end = start
@@ -23,7 +23,7 @@ private fun indentAt(text: CharSequence, offset: Int): String {
 }
 
 /** One level of indentation, as used in the file (a tab, or the smallest space indent, 4 by default). */
-private fun indentUnit(text: CharSequence): String {
+internal fun indentUnit(text: CharSequence): String {
   val indents = text.lines().map { line -> line.takeWhile { it == ' ' || it == '\t' } }.filter { it.isNotEmpty() && it.isNotBlank() }
   if (indents.any { it.startsWith("\t") }) return "\t"
   val smallest = indents.minOfOrNull { it.length } ?: 4

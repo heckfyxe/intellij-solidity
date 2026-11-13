@@ -86,6 +86,10 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * Introduce Variable and Inline Variable (`SolLocalVariableRefactorings.kt`) work on local variables only; reference
   types get `storage` when the expression starts from a state variable, the parameter's location for parameters,
   `memory` otherwise.
+* Extract Function (`SolExtractFunction.kt`) takes whole statements of one block and adds a `private` function after
+  the current one (no visibility for free functions), copying `pure`/`view` from it. Locals read become parameters;
+  locals declared and used later, or outer ones assigned and used anywhere else (loops), become return values; outer
+  ones only assigned are declared in the new function. `return`, `_` and `break`/`continue` leaving it are refused.
 * Optimize Imports keeps aliased imports (`import {A as B}`, `import "x" as X`, `import * as X`) and rebuilds only the
   plain ones, from names used unqualified.
 
