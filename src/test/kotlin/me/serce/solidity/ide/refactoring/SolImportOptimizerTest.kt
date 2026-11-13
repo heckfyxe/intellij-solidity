@@ -30,6 +30,39 @@ class SolImportOptimizerTest : SolTestBase() {
     )
   }
 
+  fun testOptimiseImportsKeepsAliases() {
+    InlineFile("contract A {}", "A.sol")
+    InlineFile("contract B {}", "B.sol")
+    InlineFile("library L { function f() internal {} }", "L.sol")
+    InlineFile("contract D {}", "D.sol")
+
+    checkEditorAction(
+      """
+          pragma solidity ^0.8.26;
+
+          import {A as Base, D as Unused} from "./A.sol";
+          import "./L.sol" as Lib;
+          import * as Bs from "./B.sol";
+          import {D} from "./D.sol";
+
+          contract C is Base, Bs.B {
+            function g() external { Lib.L.f(); }
+          }
+      """, //
+      """
+          pragma solidity ^0.8.26;
+
+          import {A as Base} from "./A.sol";
+          import * as Bs from "./B.sol";
+          import "./L.sol" as Lib;
+
+          contract C is Base, Bs.B {
+            function g() external { Lib.L.f(); }
+          }
+      """, "OptimizeImports"
+    )
+  }
+
   fun testOptimiseImportsWithoutImports() {
     checkEditorAction(
       """
