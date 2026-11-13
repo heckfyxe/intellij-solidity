@@ -9,6 +9,17 @@ class ValidateFunctionArgumentsInspectionTest : SolInspectionsTestBase(ValidateF
         }
     """)
 
+  fun testIntegersAreNotAddresses() = checkByText("""
+        contract a {
+            function take(address x) public {}
+            function a(uint160 n) public {
+                take(/*@error descr="Argument of type 'uint160' is not assignable to parameter of type 'address'"@*/n/*@/error@*/);
+                take(0x5B38Da6a701c568545dCfcB03FcB875f56beddC4);
+                take(address(n));
+            }
+        }
+    """)
+
   fun testTypeAssertSuccess() = checkByText("""
         contract a {
             function a() {

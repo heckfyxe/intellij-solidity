@@ -300,7 +300,8 @@ private fun foldConstants(op: String?, a: Rational, b: Rational): Rational? {
     "-" -> a - b
     "*" -> a * b
     "/" -> if (b == zero) null else a / b
-    "%" -> if (b == zero || !a.isInteger || !b.isInteger) null else Rational.of(a.numerator.rem(b.numerator))
+    // like solc: a - trunc(a / b) * b, also for fractions (`5.5 % 2` is 3/2)
+    "%" -> if (b == zero) null else (a / b).let { q -> a - Rational.of(q.numerator.divide(q.denominator)) * b }
     "**" -> {
       val exp = b.numerator
       val bits = maxOf(a.numerator.bitLength(), a.denominator.bitLength()).toLong()

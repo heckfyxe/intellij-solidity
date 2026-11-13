@@ -56,6 +56,16 @@ class ConstantConversionInspectionTest : SolInspectionsTestBase(ConstantConversi
       }
   """)
 
+  fun testModuloOfFractions() = checkByText("""
+      contract C {
+          function f() public {
+              uint a = /*@error descr="Type rational_const 3 / 2 is not implicitly convertible to expected type uint256"@*/5.5 % 2/*@/error@*/;
+              uint b = 7 % 2;
+              int c = -7 % 2;
+          }
+      }
+  """)
+
   fun testUnknownTypesNotReported() = checkByText("""
       contract C {
           function f(Unknown u) public {

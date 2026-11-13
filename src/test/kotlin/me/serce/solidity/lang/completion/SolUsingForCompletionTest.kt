@@ -109,6 +109,20 @@ class SolUsingForCompletionTest : SolCompletionTestBase() {
     }
   """, present = "onUint")
 
+  fun testWildcardDoesNotOfferAddressFunctionsForIntegers() = checkNoCompletion("onAddress", """
+    pragma solidity ^0.8.26;
+    library L {
+        function onUint(uint256 a) internal pure returns (uint256) { return a; }
+        function onAddress(address a) internal pure returns (address) { return a; }
+    }
+    contract A {
+        using L for *;
+        function f(uint8 x) public pure {
+            x./*caret*/
+        }
+    }
+  """, present = "onUint")
+
   fun testWildcardDoesNotOfferFunctionsWithoutParameters() = checkNoCompletion("noArgs", """
     pragma solidity ^0.8.26;
     library L {

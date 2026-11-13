@@ -92,7 +92,9 @@ class SolAddress(val isPayable : Boolean) : SolPrimitiveType {
     when (other) {
       is SolAddress -> !this.isPayable || other.isPayable
       is SolContract -> other.ref.isPayable.let { !this.isPayable || it }
-      else -> UINT_160.isAssignableFrom(other)
+      // integers convert to address only explicitly; a 40-digit hex literal is solc's address literal
+      is SolInteger -> !this.isPayable && other.literalType == NumericLiteralType.HEX && other.digitCount == 40
+      else -> false
     }
 
   override fun getMembers(project: Project) = getSdkMembers(SolInternalTypeFactory.of(project).addressType)
