@@ -1,14 +1,13 @@
 <html>
 <body>
-Reports <code>vm.expectRevert(...)</code> and <code>vm.prank(...)</code> in Foundry tests when the next statement makes
-no external call. Both cheatcodes apply to the next call the test makes; a revert in an internal function or an
+Reports <code>vm.expectRevert(...)</code> and <code>vm.prank(...)</code> in Foundry tests when no external call follows them
+in the test function. Both cheatcodes apply to the next call the test makes; a revert in an internal function or an
 expression happens at the test's own depth, so <code>expectRevert</code> doesn't catch it, and a <code>prank</code>
 followed by no call changes nothing.
 <!-- tooltip end -->
 <p>Other cheatcode calls between the cheatcode and the call are skipped. Internal functions are followed into their
 bodies, and a statement with a call that can't be resolved (or inline assembly) is never reported.</p>
 <pre><code>vm.expectRevert(Vault.Empty.selector);
-_withdraw(1); // internal: reported unless it calls the vault
-vault.withdraw(1); // fine</code></pre>
+_withdraw(1); // reported when _withdraw doesn't call the vault and nothing after it does</code></pre>
 </body>
 </html>

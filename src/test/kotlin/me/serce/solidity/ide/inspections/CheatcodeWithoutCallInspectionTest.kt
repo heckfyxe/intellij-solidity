@@ -115,7 +115,14 @@ class CheatcodeWithoutCallInspectionTest : SolInspectionsTestBase(CheatcodeWitho
         function test_internalOnly() public {
             ${warn("expectRevert", "vm.expectRevert(Vault.Empty.selector)")};
             _check(1);
-            vault.withdraw(1);
+        }
+
+        function test_callAfterInternal() public {
+            // fine: the cheatcode applies to the next external call, vault.withdraw
+            vm.expectRevert(Vault.Empty.selector);
+            uint256 a = 1;
+            _check(a);
+            vault.withdraw(a);
         }
 
         function test_arithmetic() public {

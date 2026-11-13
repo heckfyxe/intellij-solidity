@@ -17,9 +17,9 @@ import me.serce.solidity.lang.types.deInternalise
 import me.serce.solidity.lang.types.isBuiltin
 
 /**
- * `vm.expectRevert(...)` and `vm.prank(...)` apply to the next external call. Reports them in test contracts when the
- * next statement (other cheatcode calls aside) makes no external call, e.g. it calls an internal function whose
- * revert happens at the test's own depth. Anything that can't be resolved counts as a possible call, so it isn't
+ * `vm.expectRevert(...)` and `vm.prank(...)` apply to the next external call. Reports them in test contracts when no
+ * statement after them, up to the end of the function, makes an external call, e.g. only an internal function follows,
+ * whose revert happens at the test's own depth. Anything that can't be resolved counts as a possible call, so it isn't
  * reported.
  */
 class CheatcodeWithoutCallInspection : LocalInspectionTool() {
@@ -42,7 +42,8 @@ class CheatcodeWithoutCallInspection : LocalInspectionTool() {
       when {
         next is PsiErrorElement -> return false
         next is SolStatement && next.isCheatcodeCall() -> Unit
-        next is SolStatement || next is SolUncheckedBlock -> return CallAnalysis().classify(next) == Calls.NONE
+        // statements without external calls don't use up the cheatcode: forge applies it to the next external call
+        next is SolStatement || next is SolUncheckedBlock -> if (CallAnalysis().classify(next) != Calls.NONE) return false
       }
       next = next.nextSibling
     }
