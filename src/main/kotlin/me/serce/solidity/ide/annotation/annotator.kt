@@ -18,6 +18,9 @@ class SolidityAnnotator : Annotator {
   override fun annotate(element: PsiElement, holder: AnnotationHolder) {
     if (element is SolElement) {
       highlight(element, holder)
+      if (element is SolYulExpressionStatement) {
+        holder.newAnnotation(HighlightSeverity.ERROR, "Only function calls can be used as statements in Yul").range(element).create()
+      }
     } else if (element.node.elementType == SolidityTokenTypes.STRINGLITERAL && isUnterminatedString(element.text)) {
       holder.newAnnotation(HighlightSeverity.ERROR, "Missing closing quote").range(element).create()
     }

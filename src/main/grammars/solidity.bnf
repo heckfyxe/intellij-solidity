@@ -645,6 +645,13 @@ YulStatement ::=
 	| YulFunctionDefinition
 	// Only support for backwards compatibility
 	| YulLabel
+	| YulExpressionStatement
+
+/**
+ * Not valid Yul (only function calls can be statements), but parsed so that a name being typed stays inside
+ * the assembly block; the annotator reports it.
+ */
+YulExpressionStatement ::= YulPath
 
 YulBlock ::= YulLBrace YulStatement* YulRBrace { pin=1 }
 
@@ -652,9 +659,13 @@ YulBlock ::= YulLBrace YulStatement* YulRBrace { pin=1 }
  * The declaration of one or more Yul variables with optional initial value.
  * If multiple variables are declared, only a function call is a valid initial value.
  */
-YulVariableDeclaration ::= YulLet YulIdentifier
-    (YulAssign YulExpression
-	 | (YulComma YulIdentifier)* (YulAssign YulFunctionCall))?  { pin=1 }
+YulVariableDeclaration ::= YulLet YulVariable (YulComma YulVariable)* (YulAssign YulExpression)?  { pin=1 }
+
+/** A Yul variable, function parameter or return variable being declared. */
+YulVariable ::= Identifier {
+    implements = "me.serce.solidity.lang.psi.SolNamedElement"
+    mixin = "me.serce.solidity.lang.psi.impl.SolYulVariableMixin"
+}
 
 
 /**
@@ -686,9 +697,13 @@ YulSwitchStatement ::=
 
 YulFunctionDefinition ::=
 	YulFunction YulIdentifier
-	YulLParen (YulIdentifier (YulComma YulIdentifier)*)? YulRParen
-	(YulArrow YulIdentifier (YulComma YulIdentifier)*)?
-	YulBlock { pin=1 }
+	YulLParen (YulVariable (YulComma YulVariable)*)? YulRParen
+	(YulArrow YulVariable (YulComma YulVariable)*)?
+	YulBlock {
+    pin=1
+    implements = "me.serce.solidity.lang.psi.SolNamedElement"
+    mixin = "me.serce.solidity.lang.psi.impl.SolYulFunctionDefMixin"
+}
 
 // TODO: remove as lables have been deprecated, and removed, see
 // https://docs.soliditylang.org/en/v0.5.6/assembly.html#labels
@@ -706,7 +721,11 @@ YulPath ::= YulIdentifier (YulPeriod (YulIdentifier | YulEVMBuiltin))* {
  * A call to a function with return values can only occur as right-hand side of an assignment or
  * a variable declaration.
  */
-YulFunctionCall ::= (YulIdentifier | YulEVMBuiltin) YulLParen (YulExpression (YulComma YulExpression)*)? YulRParen { pin=2 }
+YulFunctionCall ::= (YulIdentifier | YulEVMBuiltin) YulLParen (YulExpression (YulComma YulExpression)*)? YulRParen {
+    pin=2
+    implements = "me.serce.solidity.lang.psi.SolReferenceElement"
+    mixin = "me.serce.solidity.lang.psi.impl.SolYulFunctionCallMixin"
+}
 YulBoolean ::= YulTrue | YulFalse
 YulLiteral ::= YulDecimalNumber | YulStringLiteral | YulHexNumber | YulBoolean | YulHexStringLiteral
 // note the parsing order YulPath will match anything

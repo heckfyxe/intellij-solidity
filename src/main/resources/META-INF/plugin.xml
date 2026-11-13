@@ -156,6 +156,8 @@
                                               descriptionKey="inlay.forge.gas.snapshot.description"/>
 
         <completion.contributor language="Solidity" order="first"
+                                implementationClass="me.serce.solidity.lang.completion.SolYulCompletionContributor"/>
+        <completion.contributor language="Solidity" order="first"
                                 implementationClass="me.serce.solidity.lang.completion.SolEventCompletionContributor"/>
         <completion.contributor language="Solidity"
                                 implementationClass="me.serce.solidity.lang.completion.SolKeywordCompletionContributor"/>

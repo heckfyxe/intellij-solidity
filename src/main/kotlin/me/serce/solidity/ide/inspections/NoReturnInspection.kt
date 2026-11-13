@@ -5,6 +5,7 @@ import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiRecursiveElementWalkingVisitor
+import com.intellij.psi.util.PsiTreeUtil
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.types.SolInternalTypeFactory
 import me.serce.solidity.lang.types.findContract
@@ -98,11 +99,12 @@ private fun SolIfStatement.hasAssignment(el: SolNamedElement): Boolean =
 private fun SolVariableDefinition.hasAssignment(el: SolNamedElement): Boolean =
   variableDeclaration.reference?.resolve() == el
 
+// an assignment anywhere in the assembly block counts: Yul control flow isn't analysed
 private fun SolYulBlock.hasAssignment(el: SolNamedElement): Boolean =
-  yulStatementList.any { it.hasAssignment(el) }
-
-private fun SolYulStatement.hasAssignment(el: SolNamedElement): Boolean =
-  yulAssignment?.children?.any { it.text == el.name } == true //todo better
+  PsiTreeUtil.findChildrenOfType(this, SolYulAssignment::class.java).any { assignment ->
+    assignment.children.any { it is SolYulPath && it.reference?.resolve() == el } ||
+      assignment.identifier?.text == el.name // legacy `=: x`
+  }
 
 private fun SolExpression.hasAssignment(el: SolNamedElement): Boolean {
   var hasAssignment = false

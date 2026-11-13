@@ -16,6 +16,9 @@ import me.serce.solidity.lang.psi.SolBlock
 import me.serce.solidity.lang.psi.SolImportDirective
 import me.serce.solidity.lang.psi.SolNamedElement
 import me.serce.solidity.lang.psi.SolVariableDeclaration
+import me.serce.solidity.lang.psi.SolYulBlock
+import me.serce.solidity.lang.psi.SolYulFunctionDefinition
+import me.serce.solidity.lang.psi.SolYulVariable
 
 /**
  * Where a Solidity declaration can be referenced from, so find usages and rename only look there instead of in every
@@ -28,6 +31,11 @@ object SolUseScope {
     // a local variable lives in its function or modifier body
     if (element is SolVariableDeclaration) {
       PsiTreeUtil.getTopmostParentOfType(element, SolBlock::class.java)?.let { return LocalSearchScope(it) }
+    }
+    // a Yul variable or function lives in its assembly block (or Yul file)
+    if (element is SolYulVariable || element is SolYulFunctionDefinition) {
+      val scope = PsiTreeUtil.getTopmostParentOfType(element, SolYulBlock::class.java) ?: element.containingFile ?: return null
+      return LocalSearchScope(scope)
     }
     val file = element.containingFile?.originalFile as? SolidityFile ?: return null
     if (file.virtualFile == null) return null

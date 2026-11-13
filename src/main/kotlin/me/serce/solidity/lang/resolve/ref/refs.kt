@@ -8,7 +8,10 @@ import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.SolFunctionDefMixin
 import me.serce.solidity.lang.psi.impl.SolNewExpressionElement
+import me.serce.solidity.lang.psi.impl.SolYulFunctionCallMixin
 import me.serce.solidity.lang.psi.impl.SolYulPathElement
+import me.serce.solidity.lang.resolve.SolYulResolver
+import me.serce.solidity.lang.resolve.YulBuiltins
 import me.serce.solidity.lang.resolve.SolResolver
 import me.serce.solidity.lang.resolve.canBeApplied
 import me.serce.solidity.lang.resolve.findBest
@@ -55,10 +58,18 @@ class SolVarLiteralReference(element: SolVarLiteral) : SolReferenceBase<SolVarLi
   override fun getVariants() = SolCompleter.completeLiteral(element).toList().toTypedArray()
 }
 
-class SolYulLiteralReference(element: SolYulPathElement) : SolReferenceBase<SolYulPathElement>(element), SolReference {
-  override fun multiResolve() = SolResolver.resolveVarLiteralReference(element)
+/** The first identifier of a Yul path (`x` in `x.slot`); completion comes from `SolYulCompletionContributor`. */
+class SolYulPathReference(element: SolYulPathElement) : SolReferenceBase<SolYulPathElement>(element), SolReference {
+  override fun calculateDefaultRangeInElement(): TextRange = element.referenceNameElement.parentRelativeRange
 
-  override fun getVariants() = SolCompleter.completeLiteral(element).toList().toTypedArray()
+  override fun multiResolve(): Collection<PsiElement> = SolYulResolver.resolveVariable(element)
+}
+
+/** The name of a called Yul function; built-ins resolve to nothing (see [YulBuiltins]). */
+class SolYulFunctionCallReference(element: SolYulFunctionCallMixin) : SolReferenceBase<SolYulFunctionCallMixin>(element), SolReference {
+  override fun calculateDefaultRangeInElement(): TextRange = element.referenceNameElement.parentRelativeRange
+
+  override fun multiResolve(): Collection<PsiElement> = SolYulResolver.resolveFunction(element)
 }
 
 

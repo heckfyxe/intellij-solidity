@@ -76,6 +76,16 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   and lets a real Enter lay out the block; `SmartEnterProcessorWithFixers.plainEnter` is Start New Line, not Enter,
   and its `reformat` must stay a no-op so forge fmt never runs on half-written code.
 
+## Inline Assembly (Yul)
+
+* Yul declarations are `YulVariable` (`let` names, function parameters/returns) and `YulFunctionDefinition`; uses are
+  `YulPath` (variables, `x.slot`) and `YulFunctionCall` (callee). Both resolve through `SolYulResolver`, which applies
+  Yul scoping and falls back to Solidity variables visible at the assembly statement.
+* Built-ins have no declaration: `YulBuiltins` lists them (with parameter names for completion) and
+  `ResolveNameInspection` skips them, as well as `verbatim_<n>i_<m>o`.
+* A bare identifier statement parses as `YulExpressionStatement` (reported by the annotator) so a name being typed stays
+  inside the Yul block; completion there comes from `SolYulCompletionContributor`, which stops other contributors.
+
 ## Chain Failures
 
 * `ChainExecutor` explains failures with `RevertTracer` (`debug_traceCall`/`debug_traceTransaction`) and maps the

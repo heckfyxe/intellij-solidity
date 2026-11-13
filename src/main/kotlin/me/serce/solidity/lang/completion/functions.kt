@@ -37,6 +37,8 @@ class SolFunctionCompletionContributor : CompletionContributor(), DumbAware {
 }
 
 private fun deduceSemicolonOrBracket(editor: Editor, file: SolidityFile, startOffset: Int): String {
+  // Yul has no semicolons, and a closing parenthesis would break the statement being typed
+  if (listOfNotNull(file.findElementAt(startOffset), file.findElementAt(maxOf(0, startOffset - 1))).any(::isInsideYul)) return ""
   if (isMemberAccessEndingLine(file, startOffset)) return ";"
   if (editor !is EditorEx) {
     return ""

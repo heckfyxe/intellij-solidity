@@ -30,6 +30,8 @@ class SolFindUsagesProvider : FindUsagesProvider {
     is SolStateVariableDeclaration -> "state variable"
     is SolConstantVariableDeclaration -> "constant"
     is SolParameterDef -> "parameter"
+    is SolYulFunctionDefinition -> "Yul function"
+    is SolYulVariable -> if (element.parent is SolYulFunctionDefinition) "Yul parameter" else "Yul variable"
     else -> "variable"
   }
 

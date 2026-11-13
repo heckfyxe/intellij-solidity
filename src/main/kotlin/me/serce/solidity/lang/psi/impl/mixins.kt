@@ -613,7 +613,7 @@ abstract class SolYulPathElement(node: ASTNode) : SolNamedElementImpl(node), Sol
   override val referenceName: String
     get() = referenceNameElement.text
 
-  override fun getReference() = SolYulLiteralReference(this)
+  override fun getReference() = SolYulPathReference(this)
 }
 
 fun List<SolVisibilitySpecifier>.parseVisibility() =

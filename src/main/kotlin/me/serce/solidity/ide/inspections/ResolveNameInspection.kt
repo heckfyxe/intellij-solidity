@@ -6,6 +6,7 @@ import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.psi.PsiElementVisitor
 import me.serce.solidity.ide.inspections.fixes.ImportFileFix
 import me.serce.solidity.lang.psi.*
+import me.serce.solidity.lang.resolve.YulBuiltins
 
 class ResolveNameInspection : LocalInspectionTool() {
   override fun getDisplayName(): String = ""
@@ -27,6 +28,20 @@ class ResolveNameInspection : LocalInspectionTool() {
       override fun visitVarLiteral(element: SolVarLiteral) {
         checkReference(element) {
           holder.registerProblem(element, "'${element.identifier.text}' is undefined", ProblemHighlightType.WARNING, ImportFileFix(element))
+        }
+      }
+
+      override fun visitYulPath(element: SolYulPath) {
+        checkReference(element) {
+          holder.registerProblem(element, "'${element.referenceName}' is undefined", ProblemHighlightType.WARNING, element.reference!!.rangeInElement)
+        }
+      }
+
+      override fun visitYulFunctionCall(element: SolYulFunctionCall) {
+        val call = element as? SolReferenceElement ?: return
+        if (YulBuiltins.isBuiltin(call.referenceName)) return
+        checkReference(call) {
+          holder.registerProblem(element, "Function '${call.referenceName}' is undefined", ProblemHighlightType.WARNING, call.reference!!.rangeInElement)
         }
       }
 

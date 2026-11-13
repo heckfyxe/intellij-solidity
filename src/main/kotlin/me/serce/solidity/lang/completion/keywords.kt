@@ -86,6 +86,7 @@ class SolKeywordCompletionProvider(private vararg val keywords: String) : Comple
     parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet
   ) {
     if (isAfterDot(parameters.position)) return // `x.` is followed by a member, never by a keyword
+    if (isInsideYul(parameters.position)) return // Yul keywords come from SolYulCompletionContributor
     // only the keyword is inserted; what follows it is up to the user
     keywords.forEach { result.addElement(LookupElementBuilder.create(it.trimEnd()).keywordPrioritised()) }
   }

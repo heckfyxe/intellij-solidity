@@ -195,4 +195,13 @@ contract C {
             ret := prevrandao()
         }
     }
+
+    function multi() public view {
+        assembly ("memory-safe") {
+            let p, q
+            let a, b := pair()
+            function pair() -> x, y { x := codesize() y := datasize("C") }
+            codecopy(p, q, a)
+        }
+    }
 }
