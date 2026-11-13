@@ -598,6 +598,69 @@ object SolResolver {
     }
   }
 
+  /**
+   * What a contract declares and inherits, without the private members of its bases. It doesn't depend on where the
+   * lookup happens, so it is cached per contract: every name resolved inside a contract goes through it.
+   */
+  private fun contractDeclarations(contract: SolContractDefinition): List<SolNamedElement> =
+    CachedValuesManager.getCachedValue(contract) {
+      val result = RecursionManager.doPreventingRecursion(contract, true) {
+        val visitedScopes = hashSetOf<Pair<PsiElement, PsiElement>>()
+        val scope = contract
+        val place: PsiElement = contract
+          val childrenScope = sequenceOf(
+            scope.stateVariableDeclarationList as List<PsiElement>,
+            scope.enumDefinitionList,
+            scope.structDefinitionList
+          ).flatten()
+            .map { lexicalDeclarations(visitedScopes, it, place) }
+            .flatten() + scope.structDefinitionList + scope.eventDefinitionList + scope.errorDefinitionList + scope.userDefinedValueTypeDefinitionList
+          val extendsScope = scope.supers.asSequence()
+            .map { resolveTypeNameStrict(it).firstOrNull() }
+            .filterNotNull()
+            .map { lexicalDeclarations(visitedScopes, it, place) }
+            .flatten()
+            .filterNot { it.isPrivateMember() } // private members are visible only inside the contract declaring them
+          (childrenScope + extendsScope + scope.functionDefinitionList).distinct().toList()
+      } ?: emptyList()
+      CachedValueProvider.Result.create(result, PsiModificationTracker.MODIFICATION_COUNT)
+    }
+
+  /**
+   * What a file declares and imports; cached per file for the same reason as [contractDeclarations]. Imports can be
+   * circular, so the import graph is walked with a visited set rather than through other files' cached values.
+   */
+  private fun fileDeclarations(file: SolidityFile): List<SolNamedElement> =
+    CachedValuesManager.getCachedValue(file) {
+      CachedValueProvider.Result.create(visibleInFile(file, hashSetOf(), hashMapOf()).distinct(), PsiModificationTracker.MODIFICATION_COUNT)
+    }
+
+  /**
+   * [visiting] holds the files on the current import path (a cycle back to one of them adds nothing), [done] the
+   * files already walked in this lookup, so that a file imported along several paths is walked once.
+   */
+  private fun visibleInFile(
+    file: SolidityFile,
+    visiting: MutableSet<SolidityFile>,
+    done: MutableMap<SolidityFile, List<SolNamedElement>>,
+  ): List<SolNamedElement> {
+    done[file]?.let { return it }
+    if (!visiting.add(file)) return emptyList()
+    val children = file.children
+    val own = children.filter {
+      it is SolContractDefinition || it is SolConstantVariable || it is SolFunctionDefinition ||
+        it is SolUserDefinedValueTypeDefinition || it is SolEnumDefinition || it is SolEventDefinition || it is SolErrorDefinition
+    }.filterIsInstance<SolNamedElement>()
+    val imported = children.filterIsInstance<SolImportDirective>().flatMap { import ->
+      val target = import.importedFile as? SolidityFile ?: return@flatMap emptyList()
+      val declarations = visibleInFile(target, visiting, done)
+      val selected = import.importAliasedPairList.mapNotNullTo(hashSetOf()) { it.userDefinedTypeName.name }
+      if (selected.isEmpty()) declarations else declarations.filter { it.name in selected }
+    }
+    visiting.remove(file)
+    return (imported + own).distinct().also { done[file] = it }
+  }
+
   fun lexicalDeclarations(place: PsiElement, stop: (PsiElement) -> Boolean = { false }): Sequence<SolNamedElement> {
     val visitedScopes = hashSetOf<Pair<PsiElement, PsiElement>>()
     return lexicalDeclarations0(visitedScopes, place, stop)
@@ -643,22 +706,7 @@ object SolResolver {
       is SolVariableDefinition -> lexicalDeclarations(visitedScopes, scope.firstChild, place)
 
       is SolStateVariableDeclaration -> sequenceOf(scope)
-      is SolContractDefinition -> {
-        val childrenScope = sequenceOf(
-          scope.stateVariableDeclarationList as List<PsiElement>,
-          scope.enumDefinitionList,
-          scope.structDefinitionList
-        ).flatten()
-          .map { lexicalDeclarations(visitedScopes, it, place) }
-          .flatten() + scope.structDefinitionList + scope.eventDefinitionList + scope.errorDefinitionList + scope.userDefinedValueTypeDefinitionList
-        val extendsScope = scope.supers.asSequence()
-          .map { resolveTypeNameStrict(it).firstOrNull() }
-          .filterNotNull()
-          .map { lexicalDeclarations(visitedScopes, it, place) }
-          .flatten()
-          .filterNot { it.isPrivateMember() } // private members are visible only inside the contract declaring them
-        childrenScope + extendsScope + scope.functionDefinitionList
-      }
+      is SolContractDefinition -> contractDeclarations(scope).asSequence()
       is SolFunctionDefinition -> {
         scope.parameters.asSequence() +
           (scope.returns?.parameterDefList?.asSequence() ?: emptySequence())
@@ -687,38 +735,7 @@ object SolResolver {
       is SolBlock -> scope.statementList.declaredBefore(place).flatMap { lexicalDeclarations(visitedScopes, it, place) }
       is SolUncheckedBlock -> scope.statementList.declaredBefore(place).flatMap { lexicalDeclarations(visitedScopes, it, place) }
 
-      is SolidityFile -> {
-        RecursionManager.doPreventingRecursion(scope.name, true) {
-          val scopeChildren = scope.children
-          val contracts = scopeChildren.asSequence()
-            .filterIsInstance<SolContractDefinition>()
-
-          val constantVariables = scopeChildren.asSequence()
-            .filterIsInstance<SolConstantVariable>()
-
-          val freeFunctions = scopeChildren.asSequence()
-            .filterIsInstance<SolFunctionDefinition>()
-
-          val userDefinedTypes = scopeChildren.asSequence()
-            .filterIsInstance<SolUserDefinedValueTypeDefinition>()
-
-          val enums = scopeChildren.asSequence()
-            .filterIsInstance<SolEnumDefinition>()
-
-          // file-level events and errors (Solidity 0.8.4 / 0.8.22)
-          val eventsAndErrors = scopeChildren.asSequence()
-            .filter { it is SolEventDefinition || it is SolErrorDefinition }
-            .filterIsInstance<SolNamedElement>()
-
-          val imports = scopeChildren.asSequence().filterIsInstance<SolImportDirective>()
-            .flatMap { import ->
-              val declarations = import.importedFile?.let { lexicalDeclarations(visitedScopes, it, place) } ?: emptySequence()
-              val selected = import.importAliasedPairList.mapNotNullTo(hashSetOf()) { it.userDefinedTypeName.name }
-              if (selected.isEmpty()) declarations else declarations.filter { it.name in selected }
-            }
-          imports + contracts + constantVariables + freeFunctions + userDefinedTypes + enums + eventsAndErrors
-        } ?: emptySequence()
-      }
+      is SolidityFile -> fileDeclarations(scope).asSequence()
 
       is SolTupleStatement -> {
         scope.variableDeclaration?.let {

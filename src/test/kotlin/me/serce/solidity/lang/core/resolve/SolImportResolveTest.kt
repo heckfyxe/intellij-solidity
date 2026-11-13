@@ -96,6 +96,27 @@ class SolImportResolveTest : SolResolveTestBase() {
     assertEquals("RandomStruct", resolved.name)
   }
 
+  fun testSelectiveImportThroughDiamond() {
+    InlineFile("pragma solidity ^0.8.0;\nstruct Token { uint x; }", "D.sol")
+    InlineFile("pragma solidity ^0.8.0;\nimport \"./D.sol\";\ncontract B {}", "B.sol")
+    InlineFile("pragma solidity ^0.8.0;\nimport \"./D.sol\";\ncontract C2 {}", "C2.sol")
+    InlineFile(
+      """
+        pragma solidity ^0.8.0;
+
+        import "./B.sol";
+        import {Token} from "./C2.sol";
+
+        contract A {
+            Token t;
+            //^
+        }
+      """.trimIndent()
+    )
+    val (refElement) = findElementAndDataInEditor<SolNamedElement>("^")
+    assertEquals("Token", (refElement.reference?.resolve() as? PsiNamedElement)?.name)
+  }
+
   fun testImportStructAndConstant() {
     InlineFile(
       """
