@@ -71,6 +71,55 @@ class SolDocumentationProviderTest : SolTestBase() {
           }
       """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>error</b> NotEnoughBalance (uint requested, uint available)</pre></div>""")
 
+  fun testYulBuiltinDocs() = checkYulBuiltin("tst/*caret*/ore(0, 1)", "tstore",
+    "<div class='definition'><pre><b style='color:rgb(0,0,128)'>tstore</b>(p, v)</pre></div>" +
+      "<div class='content'>transientStorage[p] := v</div>" +
+      "<table class='sections'><tr><td valign='top' class='section'><p>EVM version:</td><td valign='top'>since Cancun</td></table>")
+
+  fun testYulBuiltinKeywordDocs() = checkYulBuiltin("pop(addr/*caret*/ess())", "address",
+    "<div class='definition'><pre><b style='color:rgb(0,0,128)'>address</b>() -&gt; v</pre></div>" +
+      "<div class='content'>address of the current contract / execution context</div>" +
+      "<table class='sections'><tr><td valign='top' class='section'><p>EVM version:</td><td valign='top'>all</td></table>")
+
+  fun testDeprecatedYulBuiltinDocs() = checkYulBuiltin("pop(diffi/*caret*/culty())", "difficulty",
+    "<div class='definition'><pre><b style='color:rgb(0,0,128)'>difficulty</b>() -&gt; v</pre></div>" +
+      "<div class='content'>difficulty of the current block, replaced by prevrandao since Paris</div>" +
+      "<table class='sections'><tr><td valign='top' class='section'><p>EVM version:</td><td valign='top'>all, removed in Paris</td>" +
+      "<tr><td valign='top' class='section'><p>Deprecated:</td><td valign='top'>yes</td></table>")
+
+  fun testUserYulFunctionHasNoBuiltinDocs() {
+    myFixture.configureByText("main.sol", """
+      contract A {
+          function f() public {
+              assembly {
+                  function g() {}
+                  <caret>g()
+              }
+          }
+      }
+    """.trimIndent())
+    val context = myFixture.file.findElementAt(myFixture.caretOffset)
+    assertNull(SolDocumentationProvider().getCustomDocumentationElement(myFixture.editor, myFixture.file, context, myFixture.caretOffset))
+  }
+
+  private fun checkYulBuiltin(statement: String, name: String, expectedDoc: String) {
+    myFixture.configureByText("main.sol", """
+      contract A {
+          function f() public {
+              assembly {
+                  $statement
+              }
+          }
+      }
+    """.trimIndent().replace("/*caret*/", "<caret>"))
+    val provider = SolDocumentationProvider()
+    val context = myFixture.file.findElementAt(myFixture.caretOffset)
+    val element = provider.getCustomDocumentationElement(myFixture.editor, myFixture.file, context, myFixture.caretOffset)
+    assertNotNull(element)
+    assertEquals(name, element!!.firstChild.text)
+    assertSameLines(expectedDoc, provider.generateDoc(element, context)!!)
+  }
+
   private fun checkByText(@Language("Solidity") code: String, @Language("HTML") expectedDoc: String) {
     myFixture.configureByText("main.sol", code.replace("/*caret*/", "<caret>"))
     val originalElement = myFixture.getElementAtCaret()

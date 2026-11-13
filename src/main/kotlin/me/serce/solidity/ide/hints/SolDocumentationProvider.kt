@@ -3,7 +3,10 @@ package me.serce.solidity.ide.hints
 import me.serce.solidity.lang.types.SolInternalTypeFactory
 import com.intellij.lang.documentation.AbstractDocumentationProvider
 import com.intellij.lang.documentation.DocumentationMarkup.*
+import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.util.ModificationTracker
+import com.intellij.openapi.util.text.StringUtil
+import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
@@ -17,6 +20,7 @@ import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.SolErrorDefMixin
 import me.serce.solidity.lang.psi.parentOfType
 import me.serce.solidity.lang.resolve.SolResolver
+import me.serce.solidity.lang.resolve.YulBuiltins
 import me.serce.solidity.lang.resolve.function.SolFunctionResolver
 import me.serce.solidity.lang.types.findContract
 import me.serce.solidity.lang.types.getSolType
@@ -75,7 +79,14 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
   private val commentsRegex = "^/\\*\\*|\\*/$|^///".toRegex()
   private val nonSlashRegex = "[^/]".toRegex()
 
+  /** Yul built-ins resolve to nothing: the call itself carries their documentation. */
+  override fun getCustomDocumentationElement(editor: Editor, file: PsiFile, contextElement: PsiElement?, targetOffset: Int): PsiElement? =
+    contextElement?.let { yulBuiltinCall(it) }
+
   override fun generateDoc(psiElement: PsiElement, originalElement: PsiElement?): String? {
+    (psiElement as? SolYulFunctionCall ?: originalElement?.let { yulBuiltinCall(it) })?.let { call ->
+      YulBuiltins[call.firstChild.text]?.let { return yulBuiltinDoc(it) }
+    }
     var element = psiElement
     val range = originalElement?.textRange
     if (range != null && !element.textRange.contains(range)) {
@@ -141,6 +152,29 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
     }
 
     return builder.toString()
+  }
+
+  private fun yulBuiltinCall(element: PsiElement): SolYulFunctionCall? {
+    val call = element as? SolYulFunctionCall ?: (element.parent as? SolYulFunctionCall)?.takeIf { it.firstChild == element }
+    return call?.takeIf { YulBuiltins[it.firstChild.text] != null && it.reference?.resolve() == null }
+  }
+
+  private fun yulBuiltinDoc(builtin: YulBuiltins.Builtin): String = buildString {
+    append(DEFINITION_START)
+    append(builtin.name.colorizeKeyword()).append(builtin.signature)
+    if (builtin.returns) append(" -&gt; v")
+    append(DEFINITION_END)
+    append(CONTENT_START).append(StringUtil.escapeXmlEntities(builtin.description)).append(CONTENT_END)
+    append(SECTIONS_START)
+    val evm = when {
+      builtin.since != null -> "since ${builtin.since.displayName}"
+      else -> "all"
+    } + (builtin.until?.let { ", removed in ${it.displayName}" } ?: "")
+    append(SECTION_HEADER_START).append("EVM version:").append(SECTION_SEPARATOR).append(evm).append(SECTION_END)
+    if (builtin.deprecated) {
+      append(SECTION_HEADER_START).append("Deprecated:").append(SECTION_SEPARATOR).append("yes").append(SECTION_END)
+    }
+    append(SECTIONS_END)
   }
 
   private fun collectInheritanceComments(element: SolElement): List<PsiElement> {
