@@ -37,7 +37,7 @@ EOL=\R
 WHITE_SPACE=\s+
 
 // see https://docs.soliditylang.org/en/v0.8.7/natspec-format.html for NatSpec tags support
-NAT_SPEC_TAG=@[a-zA-Z_0-9:]*
+NAT_SPEC_TAG=@custom:[a-z][a-z0-9-]*|@[a-zA-Z_0-9:]*
 HEXLITERAL=(hex\"([_0-9a-fA-F]*)\"|hex\'([_0-9a-fA-F]*)\')
 STRINGLITERAL=(\"([^\"\r\n\\]|\\.)*\")|(\'([^\'\r\n\\]|\\.)*\')|unicode(\"([^\"])*\")|unicode(\'([^\'])*\')
 // a string still being typed: lexed as a string up to the end of the line, so it stays highlighted and quotes pair

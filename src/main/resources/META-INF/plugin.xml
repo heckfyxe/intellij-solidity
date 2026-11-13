@@ -293,6 +293,12 @@
                          implementationClass="me.serce.solidity.ide.inspections.AddressChecksumInspection"/>
 
         <localInspection language="Solidity" groupName="Solidity"
+                         displayName="NatSpec tag doesn't match the declaration"
+                         enabledByDefault="true"
+                         level="WARNING"
+                         implementationClass="me.serce.solidity.ide.inspections.NatSpecParameterInspection"/>
+
+        <localInspection language="Solidity" groupName="Solidity"
                          displayName="Missing override specifier"
                          enabledByDefault="true"
                          level="ERROR"

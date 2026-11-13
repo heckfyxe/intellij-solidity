@@ -487,7 +487,7 @@ abstract class SolMemberAccessElement(node: ASTNode) : SolNamedElementImpl(node)
     val type = expression.type.takeIf { it != SolUnknown } ?: return emptyList()
     val usingForElementFromImports =
       RecursionManager.doPreventingRecursion(containingFile, true) {
-        SolResolver.collectUsingForElementFromImports(containingFile).filter {
+        SolResolver.collectUsingForDeclarationsInScope(this, type).filter {
           val usingType = it.type
           usingType == null || usingType == type
         }
@@ -497,7 +497,7 @@ abstract class SolMemberAccessElement(node: ASTNode) : SolNamedElementImpl(node)
 
   private fun collectFunctionsFromUsingElements(usingForDeclarationsList: List<SolUsingForDeclaration>): List<SolFunctionDefinition> {
     return usingForDeclarationsList
-      .flatMap { it.usingElementList }
+      .flatMap { it.memberBindingList }
       .distinct()
       .flatMap {
         when (it) {
@@ -570,14 +570,24 @@ abstract class SolUsingForMixin(node: ASTNode) : SolElementImpl(node), SolUsingF
         null
       }
     }
-  override val usingElementList: List<SolCallableElement>
+
+  private val boundNames: List<SolUserDefinedTypeName>
     get() {
       val list = getTypeNameList()
-      val libraries = if (type != null) list.dropLast(1) else list
-      return libraries
-        .filterIsInstance<SolUserDefinedTypeName>()
-        .mapNotNull { SolResolver.resolveUsingForElement(it) }
+      val libraries = if (findChildByType<PsiElement>(MULT) == null) list.dropLast(1) else list
+      return libraries.filterIsInstance<SolUserDefinedTypeName>()
     }
+
+  override val usingElementList: List<SolCallableElement>
+    get() = boundNames.mapNotNull { SolResolver.resolveUsingForElement(it) }
+
+  override val memberBindingList: List<SolCallableElement>
+    get() = boundNames
+      .filter { PsiTreeUtil.skipWhitespacesAndCommentsForward(it).elementType != AS }
+      .mapNotNull { SolResolver.resolveUsingForElement(it) }
+
+  override val isGlobal: Boolean
+    get() = node.getChildren(null).any { it.psi !is SolTypeName && it.text == "global" }
 }
 
 

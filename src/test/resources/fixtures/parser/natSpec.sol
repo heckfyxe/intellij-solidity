@@ -6,12 +6,15 @@ pragma solidity >=0.8.2 < 0.9.0;
 /// @notice You can use this contract for only the most basic simulation
 /// @dev All function calls are currently implemented without side effects
 /// @custom:experimental This is an experimental contract.
+/// @custom:my-tag2 a custom tag with a hyphen
+/// @custom:no_validation an older underscore tag
 contract Tree {
     /**
      * @dev
      * @notice Calculate tree age in years, rounded up, for live trees
      * @dev The Alexandr N. Tetearing algorithm could increase precision
      * @param rings The number of rings from dendrochronological sample
+     * @custom:security-contact sec@example.com
      * @return Age in years, rounded up for partial years
      * @author Larry A. Gardner <test @example.com>
      */

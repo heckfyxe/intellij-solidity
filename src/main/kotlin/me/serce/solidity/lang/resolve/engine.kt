@@ -11,6 +11,7 @@ import com.intellij.psi.stubs.StubIndex
 import com.intellij.psi.util.*
 import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.core.SolidityTokenTypes
+import me.serce.solidity.lang.core.solidityVersionRange
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.SolImportAlias
 import me.serce.solidity.lang.psi.parentOfType
@@ -355,30 +356,43 @@ object SolResolver {
     return collectImports(import).flatMap { it.file.childrenOfType<SolImportDirective>() }
   }
 
-  fun collectUsingForElementFromImports(
-    psiFile: PsiFile,
-  ): Collection<SolUsingForDeclaration> {
-    return CachedValuesManager.getCachedValue(psiFile) {
-      val res = collectUsingForElementFromImports0(psiFile, hashSetOf())
-      CachedValueProvider.Result.create(res, res.map { it.containingFile } + psiFile)
+  /**
+   * The `using ... for` declarations in effect at [place] for a value of [type]:
+   * the declarations of the enclosing contract (and, before 0.7.0, of its bases), the file-level declarations of
+   * the containing file and the `global` declarations attached to the type in the file that defines it.
+   * File-level declarations of imported files and declarations of other contracts don't apply.
+   */
+  fun collectUsingForDeclarationsInScope(place: PsiElement, type: SolType): List<SolUsingForDeclaration> {
+    val file = place.containingFile ?: return emptyList()
+    val result = mutableListOf<SolUsingForDeclaration>()
+    place.findContract()?.let { contract ->
+      result += contract.usingForDeclarationList
+      if (file.solidityVersionRange()?.isBelow("0.7.0") == true) {
+        result += inheritedUsingForDeclarations(contract, hashSetOf(contract))
+      }
     }
+    result += file.childrenOfType<SolUsingForDeclaration>()
+    val typeDefinition: PsiElement? = when (type) {
+      is SolStruct -> type.ref
+      is SolEnum -> type.ref
+      is SolUserDefinedValueTypeReferenceType -> type.ref
+      is SolUserDefinedValueTypeType -> type.ref
+      else -> null
+    }
+    val definitionFile = typeDefinition?.containingFile
+    if (definitionFile != null && definitionFile != file) {
+      result += definitionFile.childrenOfType<SolUsingForDeclaration>().filter { it.isGlobal }
+    }
+    return result
   }
 
-  private fun collectUsingForElementFromImports0(
-    psiFile: PsiFile,
-    visited: MutableSet<PsiFile>
-  ): Collection<SolUsingForDeclaration> {
-    if (!visited.add(psiFile)) {
-      return emptySet()
-    }
-    return psiFile.childrenOfType<SolUsingForDeclaration>() + psiFile.childrenOfType<SolContractDefinition>()
-      .flatMap { contract ->
-        contract.usingForDeclarationList
-      } + psiFile.childrenOfType<SolImportDirective>().flatMap { import ->
-      // an unresolved import contributes nothing; it must not discard the declarations collected from the rest
-      import.importedFile?.let { collectUsingForElementFromImports0(it, visited) }.orEmpty()
-    }
-  }
+  private fun inheritedUsingForDeclarations(
+    contract: SolContractDefinition,
+    visited: MutableSet<SolContractDefinition>
+  ): List<SolUsingForDeclaration> = contract.supers
+    .mapNotNull { resolveTypeNameStrict(it).firstOrNull() as? SolContractDefinition }
+    .filter { visited.add(it) }
+    .flatMap { it.usingForDeclarationList + inheritedUsingForDeclarations(it, visited) }
 
   private val PsiElement.nameOrText
     get() = if (this is PsiNamedElement) name else text
