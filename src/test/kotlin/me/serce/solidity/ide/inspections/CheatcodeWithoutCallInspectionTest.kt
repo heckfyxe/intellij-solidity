@@ -160,4 +160,50 @@ class CheatcodeWithoutCallInspectionTest : SolInspectionsTestBase(CheatcodeWitho
         }
     }
   """)
+
+  fun testReportsRevertBeforeTheCall() = checkByText("""
+    $prelude
+    contract VaultTest {
+        Vm constant vm = Vm(address(0));
+        Vault vault;
+
+        function test_revertFirst() public {
+            ${reverts("vm.expectRevert()")};
+            _fail();
+            vault.withdraw(1);
+        }
+
+        function test_requireFalse() public {
+            ${reverts("vm.expectRevert()")};
+            require(false, "no");
+            vault.withdraw(1);
+        }
+
+        function test_conditionalIsFine(uint256 a) public {
+            vm.expectRevert();
+            if (a > 1) revert();
+            _check(a);
+            vault.withdraw(a);
+        }
+
+        function test_revertAfterCallIsFine() public {
+            vm.expectRevert();
+            vault.withdraw(1);
+            _fail();
+        }
+
+        function test_returnsFirstIsFine() public {
+            vm.expectRevert();
+            _maybe(1);
+            vault.withdraw(1);
+        }
+
+        function _fail() internal pure { revert("always"); }
+        function _check(uint256 a) internal pure { require(a > 1, "small"); }
+        function _maybe(uint256 a) internal pure { if (a > 0) return; revert(); }
+    }
+  """)
+
+  private fun reverts(code: String) =
+    "/*@warning descr=\"The test reverts before the external call vm.expectRevert applies to\"@*/$code/*@/warning@*/"
 }

@@ -7,6 +7,8 @@ followed by no call changes nothing.
 <!-- tooltip end -->
 <p>Other cheatcode calls between the cheatcode and the call are skipped. Internal functions are followed into their
 bodies, and a statement with a call that can't be resolved (or inline assembly) is never reported.</p>
+<p><code>expectRevert</code> is also reported when a statement before the call always reverts in the test itself:
+<code>revert</code>, <code>require(false)</code>, or an internal function that reverts before it can return.</p>
 <pre><code>vm.expectRevert(Vault.Empty.selector);
 _withdraw(1); // reported when _withdraw doesn't call the vault and nothing after it does</code></pre>
 </body>

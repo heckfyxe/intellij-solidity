@@ -20,7 +20,8 @@ import me.serce.solidity.lang.types.isBuiltin
  * `vm.expectRevert(...)` and `vm.prank(...)` apply to the next external call. Reports them in test contracts when no
  * statement after them, up to the end of the function, makes an external call, e.g. only an internal function follows,
  * whose revert happens at the test's own depth. Anything that can't be resolved counts as a possible call, so it isn't
- * reported.
+ * reported. `expectRevert` is also reported when a statement before that call always reverts (`revert`,
+ * `require(false)`, an internal function that does so unconditionally).
  */
 class CheatcodeWithoutCallInspection : LocalInspectionTool() {
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor = object : SolVisitor() {
@@ -31,9 +32,27 @@ class CheatcodeWithoutCallInspection : LocalInspectionTool() {
       val block = statement.parent as? SolBlock ?: return
       val contract = o.parentOfType<SolContractDefinition>() ?: return
       if (!isForgeTestFile(o.containingFile) && !contract.hasForgeTests()) return
-      if (!nextCallIsMissing(statement, block)) return
-      holder.registerProblem(o, "vm.$cheatcode is not followed by an external call")
+      if (nextCallIsMissing(statement, block)) {
+        holder.registerProblem(o, "vm.$cheatcode is not followed by an external call")
+      } else if (cheatcode == "expectRevert" && revertsBeforeNextCall(statement)) {
+        holder.registerProblem(o, "The test reverts before the external call vm.expectRevert applies to")
+      }
     }
+  }
+
+  /** A statement before the next external call that always reverts, at the test's own depth. */
+  private fun revertsBeforeNextCall(statement: SolStatement): Boolean {
+    val analysis = CallAnalysis()
+    var next: PsiElement? = statement.nextSibling
+    while (next != null) {
+      if (next is SolStatement && !next.isCheatcodeCall()) {
+        if (analysis.classify(next) != Calls.NONE) return false
+        if (RevertAnalysis().alwaysReverts(next)) return true
+      }
+      if (next is SolUncheckedBlock && analysis.classify(next) != Calls.NONE) return false
+      next = next.nextSibling
+    }
+    return false
   }
 
   private fun nextCallIsMissing(statement: SolStatement, block: SolBlock): Boolean {
@@ -164,6 +183,52 @@ private class CallAnalysis {
     private const val MAX_DEPTH = 4
     private val ADDRESS_CALLS = setOf("call", "delegatecall", "staticcall", "transfer", "send")
     private val PRECOMPILES = setOf("ecrecover", "sha256", "ripemd160")
+  }
+}
+
+/**
+ * Whether a statement reverts whatever the values: `revert`, `require(false)`, `assert(false)`, or a call to an internal
+ * function whose body does so before it can return. Anything conditional doesn't count.
+ */
+private class RevertAnalysis {
+  private val visited = HashSet<SolFunctionDefinition>()
+
+  fun alwaysReverts(statement: SolStatement, depth: Int = 0): Boolean {
+    if (statement.revertStatement != null) return true
+    statement.block?.let { return blockReverts(it.statementList, depth) }
+    val call = statement.expression as? SolFunctionCallExpression ?: return false
+    return callReverts(call, depth)
+  }
+
+  /** The statements reach a revert before anything that might return or branch around it. */
+  private fun blockReverts(statements: List<SolStatement>, depth: Int): Boolean {
+    for (st in statements) {
+      if (alwaysReverts(st, depth)) return true
+      if (PsiTreeUtil.findChildrenOfAnyType(st, false, SolReturnSt::class.java, SolReturnTupleStatement::class.java).isNotEmpty()) return false
+    }
+    return false
+  }
+
+  private fun callReverts(call: SolFunctionCallExpression, depth: Int): Boolean {
+    val callee = call.expression
+    val arguments = call.functionInvocation.functionCallArguments?.expressionList.orEmpty()
+    if (callee is SolPrimaryExpression) {
+      when (callee.varLiteral?.text) {
+        "revert" -> return true
+        "require", "assert" -> return arguments.firstOrNull()?.text == "false"
+      }
+    }
+    if (depth >= MAX_DEPTH || callee !is SolPrimaryExpression) return false
+    val function = (call.reference as? SolFunctionCallReference)?.resolveFunctionCall()?.singleOrNull()?.resolveElement()
+      as? SolFunctionDefinition ?: return false
+    if (function.isBuiltin() || SolOverrideResolver.isVirtual(function) || function.modifiers.isNotEmpty()) return false
+    if (!visited.add(function)) return false
+    val body = function.block ?: return false
+    return blockReverts(body.statementList, depth + 1)
+  }
+
+  companion object {
+    private const val MAX_DEPTH = 4
   }
 }
 
