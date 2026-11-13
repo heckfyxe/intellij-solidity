@@ -146,6 +146,14 @@
         <codeInsight.parameterInfo language="Solidity"
                                    implementationClass="me.serce.solidity.ide.hints.SolParameterInfoHandler"/>
         <codeInsight.daemonBoundCodeVisionProvider implementation="me.serce.solidity.ide.hints.SolGasEstimationInlayProvider"/>
+        <codeInsight.declarativeInlayProvider language="Solidity"
+                                              implementationClass="me.serce.solidity.ide.run.ForgeGasSnapshotInlayProvider"
+                                              isEnabledByDefault="true"
+                                              group="VALUES_GROUP"
+                                              providerId="solidity.forge.gas.snapshot"
+                                              bundle="messages.SolidityBundle"
+                                              nameKey="inlay.forge.gas.snapshot.name"
+                                              descriptionKey="inlay.forge.gas.snapshot.description"/>
 
         <completion.contributor language="Solidity" order="first"
                                 implementationClass="me.serce.solidity.lang.completion.SolEventCompletionContributor"/>
@@ -388,6 +396,11 @@
         <listener class="me.serce.solidity.ide.annotation.ForgeLintOnSaveListener"
                   topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
     </applicationListeners>
+
+    <projectListeners>
+        <listener class="me.serce.solidity.ide.run.GasSnapshotChangeListener"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </projectListeners>
 
     <actions>
         <action id="solidity.file.create"
