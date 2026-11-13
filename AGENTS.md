@@ -77,6 +77,18 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   and its `reformat` must stay a no-op so forge fmt never runs on half-written code. Inside assembly and in `.yul`
   files only `SolYulFixer` (`SolStatementAnalyzer.yulFix`) changes the text: Yul statements have no `;`.
 
+## Editing Actions
+
+* Intentions (`ide/intentions/SolIntentions.kt`) and postfix templates (`SolPostfixTemplates.kt`) edit the document
+  directly and lay out their text themselves. The postfix templates override `expandForChooseExpression` instead of
+  going through the live-template engine, which deleted text before the expression in tests, and their provider adds
+  a `;` before the check (`preCheck`/`preExpand`) so a line being typed parses as a statement.
+* Introduce Variable and Inline Variable (`SolLocalVariableRefactorings.kt`) work on local variables only; reference
+  types get `storage` when the expression starts from a state variable, the parameter's location for parameters,
+  `memory` otherwise.
+* Optimize Imports keeps aliased imports (`import {A as B}`, `import "x" as X`, `import * as X`) and rebuilds only the
+  plain ones, from names used unqualified.
+
 ## Types
 
 * Number constants fold like solc's rational constants: integral values are `SolInteger` with `literalValue`
@@ -86,8 +98,16 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * A typed operand combined with a constant takes solc's common type: `uint8 x; x + 300` is `uint16`, `x + -1` is
   unknown (solc rejects it). Keep inference unknown rather than guessing wherever solc would reject.
 * `bytes.concat`/`string.concat` exist only on the type names (`elementaryTypeNameMembers`), not on values.
+* Integers are not assignable to `address`; only a 40-digit hex literal (solc's address literal) is.
 * `using L for T`/`*` attaches only library functions whose first parameter accepts the receiver
   (`SolMemberAccessElement.collectUsingForLibraryFunctions`); unknown parameter types keep the function.
+
+## Resolve
+
+* Name lookup (`SolResolver.lexicalDeclarations`) caches what a file declares and imports (`fileDeclarations`, walking
+  the import graph with a visited set because imports can be circular) and what a contract declares and inherits
+  (`contractDeclarations`). Tests fail on `CachingPreventedException`, so cached values must not depend on other
+  files' cached values through a cycle.
 
 ## Inline Assembly (Yul)
 
