@@ -15,6 +15,7 @@ import me.serce.solidity.lang.SolidityLanguage
 import me.serce.solidity.lang.core.SolidityParserDefinition
 import me.serce.solidity.lang.psi.SolVarLiteral
 import me.serce.solidity.lang.resolve.SolResolver
+import me.serce.solidity.lang.resolve.ref.SolImportConfigService
 import me.serce.solidity.lang.types.SolInternalTypeFactory
 import org.openjdk.jmh.annotations.*
 import java.nio.file.Path
@@ -96,6 +97,11 @@ open class SolidityResolveBenchmark {
       (project as MockProject).registerService(
         SolInternalTypeFactory::class.java,
         SolInternalTypeFactory(project),
+      )
+      // import paths go through the remapping lookup, which a plain project answers without forge
+      (project as MockProject).registerService(
+        SolImportConfigService::class.java,
+        SolImportConfigService(project),
       )
     }
 
