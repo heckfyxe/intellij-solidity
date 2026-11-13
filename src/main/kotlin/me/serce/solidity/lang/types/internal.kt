@@ -266,6 +266,39 @@ class SolInternalTypeFactory(project: Project) {
     """)
   }
 
+  val fixedBytesType: SolContract by lazy {
+    contract("""
+      contract ${internalise("FixedBytes")} {
+							/**
+                yields the fixed length of the byte array (read-only).
+							*/
+							uint8 length;
+      }
+    """)
+  }
+
+  val errorReferenceType: SolContract by lazy {
+    contract("""
+      contract ${internalise("ErrorType")} {
+							/**
+                the error selector: the first four bytes of the keccak256 hash of the error signature
+							*/
+							bytes4 selector;
+      }
+    """)
+  }
+
+  val eventReferenceType: SolContract by lazy {
+    contract("""
+      contract ${internalise("EventType")} {
+							/**
+                the event selector (since Solidity 0.8.15): the keccak256 hash of the event signature, i.e. the first topic of a non-anonymous event
+							*/
+							bytes32 selector;
+      }
+    """)
+  }
+
   val functionType: SolContract by lazy {
     contract("""
       /**

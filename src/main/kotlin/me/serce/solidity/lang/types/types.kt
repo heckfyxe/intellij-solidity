@@ -111,7 +111,18 @@ enum class NumericLiteralType {
   HEX, DECIMAL, SCIENTIFIC, ZERO
 }
 
-data class SolInteger(val unsigned: Boolean, val size: Int, val digitCount: Int? = null, val literalType: NumericLiteralType? = null) : SolNumeric {
+/**
+ * An integer type. Number literals are typed as the smallest integer type holding their value and also carry that
+ * value in [literalValue], so that (like solc's rational constants) they are assignable to every integer type the
+ * value fits in, e.g. `int8 x = -128`.
+ */
+data class SolInteger(
+  val unsigned: Boolean,
+  val size: Int,
+  val digitCount: Int? = null,
+  val literalType: NumericLiteralType? = null,
+  val literalValue: BigInteger? = null
+) : SolNumeric {
   companion object {
     val UINT_160 = SolInteger(true, 160)
     val UINT_256 = SolInteger(true, 256)
@@ -162,9 +173,13 @@ data class SolInteger(val unsigned: Boolean, val size: Int, val digitCount: Int?
       return inferIntegerType(parse)
     }
 
+    /** The type of a number constant with the given [value], e.g. the result of `-1` or `2**8 - 1`. */
+    fun ofConstant(value: BigInteger): SolInteger =
+      inferIntegerType(LiteralParseResult(value, NumericLiteralType.DECIMAL))
+
     private fun inferIntegerType(parseResult: LiteralParseResult): SolInteger {
       val value = parseResult.value
-      if (value == BigInteger.ZERO) return SolInteger(true, 8, 1, NumericLiteralType.ZERO)
+      if (value == BigInteger.ZERO) return SolInteger(true, 8, 1, NumericLiteralType.ZERO, BigInteger.ZERO)
       val positive = value >= BigInteger.ZERO
       if (positive) {
         var shifts = 0
@@ -173,7 +188,7 @@ data class SolInteger(val unsigned: Boolean, val size: Int, val digitCount: Int?
           shifts++
           current = current.shiftRight(8)
         }
-        return SolInteger(positive, shifts * 8, parseResult.digitCount, parseResult.type)
+        return SolInteger(positive, shifts * 8, parseResult.digitCount, parseResult.type, value)
       } else {
         var shifts = 1
         var current = value.abs().minus(BigInteger.ONE).shiftRight(7)
@@ -181,7 +196,7 @@ data class SolInteger(val unsigned: Boolean, val size: Int, val digitCount: Int?
           shifts++
           current = current.shiftRight(8)
         }
-        return SolInteger(positive, shifts * 8, parseResult.digitCount, parseResult.type)
+        return SolInteger(positive, shifts * 8, parseResult.digitCount, parseResult.type, value)
       }
     }
 
@@ -203,10 +218,24 @@ data class SolInteger(val unsigned: Boolean, val size: Int, val digitCount: Int?
     }
   }
 
+  val isLiteral: Boolean
+    get() = literalValue != null
+
+  /** This type without the literal information, i.e. the type of a variable of this type. */
+  fun withoutLiteral(): SolInteger =
+    if (literalType == null && digitCount == null && literalValue == null) this else SolInteger(unsigned, size)
+
+  /** Whether [value] is representable by this type. */
+  fun canHold(value: BigInteger): Boolean =
+    if (unsigned) value.signum() >= 0 && value.bitLength() <= size else value.bitLength() < size
+
   override fun isAssignableFrom(other: SolType): Boolean =
     when (other) {
       is SolInteger -> {
-        if (this.unsigned && !other.unsigned) {
+        val literalValue = other.literalValue
+        if (literalValue != null) {
+          canHold(literalValue)
+        } else if (this.unsigned && !other.unsigned) {
           false
         } else if (!this.unsigned && other.unsigned) {
           this.size - 2 >= other.size
@@ -405,7 +434,8 @@ sealed class SolArray(val type: SolType) : SolType {
 }
 
 object SolBytes : SolArray.SolDynamicArray(SolFixedByte(1)) {
-  private val concatFunction = BuiltinCallable(emptyList(), SolBytes, "concat", null)
+  // bytes.concat takes any number of bytes, bytesN and string/hex literals; the arguments are left unchecked
+  private val concatFunction = BuiltinCallable(listOf(SolInternalTypeFactory.varargsId to SolUnknown), SolBytes, "concat", null)
 
   override fun isAssignableFrom(other: SolType): Boolean =
     other == SolBytes || other is SolString
@@ -448,6 +478,8 @@ data class SolFixedBytes(val size: Int): SolPrimitiveType {
       other is SolString && (other.length == size || other.length == 0)
   }
 
+  override fun getMembers(project: Project) = getSdkMembers(SolInternalTypeFactory.of(project).fixedBytesType)
+
   companion object {
     val regex = "bytes\\d*$".toRegex()
     fun parse(name: String): SolFixedBytes {
@@ -465,11 +497,49 @@ data class SolMetaType(val type: SolType): SolType {
     return other is SolMetaType && this.type == other.type
   }
 
+  /**
+   * `min`/`max` (of type T) for integer and enum types; `name`, `creationCode`/`runtimeCode` for contracts and
+   * `name`/`interfaceId` for interfaces. An unknown T gets them all.
+   */
   override fun getMembers(project: Project): List<SolMember> {
-    return getSdkMembers(SolInternalTypeFactory.of(project).metaType)
+    val all = getSdkMembers(SolInternalTypeFactory.of(project).metaType)
+    fun select(vararg names: String) = all.filter { it.getName() in names }
+    return when (type) {
+      is SolInteger, is SolEnum -> select("min", "max").map { SolRetypedMember(it, type) }
+      is SolContract -> when (type.ref.contractType) {
+        ContractType.INTERFACE -> select("name", "interfaceId")
+        else -> select("name", "creationCode", "runtimeCode")
+      }
+      else -> all
+    }
   }
 
   override fun toString(): String = "type($type)"
+}
+
+/** A builtin member whose declared type depends on where it is accessed, like `type(T).max` being of type T. */
+data class SolRetypedMember(private val member: SolMember, private val type: SolType) : SolMember by member {
+  override fun parseType(): SolType = type
+}
+
+/** The type of an error name, e.g. `MyError` in `MyError.selector`. */
+data class SolErrorReferenceType(val ref: SolErrorDefinition) : SolType {
+  override fun isAssignableFrom(other: SolType): Boolean = other == this
+
+  override fun getMembers(project: Project): List<SolMember> =
+    getSdkMembers(SolInternalTypeFactory.of(project).errorReferenceType)
+
+  override fun toString(): String = "error ${ref.name}"
+}
+
+/** The type of an event name, e.g. `Transfer` in `Transfer.selector`. */
+data class SolEventReferenceType(val ref: SolEventDefinition) : SolType {
+  override fun isAssignableFrom(other: SolType): Boolean = other == this
+
+  override fun getMembers(project: Project): List<SolMember> =
+    getSdkMembers(SolInternalTypeFactory.of(project).eventReferenceType)
+
+  override fun toString(): String = "event ${ref.name}"
 }
 
 data class SolFunctionType(val ref: SolFunctionDefinition): SolType {

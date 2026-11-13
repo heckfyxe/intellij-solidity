@@ -6,6 +6,7 @@ import com.intellij.psi.impl.source.tree.LeafPsiElement
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
 import com.intellij.psi.util.PsiModificationTracker
+import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.childrenOfType
 import me.serce.solidity.firstOrElse
 import me.serce.solidity.lang.core.SolidityTokenTypes
@@ -18,6 +19,7 @@ import me.serce.solidity.lang.resolve.ref.SolFunctionCallReference
 import me.serce.solidity.lang.resolve.ref.toLibraryFunDefinition
 import me.serce.solidity.lang.types.SolArray.SolDynamicArray
 import me.serce.solidity.lang.types.SolArray.SolStaticArray
+import java.math.BigInteger
 import kotlin.math.max
 
 fun getSolType(type: SolTypeName?): SolType {
@@ -131,6 +133,8 @@ fun inferDeclType(decl: SolNamedElement): SolType {
     is SolParameterDef -> getSolType(decl.typeName)
     is SolStateVariableDeclaration -> getSolType(decl.typeName)
     is SolFunctionDefinition -> SolFunctionType(decl)
+    is SolErrorDefinition -> SolErrorReferenceType(decl)
+    is SolEventDefinition -> SolEventReferenceType(decl)
     is SolUserDefinedValueTypeDefinition -> SolUserDefinedValueTypeReferenceType(decl)
     else -> SolUnknown
   }
@@ -178,25 +182,25 @@ fun inferExprType(expr: SolExpression?): SolType {
         ?: expr.elementaryTypeName?.let { getSolType(it) }
         ?: SolUnknown
     }
-    is SolPlusMinExpression -> getNumericExpressionType(
-      inferExprType(expr.expressionList.firstOrNull()),
-      inferExprType(expr.expressionList.secondOrNull())
-    )
-    is SolMultDivExpression -> getNumericExpressionType(
-      inferExprType(expr.expressionList.firstOrNull()),
-      inferExprType(expr.expressionList.secondOrNull())
-    )
-    is SolExponentExpression -> getNumericExpressionType(
-      inferExprType(expr.expressionList.firstOrNull()),
-      inferExprType(expr.expressionList.secondOrNull())
-    )
-    is SolShiftExpression -> inferExprType(expr.expressionList.firstOrNull())
+    is SolPlusMinExpression,
+    is SolMultDivExpression,
+    is SolExponentExpression,
+    is SolShiftExpression -> {
+      val operands = PsiTreeUtil.getChildrenOfTypeAsList(expr, SolExpression::class.java)
+      getNumericExpressionType(
+        operands.firstOrNull()?.let { PsiTreeUtil.skipWhitespacesAndCommentsForward(it) }?.text,
+        inferExprType(operands.firstOrNull()),
+        inferExprType(operands.secondOrNull())
+      )
+    }
     is SolFunctionCallExpression -> {
-      (expr.reference as SolFunctionCallReference)
-        .resolveFunctionCall()
-        .firstOrNull { it.canBeApplied(expr.functionCallArguments) }
-        ?.parseType()
-        ?: SolUnknown
+      val candidates = (expr.reference as SolFunctionCallReference).resolveFunctionCall()
+      // abi.decode's builtin signature can't describe its type list argument
+      if (candidates.any { it.isAbiDecode() }) {
+        inferAbiDecodeType(expr)
+      } else {
+        candidates.firstOrNull { it.canBeApplied(expr.functionCallArguments) }?.parseType() ?: SolUnknown
+      }
     }
     is SolAndExpression,
     is SolOrExpression,
@@ -207,21 +211,34 @@ fun inferExprType(expr: SolExpression?): SolType {
       when (val arrType = inferExprType(expr.expressionList.firstOrNull())) {
         is SolArray -> arrType.type
         is SolMapping -> arrType.to
+        is SolFixedBytes -> SolFixedBytes(1)
         else -> SolUnknown
       }
     }
     is SolMemberAccessExpression -> {
-      return SolResolver.resolveMemberAccess(expr)
-        .firstOrNull()
-        ?.parseType()
-        ?: SolUnknown
+      val member = SolResolver.resolveMemberAccess(expr).firstOrNull() ?: return SolUnknown
+      // `C.MyError` / `I.Transfer` not being called refer to the error/event itself, e.g. in `I.Transfer.selector`
+      val constructed = (member as? SolMemberConstructor<*>)?.ref?.takeIf { expr.parent !is SolFunctionCallExpression }
+      when (constructed) {
+        is SolErrorDefinition -> SolErrorReferenceType(constructed)
+        is SolEventDefinition -> SolEventReferenceType(constructed)
+        else -> member.parseType()
+      }
     }
     is SolSeqExpression -> when {
       expr.expressionList.isEmpty() -> SolUnknown
       else -> inferExprType(expr.expressionList.firstOrNull())
     }
-    is SolUnaryExpression ->
-      inferExprType(expr.expression)
+    is SolUnaryExpression -> {
+      val operandType = inferExprType(expr.expression)
+      val literalValue = (operandType as? SolInteger)?.literalValue
+      when (expr.firstChild?.text) {
+        "!" -> SolBoolean
+        "-" -> if (literalValue != null) SolInteger.ofConstant(literalValue.negate()) else operandType
+        "~" -> if (literalValue != null) SolInteger.ofConstant(literalValue.not()) else operandType
+        else -> operandType
+      }
+    }
     is SolMetaTypeExpression -> SolMetaType(getSolType(expr.typeName))
     else -> SolUnknown
   }
@@ -231,11 +248,62 @@ private fun <E> List<E>.secondOrNull(): E? {
   return if (size < 2) null else this[1]
 }
 
-private fun getNumericExpressionType(firstType: SolType, secondType: SolType): SolType {
-  return if (firstType is SolInteger && secondType is SolInteger) {
-    SolInteger(firstType.unsigned && secondType.unsigned, max(firstType.size, secondType.size))
-  } else {
-    SolUnknown
+/** Results of constant folding beyond this many bits are not tracked (solc limits rational constants to 4096 bits). */
+private const val MAX_CONSTANT_BITS = 4096
+
+/**
+ * The type of `first op second`. Constants are folded like solc's rational constants; a constant combined with a
+ * typed operand takes the operand's type (`x - 1`), except that a constant shifted or exponentiated by a typed value
+ * becomes `uint256`/`int256`.
+ */
+private fun getNumericExpressionType(op: String?, firstType: SolType, secondType: SolType): SolType {
+  if (firstType !is SolInteger || secondType !is SolInteger) {
+    return SolUnknown
+  }
+  val first = firstType.literalValue
+  val second = secondType.literalValue
+  val isShiftOrExp = op == "<<" || op == ">>" || op == "**"
+  return when {
+    first != null && second != null -> foldConstants(op, first, second)?.let { SolInteger.ofConstant(it) } ?: SolUnknown
+    isShiftOrExp -> if (first != null) SolInteger(first.signum() >= 0, 256) else firstType.withoutLiteral()
+    first != null -> secondType.withoutLiteral()
+    second != null -> firstType.withoutLiteral()
+    else -> SolInteger(firstType.unsigned && secondType.unsigned, max(firstType.size, secondType.size))
+  }
+}
+
+private fun foldConstants(op: String?, a: BigInteger, b: BigInteger): BigInteger? {
+  val result = when (op) {
+    "+" -> a + b
+    "-" -> a - b
+    "*" -> a * b
+    // a fractional result is a rational constant, which isn't modelled
+    "/" -> if (b.signum() == 0 || a.mod(b.abs()).signum() != 0) null else a / b
+    "%" -> if (b.signum() == 0) null else a.rem(b)
+    "**" -> if (b.signum() < 0 || b.bitLength() > 16 || a.bitLength().toLong() * b.toLong() > MAX_CONSTANT_BITS) null else a.pow(b.toInt())
+    "<<" -> if (b.signum() < 0 || b > BigInteger.valueOf(MAX_CONSTANT_BITS.toLong())) null else a.shiftLeft(b.toInt())
+    ">>" -> if (b.signum() < 0 || b.bitLength() > 31) null else a.shiftRight(b.toInt())
+    else -> null
+  }
+  return result?.takeIf { it.bitLength() <= MAX_CONSTANT_BITS }
+}
+
+private fun SolCallable.isAbiDecode(): Boolean {
+  val function = resolveElement() as? SolFunctionDefinition ?: return false
+  return function.name == "decode" && function.contract?.name == internalise("Abi")
+}
+
+/** `abi.decode(data, (uint, address))` returns the types listed in its second argument. */
+private fun inferAbiDecodeType(call: SolFunctionCallExpression): SolType {
+  val types = when (val typesArg = call.functionCallArguments.expressionList.getOrNull(1)) {
+    is SolSeqExpression -> typesArg.expressionList.map { inferExprType(it) }
+    null -> return SolUnknown
+    else -> listOf(inferExprType(typesArg))
+  }
+  return when (types.size) {
+    0 -> SolUnknown
+    1 -> types.single()
+    else -> SolTuple(types)
   }
 }
 
