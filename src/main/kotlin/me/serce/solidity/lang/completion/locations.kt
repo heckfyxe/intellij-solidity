@@ -65,8 +65,11 @@ fun inFunctionParameterDef(): ElementPattern<PsiElement> = psiElement()
 fun inImportDeclaration(): ElementPattern<PsiElement> = psiElement()
   .inside(SolImportDirective::class.java)
 
-fun inStateVariableDeclaration(): ElementPattern<PsiElement> = psiElement(SolidityTokenTypes.IDENTIFIER)
-  .inside(psiElement(SolPrimaryExpression::class.java))
+/** Where a state variable's name goes (`uint256 <caret>`): modifiers can still be typed there. */
+fun inStateVariableDeclaration(): ElementPattern<PsiElement> = StandardPatterns.or(
+  psiElement(SolidityTokenTypes.IDENTIFIER).withParent(SolStateVariableDeclaration::class.java),
+  psiElement(SolidityTokenTypes.IDENTIFIER).inside(psiElement(SolPrimaryExpression::class.java)),
+)
 
 fun inFunctionDeclaration(): ElementPattern<PsiElement> = psiElement()
   .inside(SolFunctionDefinition::class.java)

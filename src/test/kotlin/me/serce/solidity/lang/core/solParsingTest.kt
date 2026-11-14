@@ -194,3 +194,7 @@ class SolidityCompleteOfficialFailingParsingTest :
 //  fun testVariableDefinitionInFunctionReturn() = doTest(true)
 //  fun testVariableDefinitionInMapping() = doTest(true)
 }
+
+class SolidityRecoveryParsingTest : SolidityParsingTestBase("fixtures/parser/recovery") {
+  fun testMissingSemicolon() = doTest(true)
+}

@@ -1,5 +1,6 @@
 {
   parserClass="me.serce.solidity.SolidityParser"
+  parserUtilClass="me.serce.solidity.lang.core.SolidityParserUtil"
 
   psiClassPrefix="Sol"
   psiImplClassSuffix="Impl"
@@ -109,6 +110,9 @@ SourceUnit ::= (
 
 private UntilSemicolonRecover ::= !(';')
 private UntilBraceRecover ::= !('}')
+// Recovery of a statement or declaration that should end with ';': stops at the line break before the next
+// line, so a missing ';' is reported at the end of the line and the next line still parses.
+private UntilSemicolonOrNewLineRecover ::= !(';' | '}' | <<afterNewLine>>)
 
 // Pragma actually parses anything up to the trailing ';' to be fully forward-compatible.
 private PragmaPart ::= pragma Identifier pragmaAll {
@@ -178,12 +182,16 @@ VisibilityModifier ::= ( public | internal | private )
 private transient_kw ::= &('transient' (Identifier | VisibilityModifier)) Identifier
 MutationModifier ::= (constant | immutable | transient_kw)
 
-StateVariableDeclaration ::= TypeName (MutationModifier | VisibilityModifier | OverrideSpecifier )* Identifier ('=' Expression)? ';'  {
+// pinned after the name unless '(' follows (`function f(`, `error E(`), so `uint a` without ';' stays in its contract
+StateVariableDeclaration ::= TypeName (MutationModifier | VisibilityModifier | OverrideSpecifier )* Identifier !'(' StateVariableInitializer ';'  {
+    pin = 4
     implements = "me.serce.solidity.lang.psi.SolStateVarElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolStateVarDeclMixin"
     stubClass = "me.serce.solidity.lang.stubs.SolStateVarDeclStub"
     elementTypeFactory = "me.serce.solidity.lang.stubs.ImplKt.factory"
 }
+
+private StateVariableInitializer ::= ('=' Expression)? {recoverWhile = UntilSemicolonOrNewLineRecover}
 
 /**
  * The declaration of a constant variable.
@@ -421,9 +429,11 @@ private FinishedStatement ::=
     | EmitStatement
     | RevertStatement
     | SimpleStatement {
-    recoverWhile = UntilSemicolonRecover
+    recoverWhile = UntilSemicolonOrNewLineRecover
 }
-Statement ::= IfStatement | TryStatement | WhileStatement | ForStatement | Block | InlineAssemblyStatement | TupleStatement | ReturnTupleStatement | FinishedStatement ';'
+// pinned so that a missing ';' is reported as such and the statement keeps its PSI
+private FinishedStatementWithSemicolon ::= FinishedStatement ';' {pin = 1}
+Statement ::= IfStatement | TryStatement | WhileStatement | ForStatement | Block | InlineAssemblyStatement | TupleStatement | ReturnTupleStatement | FinishedStatementWithSemicolon
 
 // intentionally not pinned
 TupleStatement ::= VariableDeclaration '=' SeqExpression ';'

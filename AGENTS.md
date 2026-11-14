@@ -29,6 +29,12 @@ re-running the test to ensure the output doesn't contain any errors.
 **Tip:** Instead of manually updating the .txt files for the tests, you can delete the .txt file and re-run the
 test. The test framework will automatically regenerate the .txt file with the correct output.
 
+A statement missing its `;` (`FinishedStatementWithSemicolon`) and a state variable missing it (pinned after its name
+unless `(` follows, so `function f(`/`error E(` still parse as declarations) keep their PSI and report
+`';' expected`. Their recovery (`UntilSemicolonOrNewLineRecover`) stops at `;`, `}` or a line break
+(`SolidityParserUtil.afterNewLine`, an external `<<rule>>`), so the next line parses normally and keeps highlighting,
+completion and resolve. Recovery tests with expected errors are in `fixtures/parser/recovery` (`SolidityRecoveryParsingTest`).
+
 NatSpec tags (`NAT_SPEC_TAG`) are lexed inside comments only when the `@` follows whitespace, `*` or `/`
 (`/// @notice`, `///@notice`, ` *@dev`, a tag at the start of a block comment line), as solc accepts them; `a@b` stays
 comment text. Quick Documentation, NatSpec completion/inspections and highlighting all depend on that token.
@@ -76,7 +82,7 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   `SolExternalFormatterTypingTest`, `SolQuoteTypingTest`, `SolBraceTypingTest`, `SolSmartEnterTest` and
   `SolLineDocCommentEnterHandlerTest` (`///` continuation).
 * Complete Current Statement (`SolSmartEnterProcessor`) works on lexer tokens, not PSI: incomplete statements parse
-  into bare tokens (a state variable without `;` even escapes its contract). It inserts only `)`/`;`/` {}` on one line
+  into bare tokens (unclosed parentheses, a declaration without a name). It inserts only `)`/`;`/` {}` on one line
   and lets a real Enter lay out the block; `SmartEnterProcessorWithFixers.plainEnter` is Start New Line, not Enter,
   and its `reformat` must stay a no-op so forge fmt never runs on half-written code. Inside assembly and in `.yul`
   files only `SolYulFixer` (`SolStatementAnalyzer.yulFix`) changes the text: Yul statements have no `;`.
