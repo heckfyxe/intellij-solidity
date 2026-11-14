@@ -27,6 +27,7 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import me.serce.solidity.chain.Offsets
 import me.serce.solidity.chain.foundry.FoundryProject
+import me.serce.solidity.chain.foundry.ShadowProject
 
 /** One `forge lint` diagnostic, with char offsets into the file's text. */
 class ForgeLintIssue(
@@ -39,13 +40,18 @@ class ForgeLintIssue(
 )
 
 /**
- * Shows `forge lint` diagnostics. forge reads the file from disk, so lint runs on the saved file; while the document
- * has unsaved changes, the last results stay attached to their code (via range markers) until the next save.
+ * Shows `forge lint` diagnostics as you type. forge only reads files from disk, so with unsaved changes it lints a
+ * [ShadowProject] holding the editor text of every unsaved Solidity file of the project. Where no shadow can be made,
+ * the last results stay attached to their code (via range markers) until the next save.
  * The project's `[lint]` settings in foundry.toml decide which lints run.
  */
 class ForgeLintAnnotator : ExternalAnnotator<ForgeLintAnnotator.Input, ForgeLintAnnotator.Result>() {
 
-  class Input(val foundry: FoundryProject?, val forge: String, val relativePath: String?, val text: String, val document: Document)
+  /** [unsaved] maps relative paths to editor text: this file's and other unsaved ones, empty when all are saved. */
+  class Input(
+    val foundry: FoundryProject, val forge: String, val relativePath: String, val text: String, val document: Document,
+    val unsaved: Map<String, String>,
+  )
   class Result(val document: Document, val issues: List<ForgeLintIssue>?)
 
   override fun getPairedBatchInspectionShortName() = ForgeLintInspection.SHORT_NAME
@@ -57,16 +63,27 @@ class ForgeLintAnnotator : ExternalAnnotator<ForgeLintAnnotator.Input, ForgeLint
     val foundry = FoundryProject.find(file.project, vFile) ?: return null
     val relative = foundry.relativePath(vFile) ?: return null
     if (LIB_DIRS.any { relative.startsWith(it) }) return null // dependencies aren't yours to fix
-    // unsaved: forge would lint stale content, so reuse the last results
     val forge = FoundryProject.forgePath(file.project)
-    if (FileDocumentManager.getInstance().isDocumentUnsaved(document)) return Input(null, forge, null, document.text, document)
-    return Input(foundry, forge, relative, document.text, document)
+    val fdm = FileDocumentManager.getInstance()
+    val unsaved = fdm.unsavedDocuments.mapNotNull { doc ->
+      val f = fdm.getFile(doc)?.takeIf { it.extension == "sol" && it.isInLocalFileSystem } ?: return@mapNotNull null
+      foundry.relativePath(f)?.let { it to doc.text }
+    }.toMap()
+    return Input(foundry, forge, relative, document.text, document, unsaved)
   }
 
   override fun doAnnotate(input: Input): Result {
-    val foundry = input.foundry ?: return Result(input.document, null)
+    val foundry = input.foundry
+    val command = listOf(input.forge, "lint", input.relativePath, "--json")
     val issues = try {
-      val output = foundry.exec(listOf(input.forge, "lint", input.relativePath!!, "--json"), timeoutMs = 30_000)
+      val output = if (input.unsaved.isEmpty()) {
+        foundry.exec(command, timeoutMs = 30_000)
+      } else {
+        // build output stays out of the shadow, so forge can't write into the project through a link
+        val skip = setOf("cache", foundry.config().out.trimEnd('/'), "broadcast")
+        ShadowProject.run(foundry.root, input.unsaved, skip) { shadow -> foundry.exec(command, timeoutMs = 30_000, workDir = shadow.toFile()) }
+          ?: return Result(input.document, null) // no shadow: keep the last results
+      }
       parse(output.stdout + "\n" + output.stderr, input.relativePath, input.text)
     } catch (e: Exception) { // no forge, an old forge without `lint`, a bad foundry.toml: no lint results
       LOG.debug(e)
@@ -176,7 +193,7 @@ class OpenLintDocsFix(private val code: String, private val url: String) : Inten
   override fun invoke(project: Project, editor: Editor?, file: PsiFile?) = BrowserUtil.browse(url)
 }
 
-/** forge lints what is on disk, so a save brings new results: re-run the annotators of the saved file. */
+/** A save changes what forge sees for other files importing the saved one: re-run the annotators of the saved file. */
 class ForgeLintOnSaveListener : FileDocumentManagerListener {
   // there is no after-save callback: saving finishes within the current EDT event, so look after it
   override fun beforeDocumentSaving(document: Document) {

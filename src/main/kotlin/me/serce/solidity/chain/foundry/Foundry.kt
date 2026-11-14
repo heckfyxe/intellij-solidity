@@ -161,11 +161,11 @@ class FoundryProject(val root: Path, private val forge: String) {
     return relativePath.startsWith(config.src.trimEnd('/') + "/")
   }
 
-  /** Runs a Foundry tool (or solc) in [root]; throws [FoundryException] when it is missing or times out. */
-  fun exec(command: List<String>, timeoutMs: Int, stdin: ByteArray? = null): ProcessOutput {
+  /** Runs a Foundry tool (or solc) in [workDir]; throws [FoundryException] when it is missing or times out. */
+  fun exec(command: List<String>, timeoutMs: Int, stdin: ByteArray? = null, workDir: File = root.toFile()): ProcessOutput {
     val tool = File(command[0])
     if (!tool.exists()) throw FoundryException("${tool.name} not found at ${command[0]}. Install Foundry or set its path in Settings | Solidity")
-    val cmd = GeneralCommandLine(command).withWorkDirectory(root.toFile()).withCharset(Charsets.UTF_8)
+    val cmd = GeneralCommandLine(command).withWorkDirectory(workDir).withCharset(Charsets.UTF_8)
       .withEnvironment("NO_COLOR", "1")
     val handler = CapturingProcessHandler(cmd)
     stdin?.let { bytes -> handler.processInput.use { it.write(bytes) } }
