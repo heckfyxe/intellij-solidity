@@ -18,6 +18,10 @@ import static me.serce.solidity.lang.core.SolidityTokenTypes.*;
 %{
   // indicates the start of the comment
   private int zzBlockCommentStarted = -1;
+
+  private static boolean isNatSpecTagStart(char previous) {
+    return Character.isWhitespace(previous) || previous == '*' || previous == '/';
+  }
 %}
 
 %public
@@ -214,7 +218,8 @@ PRAGMAALL=[^ ][^;]*
 <IN_BLOCK_COMMENT> {
   // to avoid tokenizing by whitespaces, and only split the comment into parts if
   // NatSpec tags are included.
-  " @"                    {
+  // a tag starts after whitespace or the comment's own `/`/`*` (`///@notice`, ` *@dev`, `/**@title`), as in solc
+  [\s*/]"@"              {
                             yypushback(1);
                             return COMMENT;
                           }
@@ -229,7 +234,7 @@ PRAGMAALL=[^ ][^;]*
 
   {NAT_SPEC_TAG}         {
                             //
-                            if (yycharat(-1) == ' ') {
+                            if (isNatSpecTagStart(yycharat(-1))) {
                                 return NAT_SPEC_TAG;
                             }
                             return COMMENT;
@@ -246,14 +251,15 @@ PRAGMAALL=[^ ][^;]*
 <IN_EOL_COMMENT> {
   // to avoid tokenizing by whitespaces, and only split the comment into parts if
   // NatSpec tags are included.
-  " @"                    {
+  // a tag starts after whitespace or the comment's own `/`/`*` (`///@notice`, ` *@dev`, `/**@title`), as in solc
+  [\s*/]"@"              {
                             yypushback(1);
                             return COMMENT;
                           }
 
   {NAT_SPEC_TAG}          {
                               //
-                              if (yycharat(-1) == ' ') {
+                              if (isNatSpecTagStart(yycharat(-1))) {
                                   return NAT_SPEC_TAG;
                               }
                               return COMMENT;

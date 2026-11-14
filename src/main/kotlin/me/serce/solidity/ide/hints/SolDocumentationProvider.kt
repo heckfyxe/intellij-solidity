@@ -78,6 +78,7 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
 
   private val commentsRegex = "^/\\*\\*|\\*/$|^///".toRegex()
   private val nonSlashRegex = "[^/]".toRegex()
+  private val tagLineIndentRegex = "\n[ \t]*\\*?$".toRegex()
 
   /** Yul built-ins resolve to nothing: the call itself carries their documentation. */
   override fun getCustomDocumentationElement(editor: Editor, file: PsiFile, contextElement: PsiElement?, targetOffset: Int): PsiElement? =
@@ -117,6 +118,8 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
     if (comments.isNotEmpty()) {
       builder.append(CONTENT_START)
       var prevText = ""
+      // set when the line break before a tag was cut together with that line's indentation
+      var tagOnNewLine = false
       var text = comments.mapIndexed { i, e ->
         var text = e.text
 
@@ -127,6 +130,11 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
               if (e.text == NO_VALIDATION_TAG) "" else "$GRAYED_START${text.substring(1)}:$GRAYED_END"
             }
             SolidityTokenTypes.COMMENT -> {
+              // the indentation (and `*`) of a line that starts with a tag is not part of the docs
+              if (comments.getOrNull(i + 1)?.elementType == SolidityTokenTypes.NAT_SPEC_TAG && tagLineIndentRegex.containsMatchIn(text)) {
+                text = text.replace(tagLineIndentRegex, "")
+                tagOnNewLine = true
+              }
               // replacing internal '*' characters which start a line
               val split = text.split("*").filter { it.isNotEmpty() }
               split.foldIndexed("") { j, a, t -> if (j == 0) a + t else {
@@ -137,7 +145,10 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
         }
         text = text.split("\n").filter { it.contains(nonSlashRegex) }.joinToString("\n")
         documentManager.getDocument(e.containingFile)?.let { doc ->
-          if (i > 0 && (i > 1 || prevText.isNotBlank()) && doc.getLineNumber(e.textOffset) != doc.getLineNumber(comments[i - 1].textRange.endOffset)) {
+          val newLine = e.elementType == SolidityTokenTypes.NAT_SPEC_TAG && tagOnNewLine ||
+            i > 0 && doc.getLineNumber(e.textOffset) != doc.getLineNumber(comments[i - 1].textRange.endOffset)
+          if (e.elementType == SolidityTokenTypes.NAT_SPEC_TAG) tagOnNewLine = false
+          if (newLine && (i > 1 || prevText.isNotBlank())) {
             text = "\n" + text
           } else text
         }
@@ -146,7 +157,7 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
       }.joinToString("")
       val split = text.split("\n")
       text = split.filterIndexed { i, l -> !((i == 0 || i == split.size - 1) && l.isBlank()) }.joinToString("\n")
-      text = text.replace(" ", "&nbsp;").replace("\n", "<br/>")
+      text = text.replace("\t", " ").replace(" ", "&nbsp;").replace("\n", "<br/>")
       builder.append(text);
       builder.append(CONTENT_END)
     }

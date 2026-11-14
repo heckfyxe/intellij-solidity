@@ -41,6 +41,53 @@ class SolDocumentationProviderTest : SolTestBase() {
           }
       """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc(<b style='color:rgb(0,0,128)'>int</b> myInti, <b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>bool</b></b> aBool)  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'>uint</b>)</pre></div><div class='content'>&nbsp;<span&nbsp;class='grayed'>notice:</span>&nbsp;my&nbsp;docs</div>""")
 
+  fun testTagsWithoutSpaceAfterSlashes() = checkByText("""
+          contract A {
+              function main() {
+                  withDoc/*caret*/();
+              }
+              ///@notice hi
+              ///@dev there
+              function withDoc() { }
+          }
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><span&nbsp;class='grayed'>notice:</span>&nbsp;hi<br/><span&nbsp;class='grayed'>dev:</span>&nbsp;there</div>""")
+
+  fun testTagsRightAfterBlockCommentStars() = checkByText("""
+          contract A {
+              function main() {
+                  withDoc/*caret*/();
+              }
+              /**
+               *@notice hi
+               *@dev there
+               */
+              function withDoc() { }
+          }
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><span&nbsp;class='grayed'>notice:</span>&nbsp;hi<br/><span&nbsp;class='grayed'>dev:</span>&nbsp;there</div>""")
+
+  fun testTagsAtLineStartInBlockComment() = checkByText("""
+          contract A {
+              function main() {
+                  withDoc/*caret*/();
+              }
+              /**
+              @notice hi
+              @dev there
+              */
+              function withDoc() { }
+          }
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><span&nbsp;class='grayed'>notice:</span>&nbsp;hi<br/><span&nbsp;class='grayed'>dev:</span>&nbsp;there</div>""")
+
+  fun testTabBeforeTag() = checkByText("""
+          contract A {
+              function main() {
+                  withDoc/*caret*/();
+              }
+              ///	@notice hi
+              function withDoc() { }
+          }
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'>&nbsp;<span&nbsp;class='grayed'>notice:</span>&nbsp;hi</div>""")
+
   fun testInheritedDocs() = checkByText("""
           contract Base {
               /// @notice base docs

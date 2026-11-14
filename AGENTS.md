@@ -29,6 +29,10 @@ re-running the test to ensure the output doesn't contain any errors.
 **Tip:** Instead of manually updating the .txt files for the tests, you can delete the .txt file and re-run the
 test. The test framework will automatically regenerate the .txt file with the correct output.
 
+NatSpec tags (`NAT_SPEC_TAG`) are lexed inside comments only when the `@` follows whitespace, `*` or `/`
+(`/// @notice`, `///@notice`, ` *@dev`, a tag at the start of a block comment line), as solc accepts them; `a@b` stays
+comment text. Quick Documentation, NatSpec completion/inspections and highlighting all depend on that token.
+
 ### Advanced Lexer and Parser Guidelines
 
 These guidelines are crucial for maintaining a robust and adaptable lexer/parser.
