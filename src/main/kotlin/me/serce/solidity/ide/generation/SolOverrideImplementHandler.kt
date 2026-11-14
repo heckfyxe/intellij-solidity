@@ -8,6 +8,7 @@ import com.intellij.codeInsight.generation.MemberChooserObjectBase
 import com.intellij.ide.util.MemberChooser
 import com.intellij.lang.LanguageCodeInsightActionHandler
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
@@ -89,7 +90,11 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
   /** Shows the member chooser; returns null when cancelled. In tests every candidate is chosen. */
   protected open fun choose(project: Project, candidates: List<SolNamedElement>): List<SolNamedElement>? {
     if (ApplicationManager.getApplication().isUnitTestMode) return candidates
-    val chooser = MemberChooser(candidates.map { SolMemberChooserObject(it) }.toTypedArray(), false, true, project)
+    // the tree renders on the EDT without a read action, so everything shown is computed here
+    val objects = ReadAction.compute<Array<SolMemberChooserObject>, RuntimeException> {
+      candidates.map { SolMemberChooserObject(it) }.toTypedArray()
+    }
+    val chooser = MemberChooser(objects, false, true, project)
     chooser.title = title
     chooser.setCopyJavadocVisible(false)
     chooser.show()
@@ -186,21 +191,24 @@ class SolImplementMethodsHandler : SolOverrideImplementHandler() {
   override fun accept(member: SolNamedElement) = member is SolFunctionDefinition && !SolOverrideResolver.hasBody(member)
 }
 
+/** Text, icon and parent are computed on creation: the chooser renders on the EDT outside a read action. */
 private class SolMemberChooserObject(val member: SolNamedElement) : ClassMember {
-  private val contract = SolOverrideResolver.containingContract(member)
+  private val parent = SolOverrideResolver.containingContract(member)?.let { SolContractChooserObject(it) }
+  private val text = "${SolOverrideResolver.displayName(member)}${SolOverrideResolver.parametersText(member) ?: "()"}"
+  private val virtual = SolOverrideResolver.isVirtual(member)
+  private val icon = member.getIcon(0)
 
-  override fun getParentNodeDelegate(): MemberChooserObject? = contract?.let { SolContractChooserObject(it) }
+  override fun getParentNodeDelegate(): MemberChooserObject? = parent
 
   override fun renderTreeNode(component: SimpleColoredComponent, tree: JTree?) {
     component.append(text)
-    if (!SolOverrideResolver.isVirtual(member)) {
+    if (!virtual) {
       component.append("  will be made virtual", SimpleTextAttributes.GRAYED_ATTRIBUTES)
     }
-    component.icon = member.getIcon(0)
+    component.icon = icon
   }
 
-  override fun getText(): String =
-    "${SolOverrideResolver.displayName(member)}${SolOverrideResolver.parametersText(member) ?: "()"}"
+  override fun getText(): String = text
 
   override fun equals(other: Any?) = other is SolMemberChooserObject && other.member == member
   override fun hashCode() = member.hashCode()
