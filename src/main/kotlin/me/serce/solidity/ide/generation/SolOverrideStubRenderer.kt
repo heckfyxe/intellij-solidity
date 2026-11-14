@@ -1,6 +1,5 @@
 package me.serce.solidity.ide.generation
 
-import me.serce.solidity.ide.inspections.fixes.SolSpecifierEditor
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.SolModifierDefinition
 import me.serce.solidity.lang.psi.SolNamedElement
@@ -10,10 +9,10 @@ import me.serce.solidity.lang.resolve.function.SolOverrideResolver
 /** Renders the unindented source of a member that overrides [base]; the caller indents it. */
 object SolOverrideStubRenderer {
 
-  fun render(base: SolNamedElement, overrideBases: List<String>): String {
-    val override = SolSpecifierEditor.overrideText(overrideBases)
+  /** [override] is the specifier to add (`override`, `override(A, B)`), or empty where the compiler has none. */
+  fun render(base: SolNamedElement, override: String): String {
     return when (base) {
-      is SolModifierDefinition -> "modifier ${base.name}${SolOverrideResolver.parametersText(base) ?: ""} $override {\n_;\n}"
+      is SolModifierDefinition -> "modifier ${base.name}${SolOverrideResolver.parametersText(base) ?: ""}${if (override.isEmpty()) "" else " $override"} {\n_;\n}"
       is SolFunctionDefinition -> renderFunction(base, override)
       else -> error("Unsupported member: $base")
     }
@@ -24,7 +23,7 @@ object SolOverrideStubRenderer {
     val parts = mutableListOf(head + SolOverrideResolver.parametersText(f))
     parts += f.functionVisibilitySpecifierList.mapNotNull { it.visibilitySpecifier?.text }
     parts += f.stateMutabilitySpecifierList.map { it.text }
-    parts += override
+    if (override.isNotEmpty()) parts += override
     val header = parts.joinToString(" ") + (f.returns?.let { " returns ${it.text}" } ?: "")
     val body = superCall(f)
     return if (body.isEmpty()) "$header {\n}" else "$header {\n$body\n}"

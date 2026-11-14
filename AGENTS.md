@@ -94,6 +94,12 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   the current one (no visibility for free functions), copying `pure`/`view` from it. Locals read become parameters;
   locals declared and used later, or outer ones assigned and used anywhere else (loops), become return values; outer
   ones only assigned are declared in the new function. `return`, `_` and `break`/`continue` leaving it are refused.
+* Implement Functions (Cmd+I) offers external view getters as public state variables (`SolPublicGetter`):
+  parameters become nested mapping keys, `string`/`bytes` returns are fine, struct or array returns stay functions.
+  Only when the pragma allows nothing below solc 0.6.0 (public variables override external functions since then);
+  `override` is left out when the pragma allows only solc before 0.6.0. Members already implemented by a matching
+  public variable (in the contract or a base) are not offered. The choice is a chooser checkbox stored in
+  `PropertiesComponent`, like Java's Override/Implement options.
 * Optimize Imports keeps aliased imports (`import {A as B}`, `import "x" as X`, `import * as X`) and rebuilds only the
   plain ones, from names used unqualified.
 

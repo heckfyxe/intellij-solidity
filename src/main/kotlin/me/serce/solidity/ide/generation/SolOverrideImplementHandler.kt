@@ -6,6 +6,7 @@ import com.intellij.codeInsight.generation.ClassMember
 import com.intellij.codeInsight.generation.MemberChooserObject
 import com.intellij.codeInsight.generation.MemberChooserObjectBase
 import com.intellij.ide.util.MemberChooser
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.lang.LanguageCodeInsightActionHandler
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
@@ -28,7 +29,10 @@ import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.SolNamedElement
 import me.serce.solidity.lang.psi.parentOfType
+import me.serce.solidity.lang.core.solidityVersionRange
 import me.serce.solidity.lang.resolve.function.SolOverrideResolver
+import me.serce.solidity.lang.resolve.function.SolPublicGetter
+import javax.swing.JCheckBox
 import javax.swing.JTree
 
 /** Shared logic of Code | Override Methods (Ctrl+O) and Code | Implement Methods (Ctrl+I) for Solidity. */
@@ -40,6 +44,9 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
 
   /** Hint shown when the contract has bases but nothing to offer. */
   protected abstract val nothingFoundMessage: String
+
+  /** Whether the chooser offers implementing external getters with public state variables. */
+  protected open val offersGetterVariables = false
 
   override fun startInWriteAction() = false
 
@@ -55,11 +62,12 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
       HintManager.getInstance().showErrorHint(editor, nothingFoundMessage)
       return
     }
-    val chosen = choose(project, candidates)
-    if (chosen.isNullOrEmpty()) return
+    val choice = choose(project, candidates) ?: return
+    val chosen = choice.members
+    if (chosen.isEmpty()) return
     // non-virtual bases get `virtual` added, possibly in other files
     val files = (listOf(file) + chosen.mapNotNull { it.containingFile }).distinct().toTypedArray()
-    WriteCommandAction.runWriteCommandAction(project, title, null, { insert(editor, contract, chosen) }, *files)
+    WriteCommandAction.runWriteCommandAction(project, title, null, { insert(editor, contract, chosen, choice.getterVariables) }, *files)
   }
 
   /** The contract whose body contains the caret; libraries can't inherit, so they are excluded. */
@@ -84,25 +92,36 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
         mostDerived += member
       }
     }
-    return mostDerived.filter { m -> own.none { SolOverrideResolver.sameSignature(it, m) } && accept(m) }
+    // a public state variable whose getter matches implements the function for good (variables can't be overridden)
+    return mostDerived.filter { m ->
+      own.none { SolOverrideResolver.sameSignature(it, m) } && accept(m) &&
+        (m !is SolFunctionDefinition || SolPublicGetter.implementingVariable(contract, m) == null)
+    }
   }
 
+  /** Chosen members, and whether getters become public state variables (see [offersGetterVariables]). */
+  class Choice(val members: List<SolNamedElement>, val getterVariables: Boolean)
+
   /** Shows the member chooser; returns null when cancelled. In tests every candidate is chosen. */
-  protected open fun choose(project: Project, candidates: List<SolNamedElement>): List<SolNamedElement>? {
-    if (ApplicationManager.getApplication().isUnitTestMode) return candidates
+  protected open fun choose(project: Project, candidates: List<SolNamedElement>): Choice? {
+    val properties = PropertiesComponent.getInstance(project)
+    val getterVariables = offersGetterVariables && properties.getBoolean(PROP_GETTER_VARIABLES, true)
+    if (ApplicationManager.getApplication().isUnitTestMode) return Choice(candidates, getterVariables)
     // the tree renders on the EDT without a read action, so everything shown is computed here
     val objects = ReadAction.compute<Array<SolMemberChooserObject>, RuntimeException> {
       candidates.map { SolMemberChooserObject(it) }.toTypedArray()
     }
-    val chooser = MemberChooser(objects, false, true, project)
+    val checkbox = JCheckBox("Implement getters as public state variables", getterVariables)
+    val options: Array<javax.swing.JComponent> = if (offersGetterVariables) arrayOf(checkbox) else emptyArray()
+    val chooser = MemberChooser(objects, false, true, project, null, options)
     chooser.title = title
-    chooser.setCopyJavadocVisible(false)
     chooser.show()
     if (chooser.exitCode != DialogWrapper.OK_EXIT_CODE) return null
-    return chooser.selectedElements?.map { it.member }
+    if (offersGetterVariables) properties.setValue(PROP_GETTER_VARIABLES, checkbox.isSelected, true)
+    return Choice(chooser.selectedElements?.map { it.member } ?: emptyList(), offersGetterVariables && checkbox.isSelected)
   }
 
-  private fun insert(editor: Editor, contract: SolContractDefinition, members: List<SolNamedElement>) {
+  private fun insert(editor: Editor, contract: SolContractDefinition, members: List<SolNamedElement>, getterVariables: Boolean) {
     val project = contract.project
     // bases that must become virtual; pointers survive the reparse caused by inserting the stubs
     val pointerManager = SmartPointerManager.getInstance(project)
@@ -114,12 +133,19 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
     // indent ourselves: with an external formatter (Foundry) IntelliJ's formatter is disabled for Solidity
     val unit = indentUnit(project)
     val baseIndent = lineIndent(document, contract.textRange.startOffset) + unit
-    val text = members.joinToString("\n\n") { m ->
-      val stub = SolOverrideStubRenderer.render(m, SolOverrideResolver.visibleDeclaringBases(contract, m).mapNotNull { it.name })
+    val (variables, functions) = members.partition {
+      getterVariables && it is SolFunctionDefinition && !SolOverrideResolver.hasBody(it) && SolPublicGetter.canImplementAsVariable(it, contract)
+    }
+    fun override(m: SolNamedElement): String = overrideText(contract, SolOverrideResolver.visibleDeclaringBases(contract, m).mapNotNull { it.name })
+    // variables first, one per line, then the functions separated by blank lines
+    val variableText = variables.joinToString("\n") { baseIndent + SolPublicGetter.variableText(it as SolFunctionDefinition, override(it)) }
+    val functionText = functions.joinToString("\n\n") { m ->
+      val stub = SolOverrideStubRenderer.render(m, override(m))
       val lines = stub.lines()
       lines.mapIndexed { i, l -> if (i == 0 || i == lines.lastIndex) baseIndent + l else baseIndent + unit + l }
         .joinToString("\n")
     }
+    val text = listOf(variableText, functionText).filter { it.isNotEmpty() }.joinToString("\n\n")
 
     var offset = insertionOffset(editor, contract)
     val line = document.getLineNumber(offset)
@@ -156,6 +182,15 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
     }
   }
 
+  /**
+   * `override`, or `override(A, B)` for several bases; nothing when the pragma allows only solc before 0.6.0, which
+   * has no `override` (it is required from 0.6.0 and optional for a single interface since 0.8.8, so always added).
+   */
+  private fun overrideText(contract: SolContractDefinition, bases: List<String>): String {
+    val range = contract.containingFile.solidityVersionRange()
+    return if (range != null && range.isBelow(SolPublicGetter.OVERRIDE_SINCE)) "" else SolSpecifierEditor.overrideText(bases)
+  }
+
   private fun lineIndent(document: Document, offset: Int): String {
     val start = document.getLineStartOffset(document.getLineNumber(offset))
     return document.charsSequence.subSequence(start, offset).takeWhile { it == ' ' || it == '\t' }.toString()
@@ -177,6 +212,8 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
   }
 }
 
+private const val PROP_GETTER_VARIABLES = "solidity.implement.getters.as.variables"
+
 class SolOverrideMethodsHandler : SolOverrideImplementHandler() {
   override val title = "Override Functions"
   override val nothingFoundMessage = "No functions to override"
@@ -188,6 +225,7 @@ class SolOverrideMethodsHandler : SolOverrideImplementHandler() {
 class SolImplementMethodsHandler : SolOverrideImplementHandler() {
   override val title = "Implement Functions"
   override val nothingFoundMessage = "No functions to implement"
+  override val offersGetterVariables = true
   override fun accept(member: SolNamedElement) = member is SolFunctionDefinition && !SolOverrideResolver.hasBody(member)
 }
 

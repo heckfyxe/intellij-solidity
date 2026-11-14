@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.generation
 
+import com.intellij.ide.util.PropertiesComponent
 import me.serce.solidity.lang.psi.SolNamedElement
 import me.serce.solidity.utils.SolTestBase
 import me.serce.solidity.settings.FormatterType
@@ -106,6 +107,152 @@ class SolOverrideImplementHandlerTest : SolTestBase() {
     }
     """
   )
+
+  fun testImplementGettersAsPublicStateVariables() = doTest(
+    SolImplementMethodsHandler(),
+    """
+    pragma solidity ^0.8.20;
+    struct Info { uint a; }
+    interface I {
+        function balanceOf(address owner) external view returns (uint256);
+        function allowance(address owner, address spender) external view returns (uint256);
+        function name() external view returns (string memory);
+        function info() external view returns (Info memory);
+        function ids() external view returns (uint256[] memory);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+    contract C is I {
+        <caret>
+    }
+    """,
+    """
+    pragma solidity ^0.8.20;
+    struct Info { uint a; }
+    interface I {
+        function balanceOf(address owner) external view returns (uint256);
+        function allowance(address owner, address spender) external view returns (uint256);
+        function name() external view returns (string memory);
+        function info() external view returns (Info memory);
+        function ids() external view returns (uint256[] memory);
+        function transfer(address to, uint256 amount) external returns (bool);
+    }
+    contract C is I {
+        mapping(address => uint256) public override balanceOf;
+        mapping(address => mapping(address => uint256)) public override allowance;
+        string public override name;
+
+        function info() external view override returns (Info memory) {
+        }
+
+        function ids() external view override returns (uint256[] memory) {
+        }
+
+        function transfer(address to, uint256 amount) external override returns (bool) {
+        }
+    }
+    """
+  )
+
+  fun testGetterVariablesOptionOff() {
+    PropertiesComponent.getInstance(project).setValue("solidity.implement.getters.as.variables", false, true)
+    try {
+      doTest(
+        SolImplementMethodsHandler(),
+        """
+        pragma solidity ^0.8.20;
+        interface I {
+            function balanceOf(address owner) external view returns (uint256);
+        }
+        contract C is I {
+            <caret>
+        }
+        """,
+        """
+        pragma solidity ^0.8.20;
+        interface I {
+            function balanceOf(address owner) external view returns (uint256);
+        }
+        contract C is I {
+            function balanceOf(address owner) external view override returns (uint256) {
+            }
+        }
+        """
+      )
+    } finally {
+      PropertiesComponent.getInstance(project).unsetValue("solidity.implement.getters.as.variables")
+    }
+  }
+
+  fun testNoGetterVariablesWhenPragmaAllowsSolcBefore06() = doTest(
+    SolImplementMethodsHandler(),
+    """
+    pragma solidity >=0.5.0;
+    interface I {
+        function balanceOf(address owner) external view returns (uint256);
+    }
+    contract C is I {
+        <caret>
+    }
+    """,
+    """
+    pragma solidity >=0.5.0;
+    interface I {
+        function balanceOf(address owner) external view returns (uint256);
+    }
+    contract C is I {
+        function balanceOf(address owner) external view override returns (uint256) {
+        }
+    }
+    """
+  )
+
+  fun testNoOverrideKeywordBeforeSolc06() = doTest(
+    SolImplementMethodsHandler(),
+    """
+    pragma solidity ^0.5.0;
+    interface I {
+        function balanceOf(address owner) external view returns (uint256);
+    }
+    contract C is I {
+        <caret>
+    }
+    """,
+    """
+    pragma solidity ^0.5.0;
+    interface I {
+        function balanceOf(address owner) external view returns (uint256);
+    }
+    contract C is I {
+        function balanceOf(address owner) external view returns (uint256) {
+        }
+    }
+    """
+  )
+
+  fun testImplementSkipsGettersImplementedByVariables() {
+    val names = candidateNames(
+      SolImplementMethodsHandler(),
+      """
+      interface I {
+          function balanceOf(address owner) external view returns (uint256);
+          function ownerOf(uint256 id) external view returns (address);
+          function tokens(uint256 index) external view returns (uint256);
+          function name() external view returns (string memory);
+          function approve(address to, uint256 id) external payable;
+      }
+      abstract contract Base is I {
+          mapping(uint256 => address) public override ownerOf;
+      }
+      contract C is Base {
+          mapping(address => uint256) public override balanceOf;
+          uint256[] public override tokens;
+          string internal name;
+          <caret>
+      }
+      """
+    )
+    assertEquals(listOf("name", "approve"), names)
+  }
 
   fun testMultipleBasesOverrideList() = doTest(
     SolOverrideMethodsHandler(),
