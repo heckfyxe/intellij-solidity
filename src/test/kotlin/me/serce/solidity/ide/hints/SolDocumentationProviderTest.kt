@@ -18,7 +18,7 @@ class SolDocumentationProviderTest : SolTestBase() {
                  return 1;
               }
           }
-      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc(<b style='color:rgb(0,0,128)'>int</b> myInti, <b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>bool</b></b> aBool)  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'>uint</b>)</pre></div><div class='content'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;my&nbsp;docs</div>""")
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc(<b style='color:rgb(0,0,128)'>int</b> myInti, <b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>bool</b></b> aBool)  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'>uint</b>)</pre></div><div class='content'><p>my docs</div>""")
 
   fun testDocsForBuiltinFunction() = checkByText("""
             contract A {
@@ -26,7 +26,7 @@ class SolDocumentationProviderTest : SolTestBase() {
                     abi.encode/*caret*/();
                 }
             }
-        """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> encode(...)  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'>bytes</b> <b style='color:rgb(0,0,128)'>memory</b>)</pre></div><div class='content'>&nbsp;ABI-encodes&nbsp;the&nbsp;given&nbsp;arguments</div>""")
+        """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> encode(...)  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'>bytes</b> <b style='color:rgb(0,0,128)'>memory</b>)</pre></div><div class='content'><p>ABI-encodes the given arguments</div>""")
 
   fun testTripleSlashDocs() = checkByText("""
           contract A {
@@ -39,7 +39,7 @@ class SolDocumentationProviderTest : SolTestBase() {
                  return 1;
               }
           }
-      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc(<b style='color:rgb(0,0,128)'>int</b> myInti, <b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>bool</b></b> aBool)  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'>uint</b>)</pre></div><div class='content'>&nbsp;<span&nbsp;class='grayed'>notice:</span>&nbsp;my&nbsp;docs</div>""")
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc(<b style='color:rgb(0,0,128)'>int</b> myInti, <b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>bool</b></b> aBool)  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'>uint</b>)</pre></div><div class='content'><p>my docs</div>""")
 
   fun testTagsWithoutSpaceAfterSlashes() = checkByText("""
           contract A {
@@ -50,7 +50,7 @@ class SolDocumentationProviderTest : SolTestBase() {
               ///@dev there
               function withDoc() { }
           }
-      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><span&nbsp;class='grayed'>notice:</span>&nbsp;hi<br/><span&nbsp;class='grayed'>dev:</span>&nbsp;there</div>""")
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><p>hi<p>there</div>""")
 
   fun testTagsRightAfterBlockCommentStars() = checkByText("""
           contract A {
@@ -63,7 +63,7 @@ class SolDocumentationProviderTest : SolTestBase() {
                */
               function withDoc() { }
           }
-      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><span&nbsp;class='grayed'>notice:</span>&nbsp;hi<br/><span&nbsp;class='grayed'>dev:</span>&nbsp;there</div>""")
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><p>hi<p>there</div>""")
 
   fun testTagsAtLineStartInBlockComment() = checkByText("""
           contract A {
@@ -76,7 +76,7 @@ class SolDocumentationProviderTest : SolTestBase() {
               */
               function withDoc() { }
           }
-      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><span&nbsp;class='grayed'>notice:</span>&nbsp;hi<br/><span&nbsp;class='grayed'>dev:</span>&nbsp;there</div>""")
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><p>hi<p>there</div>""")
 
   fun testTabBeforeTag() = checkByText("""
           contract A {
@@ -86,7 +86,48 @@ class SolDocumentationProviderTest : SolTestBase() {
               ///	@notice hi
               function withDoc() { }
           }
-      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'>&nbsp;<span&nbsp;class='grayed'>notice:</span>&nbsp;hi</div>""")
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc()  </pre></div><div class='content'><p>hi</div>""")
+
+  fun testNatSpecSections() = checkByText("""
+          contract A {
+              function main() {
+                  transferFrom/*caret*/(address(0), 1);
+              }
+              /// @title Token
+              /// @author Alice
+              /// @notice Moves a token.
+              /// @dev Throws unless `msg.sender` owns it,
+              ///  or is approved.
+              /// @param from The current owner
+              /// @param id The token
+              /// @return Whether it moved
+              /// @custom:security audited
+              function transferFrom(address from, uint id) returns (bool) { }
+          }
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> transferFrom(<b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>address</b></b> from, <b style='color:rgb(0,0,128)'>uint</b> id)  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>bool</b></b>)</pre></div><div class='content'><p><b>Token</b><p>Moves a token.<p>Throws unless <code>msg.sender</code> owns it,${"\n"}or is approved.</div>""" +
+    """<table class='sections'><tr><td valign='top' class='section'><p>Params:</td><td valign='top'><code>from</code> &ndash; The current owner<br/><code>id</code> &ndash; The token</td>""" +
+    """<tr><td valign='top' class='section'><p>Returns:</td><td valign='top'>Whether it moved</td>""" +
+    """<tr><td valign='top' class='section'><p>Author:</td><td valign='top'>Alice</td>""" +
+    """<tr><td valign='top' class='section'><p>security:</td><td valign='top'>audited</td></table>""")
+
+  fun testInheritDocFillsOnlyMissingTags() = checkByText("""
+          interface I {
+              /// @notice Base notice
+              /// @param from Base from
+              /// @param id Base id
+              function transferFrom(address from, uint id) external returns (bool);
+          }
+          contract A is I {
+              /// @inheritdoc I
+              /// @param id Own id
+              function transferFrom(address from, uint id) external override returns (bool) { }
+              function main() {
+                  this.transferFrom/*caret*/(address(0), 1);
+              }
+          }
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> transferFrom(<b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>address</b></b> from, <b style='color:rgb(0,0,128)'>uint</b> id) <b style='color:rgb(0,0,128)'>external</b> <b style='color:rgb(0,0,128)'>override</b>  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>bool</b></b>)</pre></div>""" +
+    """<div class='content'><p>Base notice</div>""" +
+    """<table class='sections'><tr><td valign='top' class='section'><p>Params:</td><td valign='top'><code>id</code> &ndash; Own id<br/><code>from</code> &ndash; Base from</td></table>""")
 
   fun testInheritedDocs() = checkByText("""
           contract Base {
@@ -100,14 +141,14 @@ class SolDocumentationProviderTest : SolTestBase() {
                   withDoc/*caret*/(1);
               }
           }
-      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc(<b style='color:rgb(0,0,128)'>int</b> a)  </pre></div><div class='content'>&nbsp;<span&nbsp;class='grayed'>notice:</span>&nbsp;base&nbsp;docs<br/>&nbsp;<span&nbsp;class='grayed'>inheritdoc:</span></div>""")
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc(<b style='color:rgb(0,0,128)'>int</b> a)  </pre></div><div class='content'><p>base docs</div>""")
 
   fun testParameterDocs() = checkByText("""
           contract A {
               /// @param myInt parameter docs
               function withDoc(uint myInt/*caret*/) { }
           }
-      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>uint</b> myInt</pre></div><div class='content'><span&nbsp;class='grayed'>param:</span>&nbsp;myInt&nbsp;parameter&nbsp;docs</div>""")
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>uint</b> myInt</pre></div><div class='content'>parameter docs</div>""")
 
   fun testErrorDefinitionDocs() = checkByText("""
           contract A {
