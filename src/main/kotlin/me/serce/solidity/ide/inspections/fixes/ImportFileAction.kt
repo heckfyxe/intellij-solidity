@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.inspections.fixes
 
+import com.intellij.application.options.CodeStyle
 import com.intellij.codeInsight.hint.QuestionAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.CommandProcessor
@@ -17,6 +18,7 @@ import com.intellij.ui.popup.list.ListPopupImpl
 import com.intellij.ui.popup.list.PopupListElementRenderer
 import me.serce.solidity.ide.formatting.SolImportOptimizer
 import me.serce.solidity.ide.formatting.layoutImports
+import me.serce.solidity.ide.formatting.solidityCustomSettings
 import me.serce.solidity.lang.resolve.ref.SolImportConfigService
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolImportDirective
@@ -181,8 +183,14 @@ class ImportFileAction(
           return
         }
       }
+      val path = buildImportPath(project, file.virtualFile, to.virtualFile)
+      // `import {Name} from` works only for names the file declares at the top level, not contract members
+      val named = name?.takeIf {
+        CodeStyle.getSettings(file).solidityCustomSettings.specificSymbolImports &&
+          to.children.any { child -> child is SolNamedElement && child.name == it }
+      }
       insertImport(project, file, optimize = true) { factory ->
-        factory.createImportDirective(buildImportPath(project, file.virtualFile, to.virtualFile))
+        if (named != null) factory.createContractImportFromDirective(path, named) else factory.createImportDirective(path)
       }
     }
 

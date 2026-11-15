@@ -15,8 +15,17 @@ class ImportFileFixTest : SolTestBase() {
     val ref = PsiTreeUtil.findChildrenOfType(main, SolReferenceElement::class.java).first { it.text == "B" }
     ImportFileFix(ref).invoke(project, main, ref, ref)
     PsiDocumentManager.getInstance(project).commitAllDocuments()
-    val expected = "import \"./B.sol\";\n\ncontract Main is B {}"
+    val expected = "import {B} from \"./B.sol\";\n\ncontract Main is B {}"
     assertEquals(expected, main.text.trim())
+  }
+
+  fun testInterfaceGetsNamedImport() {
+    myFixture.addFileToProject("IToken.sol", "interface IToken { function f() external; }")
+    val main = myFixture.addFileToProject("Main.sol", "contract Main { IToken t; }")
+    val ref = PsiTreeUtil.findChildrenOfType(main, SolReferenceElement::class.java).first { it.text == "IToken" }
+    ImportFileFix(ref).invoke(project, main, ref, ref)
+    PsiDocumentManager.getInstance(project).commitAllDocuments()
+    assertEquals("import {IToken} from \"./IToken.sol\";\n\ncontract Main { IToken t; }", main.text.trim())
   }
 
   fun testInvokeWithEditorOnAmbiguousReferenceExecutesAmbiguousImportPath() {
@@ -38,6 +47,6 @@ class ImportFileFixTest : SolTestBase() {
     PsiDocumentManager.getInstance(project).commitAllDocuments()
 
     val text = main.text.trim()
-    assertTrue(text.contains("import \"./MathA.sol\";") || text.contains("import \"./MathB.sol\";"))
+    assertTrue(text.contains("import {Math} from \"./MathA.sol\";") || text.contains("import {Math} from \"./MathB.sol\";"))
   }
 }

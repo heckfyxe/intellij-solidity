@@ -13,7 +13,7 @@ class SolImportFileTest : SolQuickFixTestBase() {
 
     checkQuickFix(
       "contract b is a {}",
-      "import \"./a.sol\";\n\ncontract b is a {}"
+      "import {a} from \"./a.sol\";\n\ncontract b is a {}"
     )
   }
 
@@ -38,7 +38,7 @@ class SolImportFileTest : SolQuickFixTestBase() {
         }
       }
       """.trimIndent()
-    checkQuickFix(mainFile, "import \"./Math.sol\";\n\n$mainFile")
+    checkQuickFix(mainFile, "import {Math} from \"./Math.sol\";\n\n$mainFile")
   }
 
   // https://github.com/intellij-solidity/intellij-solidity/issues/64

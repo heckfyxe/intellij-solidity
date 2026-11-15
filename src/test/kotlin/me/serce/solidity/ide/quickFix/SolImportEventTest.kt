@@ -17,7 +17,7 @@ class SolImportEventTest : SolQuickFixTestBase() {
         }
       }
     """.trimIndent()
-    checkQuickFix(main, "import \"./Events.sol\";\n\n$main")
+    checkQuickFix(main, "import {Deposited} from \"./Events.sol\";\n\n$main")
   }
 
   fun testImportFileLevelError() {
@@ -29,7 +29,7 @@ class SolImportEventTest : SolQuickFixTestBase() {
         }
       }
     """.trimIndent()
-    checkQuickFix(main, "import \"./Errors.sol\";\n\n$main")
+    checkQuickFix(main, "import {Unauthorized} from \"./Errors.sol\";\n\n$main")
   }
 
   fun testSelectiveImportOfEventResolves() {
