@@ -85,17 +85,12 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
     (psiElement as? SolYulFunctionCall ?: originalElement?.let { yulBuiltinCall(it) })?.let { call ->
       YulBuiltins[call.firstChild.text]?.let { return yulBuiltinDoc(it) }
     }
+    // psiElement is the resolved declaration and originalElement the token at the caret, usually far from it;
+    // only a member access the reference couldn't resolve to a describable declaration is resolved here
     var element = psiElement
-    val range = originalElement?.textRange
-    if (range != null && !element.textRange.contains(range)) {
-      element = originalElement.parent ?: psiElement
-    }
-    if (element is SolMemberAccessExpression) {
-      val resolvedFunctions = SolResolver.resolveMemberAccess(element).filterIsInstance<SolFunctionDefinition>().firstOrNull()
-      if (resolvedFunctions == null) {
-        return null
-      }
-      element = resolvedFunctions
+    if (calcDefinition(element) == null) {
+      val access = element as? SolMemberAccessExpression ?: originalElement?.parent as? SolMemberAccessExpression
+      element = access?.let { SolResolver.resolveMemberAccess(it).filterIsInstance<SolFunctionDefinition>().firstOrNull() } ?: return null
     }
     val builder = StringBuilder()
     if (!builder.appendDefinition(element)) {

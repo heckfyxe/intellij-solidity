@@ -129,6 +129,13 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   (`contractDeclarations`). Tests fail on `CachingPreventedException`, so cached values must not depend on other
   files' cached values through a cycle.
 
+## Quick Documentation
+
+* The platform calls `SolDocumentationProvider.generateDoc(target, original)` with the resolved declaration and the
+  token at the caret, which is usually somewhere else (a use inside a function body). `SolDocumentationProviderTest`
+  passes the same pair; never pass the resolved element as `original`, which hides bugs where docs only work on
+  declarations.
+
 ## Inline Assembly (Yul)
 
 * Yul declarations are `YulVariable` (`let` names, function parameters/returns) and `YulFunctionDefinition`; uses are

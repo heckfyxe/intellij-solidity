@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.hints
 
+import com.intellij.codeInsight.TargetElementUtil
 import me.serce.solidity.utils.SolTestBase
 import org.intellij.lang.annotations.Language
 
@@ -19,6 +20,25 @@ class SolDocumentationProviderTest : SolTestBase() {
               }
           }
       """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>function</b> withDoc(<b style='color:rgb(0,0,128)'>int</b> myInti, <b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>bool</b></b> aBool)  <b style='color:rgb(0,0,128)'>returns</b> (<b style='color:rgb(0,0,128)'>uint</b>)</pre></div><div class='content'><p>my docs</div>""")
+
+  fun testStateVariableUsedInFunction() = checkByText("""
+          contract A {
+              /// @notice the owner
+              address owner;
+              function main() {
+                  own/*caret*/er;
+              }
+          }
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'><b style='color:rgb(0,0,128)'>address</b></b> owner</pre></div><div class='content'><p>the owner</div>""")
+
+  fun testLocalVariableUsedInFunction() = checkByText("""
+          contract A {
+              function main() {
+                  uint x = 1;
+                  x/*caret*/;
+              }
+          }
+      """, """<div class='definition'><pre><b style='color:rgb(0,0,128)'>uint</b> x</pre></div>""")
 
   fun testDocsForBuiltinFunction() = checkByText("""
             contract A {
@@ -210,8 +230,10 @@ class SolDocumentationProviderTest : SolTestBase() {
 
   private fun checkByText(@Language("Solidity") code: String, @Language("HTML") expectedDoc: String) {
     myFixture.configureByText("main.sol", code.replace("/*caret*/", "<caret>"))
-    val originalElement = myFixture.getElementAtCaret()
-    val element = originalElement.reference?.resolve() ?: originalElement
+    // like the platform: the target is the resolved declaration, the original element is the token at the caret
+    val element = myFixture.elementAtCaret
+    val offset = TargetElementUtil.adjustOffset(myFixture.file, myFixture.editor.document, myFixture.caretOffset)
+    val originalElement = myFixture.file.findElementAt(offset)
     val documentationProvider = SolDocumentationProvider()
     val generateDoc = documentationProvider.generateDoc(element, originalElement)
     assertNotNull(generateDoc)
