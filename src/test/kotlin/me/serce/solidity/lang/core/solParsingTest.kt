@@ -1,9 +1,12 @@
 package me.serce.solidity.lang.core
 
 import com.intellij.core.CoreApplicationEnvironment
+import com.intellij.lang.LanguageBraceMatching
 import com.intellij.lang.LanguageExtensionPoint
 import com.intellij.openapi.extensions.Extensions
 import com.intellij.testFramework.ParsingTestCase
+import me.serce.solidity.ide.SolBraceMatcher
+import me.serce.solidity.lang.SolidityLanguage
 
 abstract class SolidityParsingTestBase(baseDir: String) : ParsingTestCase(baseDir, "sol", true, SolidityParserDefinition()) {
 
@@ -11,6 +14,9 @@ abstract class SolidityParsingTestBase(baseDir: String) : ParsingTestCase(baseDi
     super.setUp()
     CoreApplicationEnvironment.registerExtensionPoint(
       Extensions.getRootArea(), "com.intellij.lang.braceMatcher", LanguageExtensionPoint::class.java)
+    // error recovery at the top level (DUMMY_BLOCK) balances braces with the language's brace matcher; without it
+    // the tree depended on whether an earlier test in the same JVM had cached one
+    addExplicitExtension(LanguageBraceMatching.INSTANCE, SolidityLanguage, SolBraceMatcher())
   }
 
   override fun getTestDataPath() = "src/test/resources"
