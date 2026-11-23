@@ -26,6 +26,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.StatusText
 import com.intellij.util.ui.tree.TreeUtil
 import me.serce.solidity.chain.ChainConfig
+import me.serce.solidity.chain.ChainChange
 import me.serce.solidity.chain.ChainKind
 import me.serce.solidity.chain.ChainListener
 import me.serce.solidity.chain.ChainService
@@ -138,7 +139,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       CopyAddressAction(), OpenInExplorerAction(), GenerateInterfaceAction(), Separator(), RefreshAction(), EditAction(), RemoveAction(),
     ), "SolidityChainsPopup")
 
-    project.messageBus.connect(this).subscribe(ChainListener.TOPIC, ChainListener { rebuild() })
+    project.messageBus.connect(this).subscribe(ChainListener.TOPIC, ChainListener { if (it != ChainChange.HISTORY) rebuild(onlyRuntime = it == ChainChange.RUNTIME) })
     rebuild()
   }
 
@@ -146,12 +147,12 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
 
   private fun selectedChain(): ChainConfig? = selected()?.config ?: service.chains.singleOrNull()
 
-  private fun rebuild() {
-    val expanded = HashSet<String>()
-    TreeUtil.collectExpandedPaths(tree).forEach { p -> p.lastPathComponent.chainItem?.let { expanded += it.key } }
-    val selectedKey = selected()?.key
-    rebuilding = true
-    root.removeAllChildren()
+  /**
+   * Rebuilds the tree. When [onlyRuntime] (status, balances, …) and the same nodes would come back, only repaints it,
+   * so the tree doesn't flicker or lose its scroll position after every transaction.
+   */
+  private fun rebuild(onlyRuntime: Boolean = false) {
+    val nodes = DefaultMutableTreeNode()
     for (chain in service.chains) {
       val rt = service.runtime(chain.id)
       val chainNode = DefaultMutableTreeNode(ChainItem.Chain(chain))
@@ -165,8 +166,21 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
         d.sortedFunctions().forEach { contract.add(DefaultMutableTreeNode(ChainItem.Function(chain, d, it))) }
         chainNode.add(contract)
       }
-      root.add(chainNode)
+      nodes.add(chainNode)
     }
+    fun keys(node: DefaultMutableTreeNode) = TreeUtil.treeNodeTraverser(node).mapNotNull { it.chainItem?.key }.toList()
+    if (onlyRuntime && keys(nodes) == keys(root)) {
+      tree.repaint()
+      showDetails()
+      return
+    }
+
+    val expanded = HashSet<String>()
+    TreeUtil.collectExpandedPaths(tree).forEach { p -> p.lastPathComponent.chainItem?.let { expanded += it.key } }
+    val selectedKey = selected()?.key
+    rebuilding = true
+    root.removeAllChildren()
+    nodes.children().toList().forEach { root.add(it as DefaultMutableTreeNode) }
     model.reload()
 
     var toSelect: TreePath? = null

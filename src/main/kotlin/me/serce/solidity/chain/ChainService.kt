@@ -70,8 +70,18 @@ class ChainRuntime {
 fun chainNotification(title: String, content: String, type: NotificationType): Notification =
   NotificationGroupManager.getInstance().getNotificationGroup("Solidity Chains").createNotification(title, content, type)
 
+/** What a [ChainListener] is told changed, so each view redoes only what depends on it. */
+enum class ChainChange {
+  /** Saved chains or deployments, possibly with their history. */
+  SETUP,
+  /** Only the transaction history. */
+  HISTORY,
+  /** Only live state: status, accounts, balances, the selected sender. */
+  RUNTIME,
+}
+
 fun interface ChainListener {
-  fun chainsChanged()
+  fun chainsChanged(change: ChainChange)
 
   companion object {
     val TOPIC = Topic.create("Solidity chains changed", ChainListener::class.java)
@@ -124,21 +134,21 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     state.selectedAccount[chainId]?.takeIf { it in runtime(chainId).accounts } ?: runtime(chainId).accounts.firstOrNull()
 
   /** Called from a form's sender combo: publish later, so listeners don't rebuild the form inside its own event. */
-  fun selectAccount(chainId: String, account: String) = invokeLater { mutate { state.selectedAccount[chainId] = account } }
+  fun selectAccount(chainId: String, account: String) = invokeLater { mutate(ChainChange.RUNTIME) { state.selectedAccount[chainId] = account } }
 
   // ---- configuration ----
 
-  fun addChain(config: ChainConfig) = mutate { state.chains.add(config) }
+  fun addChain(config: ChainConfig) = mutate(ChainChange.SETUP) { state.chains.add(config) }
 
   /** The state file is keyed by what it depends on ([stateFile]), so editing the fork needs no cleanup here. */
-  fun updateChain(config: ChainConfig) = mutate {
+  fun updateChain(config: ChainConfig) = mutate(ChainChange.SETUP) {
     val i = state.chains.indexOfFirst { it.id == config.id }
     if (i >= 0) state.chains[i] = config
   }
 
   fun removeChain(config: ChainConfig) {
     stop(config)
-    mutate {
+    mutate(ChainChange.SETUP) {
       state.chains.removeIf { it.id == config.id }
       dropChainData(config.id)
       state.selectedAccount.remove(config.id)
@@ -154,25 +164,25 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     state.history.removeIf { it.chainId == chainId }
   }
 
-  fun addDeployment(d: Deployment) = mutate { state.deployments.add(d) }
+  fun addDeployment(d: Deployment) = mutate(ChainChange.SETUP) { state.deployments.add(d) }
 
-  fun removeDeployment(d: Deployment) = mutate { state.deployments.removeIf { it.id == d.id } }
+  fun removeDeployment(d: Deployment) = mutate(ChainChange.SETUP) { state.deployments.removeIf { it.id == d.id } }
 
-  fun addRecord(record: TxRecord) = mutate {
+  fun addRecord(record: TxRecord) = mutate(ChainChange.HISTORY) {
     state.history.add(0, record)
     while (state.history.size > MAX_HISTORY) state.history.removeAt(state.history.size - 1)
   }
 
-  fun clearHistory() = mutate { state.history.clear() }
+  fun clearHistory() = mutate(ChainChange.HISTORY) { state.history.clear() }
 
   /** Tells listeners that runtime state (status, balances, …) changed. */
-  fun fireChanged() = mutate {}
+  fun fireChanged() = mutate(ChainChange.RUNTIME) {}
 
   /**
    * Saved state is only touched on the EDT and every change is published from here, so callers on any thread go through it.
    * Highlighting restarts only when the deployments changed: the gutter icons depend on nothing else.
    */
-  private fun mutate(change: () -> Unit) {
+  private fun mutate(kind: ChainChange, change: () -> Unit) {
     val apply = {
       if (!project.isDisposed) {
         change()
@@ -181,7 +191,7 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
           deploymentsSnapshot = deployments
           DaemonCodeAnalyzer.getInstance(project).restart()
         }
-        project.messageBus.syncPublisher(ChainListener.TOPIC).chainsChanged()
+        project.messageBus.syncPublisher(ChainListener.TOPIC).chainsChanged(kind)
       }
     }
     if (ApplicationManager.getApplication().isDispatchThread) apply() else invokeLater { apply() }
@@ -354,7 +364,7 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
   private fun checkChainId(config: ChainConfig, actual: Long): String? {
     val expected = config.expectedChainId.trim().toLongOrNull()
     if (expected == null) {
-      mutate { config.expectedChainId = actual.toString() }
+      mutate(ChainChange.SETUP) { config.expectedChainId = actual.toString() }
       return null
     }
     if (expected == actual) return null
@@ -395,8 +405,9 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     rt.rpc = null
     rt.process = null
     rt.balances = emptyMap()
-    mutate {
-      if (config.kind == ChainKind.ANVIL && !config.persistent) dropChainData(config.id)
+    val dropsData = config.kind == ChainKind.ANVIL && !config.persistent
+    mutate(if (dropsData) ChainChange.SETUP else ChainChange.RUNTIME) {
+      if (dropsData) dropChainData(config.id)
     }
   }
 

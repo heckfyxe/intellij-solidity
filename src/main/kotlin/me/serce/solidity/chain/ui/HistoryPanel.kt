@@ -18,6 +18,7 @@ import com.intellij.util.text.DateFormatUtil
 import com.intellij.util.ui.ColumnInfo
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.ListTableModel
+import me.serce.solidity.chain.ChainChange
 import me.serce.solidity.chain.ChainListener
 import me.serce.solidity.chain.ChainService
 import me.serce.solidity.chain.TxKind
@@ -85,7 +86,7 @@ class HistoryPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     toolbar.targetComponent = this
     setToolbar(toolbar.component)
 
-    project.messageBus.connect(this).subscribe(ChainListener.TOPIC, ChainListener { reload() })
+    project.messageBus.connect(this).subscribe(ChainListener.TOPIC, ChainListener { if (it != ChainChange.RUNTIME) reload() })
     reload()
   }
 
