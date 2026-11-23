@@ -37,10 +37,6 @@ private fun startsStatement(element: PsiElement): Boolean {
   return statement.parent is SolBlock && statement.textRange.startOffset == element.textRange.startOffset
 }
 
-/** `!` binds tighter than any binary operator: those operands need parentheses. */
-private fun needsParens(element: PsiElement) = element !is SolPrimaryExpression && element !is SolFunctionCallExpression &&
-  element !is SolMemberAccessExpression && element !is SolIndexAccessExpression && element !is SolSeqExpression
-
 /** A template that keeps the text as written: the plugin has no formatter of its own, and forge must not run here. */
 private open class SolTemplate(
   name: String,
@@ -80,7 +76,7 @@ class SolPostfixTemplateProvider : PostfixTemplateProvider {
       },
       SolTemplate("require", "require(expr, \"\");", this, statement = true) { "require(\$expr\$, \"\$END\$\");" },
       SolTemplate("return", "return expr;", this, statement = true) { "return \$expr\$;\$END\$" },
-      SolTemplate("not", "!expr", this, statement = false) { e -> if (needsParens(e)) "!(\$expr\$)\$END\$" else "!\$expr\$\$END\$" },
+      SolTemplate("not", "!expr", this, statement = false) { e -> if ((e as? SolExpression)?.needsParenthesesAsOperand() != false) "!(\$expr\$)\$END\$" else "!\$expr\$\$END\$" },
       SolTemplate("par", "(expr)", this, statement = false) { "(\$expr\$)\$END\$" },
     )
   }

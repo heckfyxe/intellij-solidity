@@ -209,7 +209,7 @@ class SolInlineVariableHandler : InlineActionHandler() {
       CommonRefactoringUtil.showErrorHint(project, editor, "Variable '${declaration.name}' is assigned after its declaration", INLINE, null)
       return
     }
-    val replacement = if (needsParentheses(initializer)) "(${initializer.text})" else initializer.text
+    val replacement = if (initializer.needsParenthesesAsOperand()) "(${initializer.text})" else initializer.text
     val document = PsiDocumentManager.getInstance(project).getDocument(element.containingFile) ?: return
     WriteCommandAction.runWriteCommandAction(project, INLINE, null, {
       val ranges = references.map { PsiTreeUtil.getParentOfType(it, SolPrimaryExpression::class.java, false) ?: it }
@@ -231,7 +231,4 @@ class SolInlineVariableHandler : InlineActionHandler() {
       PsiDocumentManager.getInstance(project).commitDocument(document)
     })
   }
-
-  private fun needsParentheses(e: SolExpression) = e !is SolPrimaryExpression && e !is SolFunctionCallExpression &&
-    e !is SolMemberAccessExpression && e !is SolIndexAccessExpression && e !is SolSeqExpression
 }
