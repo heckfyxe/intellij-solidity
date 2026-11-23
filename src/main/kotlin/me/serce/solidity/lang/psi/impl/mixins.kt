@@ -19,10 +19,7 @@ import me.serce.solidity.lang.types.*
 import javax.naming.OperationNotSupportedException
 import javax.swing.Icon
 
-open class SolImportPathElement : SolStubbedNamedElementImpl<SolImportPathDefStub>, SolReferenceElement {
-  constructor(node: ASTNode) : super(node)
-  constructor(stub: SolImportPathDefStub, nodeType: IStubElementType<*, *>) : super(stub, nodeType)
-
+open class SolImportPathElement(node: ASTNode) : SolNamedElementImpl(node), SolReferenceElement {
   override val referenceNameElement: PsiElement
     get() = findChildByType(STRINGLITERAL)!!
   override val referenceName: String

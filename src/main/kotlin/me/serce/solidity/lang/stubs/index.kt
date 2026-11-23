@@ -5,7 +5,6 @@ import com.intellij.psi.stubs.StringStubIndexExtension
 import com.intellij.psi.stubs.StubIndexKey
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolNamedElement
-import me.serce.solidity.lang.psi.impl.SolImportPathElement
 
 /** A name-keyed stub index whose version follows the Solidity stub version. */
 abstract class SolStringStubIndex<T : PsiElement>(private val key: StubIndexKey<String, T>) : StringStubIndexExtension<T>() {
@@ -40,18 +39,6 @@ class SolEventIndex : SolStringStubIndex<SolNamedElement>(KEY) {
 class SolErrorIndex : SolStringStubIndex<SolNamedElement>(KEY) {
   companion object {
     val KEY: StubIndexKey<String, SolNamedElement> = StubIndexKey.createIndexKey(SolErrorIndex::class.java.canonicalName)
-  }
-}
-
-class SolFunctionIndex : SolStringStubIndex<SolNamedElement>(KEY) {
-  companion object {
-    val KEY: StubIndexKey<String, SolNamedElement> = StubIndexKey.createIndexKey(SolFunctionIndex::class.java.canonicalName)
-  }
-}
-
-class SolImportIndex : SolStringStubIndex<SolImportPathElement>(KEY) {
-  companion object {
-    val KEY: StubIndexKey<String, SolImportPathElement> = StubIndexKey.createIndexKey(SolImportIndex::class.java.canonicalName)
   }
 }
 

@@ -22,7 +22,7 @@ fun IndexSink.indexStructDef(stub: SolStructDefStub) {
 }
 
 fun IndexSink.indexFunctionDef(stub: SolFunctionDefStub) {
-  indexName(stub, SolNamedElementIndex.KEY, SolFunctionIndex.KEY)
+  indexName(stub, SolNamedElementIndex.KEY)
 }
 
 fun IndexSink.indexModifierDef(stub: SolModifierDefStub) {
@@ -43,11 +43,6 @@ fun IndexSink.indexEventDef(stub: SolEventDefStub) {
 
 fun IndexSink.indexErrorDef(stub: SolErrorDefStub) {
   indexName(stub, SolNamedElementIndex.KEY, SolErrorIndex.KEY, SolGotoClassIndex.KEY)
-}
-
-fun IndexSink.indexImportPathDef(stub: SolImportPathDefStub) {
-  indexName(stub, SolNamedElementIndex.KEY)
-  stub.path?.let { occurrence(SolImportIndex.KEY, it) }
 }
 
 fun IndexSink.indexImportAliasDef(stub: SolImportAliasDefStub) {
