@@ -57,6 +57,14 @@ external `<<callExpression>>`, which reports `'(' expected` when the expression 
 follow); the builtin `revert("msg")`/`revert()` is an ordinary `FunctionCallExpression` resolving to the global
 function.
 
+Declarations are always `VariableDefinition`s (`uint x = (a + b);`, `(uint a, uint b) = ...;`, `var (a, b) = ...;`);
+`TupleStatement` is only a tuple assignment `(a, b) = ...;`, so code handling locals needs no tuple special case.
+
+Where a keyword token is a plain name, the parser remaps it to `Identifier` with an external rule
+(`SolidityParserUtil`: `yulName` for Solidity keywords in Yul, `keywordFunctionName` for `function receive()`), so
+the PSI and name accessors are the same as for any name. The reverse, `oldDenomination`, lexes `szabo`/`finney` as
+identifiers and remaps them to unit tokens only right after a number literal.
+
 NatSpec tags (`NAT_SPEC_TAG`) are lexed inside comments only when the `@` follows whitespace, `*` or `/`
 (`/// @notice`, `///@notice`, ` *@dev`, a tag at the start of a block comment line), as solc accepts them; `a@b` stays
 comment text. Quick Documentation, NatSpec completion/inspections and highlighting all depend on that token.
