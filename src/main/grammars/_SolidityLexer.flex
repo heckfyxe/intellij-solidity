@@ -92,6 +92,7 @@ PRAGMAALL=[^ ][^;]*
   "^="                    { return XOR_ASSIGN; }
   "&="                    { return AND_ASSIGN; }
   "<<="                   { return LSHIFT_ASSIGN; }
+  ">>>="                  { return RSHIFT_UNSIGNED_ASSIGN; }
   ">>="                   { return RSHIFT_ASSIGN; }
   "%="                    { return PERCENT_ASSIGN; }
   "<"                     { return LESS; }
@@ -113,6 +114,7 @@ PRAGMAALL=[^ ][^;]*
   "%"                     { return PERCENT; }
   "~"                     { return TILDE; }
   "<<"                    { return LSHIFT; }
+  ">>>"                   { return RSHIFT_UNSIGNED; }
   ">>"                    { return RSHIFT; }
   ":="                    { return LEFT_ASSEMBLY; }
   "=:"                    { return RIGHT_ASSEMBLY; }

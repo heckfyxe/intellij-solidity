@@ -22,6 +22,11 @@ class SolidityAnnotator : Annotator {
         holder.newAnnotation(HighlightSeverity.ERROR, "Only function calls can be used as statements in Yul").range(element).create()
       }
       if (element is SolYulPath) YulSuffixChecker.check(element, holder)
+    } else if (element.node.elementType == SolidityTokenTypes.RSHIFT_UNSIGNED ||
+      element.node.elementType == SolidityTokenTypes.RSHIFT_UNSIGNED_ASSIGN) {
+      // solc parses `>>>`/`>>>=` but rejects them
+      holder.newAnnotation(HighlightSeverity.ERROR, "Solidity doesn't support '${element.text}', use '${element.text.drop(1)}'")
+        .range(element).create()
     } else if (element.node.elementType == SolidityTokenTypes.STRINGLITERAL && isUnterminatedString(element.text)) {
       holder.newAnnotation(HighlightSeverity.ERROR, "Missing closing quote").range(element).create()
     }

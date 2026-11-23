@@ -62,6 +62,8 @@
     AND_ASSIGN='&='
     LSHIFT_ASSIGN='<<='
     RSHIFT_ASSIGN='>>='
+    // solc lexes and parses >>> and >>>=, then rejects them; the annotator reports them
+    RSHIFT_UNSIGNED_ASSIGN='>>>='
     PERCENT_ASSIGN='%='
     LESS='<'
     LESSEQ='<='
@@ -83,6 +85,7 @@
     TILDE='~'
     LSHIFT='<<'
     RSHIFT='>>'
+    RSHIFT_UNSIGNED='>>>'
     LEFT_ASSEMBLY=':='
     RIGHT_ASSEMBLY='=:'
     NAT_SPEC_TAG='regexp:@[a-zA-Z_0-9:]*'
@@ -527,7 +530,7 @@ private HighestPriorityGroup ::= IncrementExpression
                       | FunctionCallExpression
                       | SeqExpression
 
-AssignmentExpression ::= Expression ('=' | '|=' | '^=' | '&=' | '<<=' | '>>=' | '+=' | '-=' | '*=' | '/=' | '%=') Expression { rightAssociative=true }
+AssignmentExpression ::= Expression ('=' | '|=' | '^=' | '&=' | '<<=' | '>>=' | '>>>=' | '+=' | '-=' | '*=' | '/=' | '%=') Expression { rightAssociative=true }
 InlineArrayExpression ::= '[' Expression (',' Expression)* ']'
 TernaryExpression ::= Expression '?' RightTernaryExpression
 private RightTernaryExpression ::= Expression ':' Expression
@@ -538,7 +541,7 @@ CompExpression ::= Expression ('<' | '>' | '<=' | '>=') Expression
 OrOpExpression ::= Expression '|' Expression
 XorOpExpression ::= Expression '^' Expression
 AndOpExpression ::= Expression '&' Expression
-ShiftExpression ::= Expression ('<<' | '>>') Expression
+ShiftExpression ::= Expression ('<<' | '>>' | '>>>') Expression
 PlusMinExpression ::= Expression ('+' | '-') Expression
 MultDivExpression ::= Expression ('*' | '/' | '%') Expression
 ExponentExpression ::= Expression '**' Expression { rightAssociative=true }
