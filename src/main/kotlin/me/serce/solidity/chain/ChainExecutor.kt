@@ -18,6 +18,13 @@ import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import me.serce.solidity.chain.rpc.RpcException
 import me.serce.solidity.chain.rpc.hexToBigInt
+import me.serce.solidity.chain.wallet.CastException
+import me.serce.solidity.chain.wallet.CastWallet
+import me.serce.solidity.chain.wallet.DefaultWalletPrompts
+import me.serce.solidity.chain.wallet.TxRequest
+import me.serce.solidity.chain.wallet.TxSummary
+import me.serce.solidity.chain.wallet.WalletPrompts
+import com.intellij.notification.NotificationType
 import java.math.BigInteger
 import java.time.Duration
 
@@ -26,6 +33,8 @@ class ChainExecutor(
   private val service: ChainService,
   /** Where compiled artifacts come from, to name the source line a failure happened at. */
   private val foundry: () -> FoundryProject? = { FoundryProject.find(service.project) },
+  private val prompts: WalletPrompts = DefaultWalletPrompts,
+  private val cast: () -> String = { CastWallet.castPath(service.project) },
 ) {
 
   class Outcome(val record: TxRecord, val deployment: Deployment?)
@@ -37,7 +46,7 @@ class ChainExecutor(
     val data = artifact.bytecode.hexToBytes() + AbiCodec.encode(ctor?.inputs.orEmpty().map { it.type }, args)
     var deployment: Deployment? = null
     run(chain, record, artifact.abi, TraceTarget.Call(from, null, data, value)) { rpc ->
-      val hash = send(chain, rpc, record, from, null, data, value) ?: return@run
+      val hash = send(chain, rpc, record, from, null, data, value, "deploy ${artifact.name}") ?: return@run
       val receipt = awaitReceipt(chain, rpc, hash)
       applyReceipt(rpc, record, receipt, artifact.abi)
       if (record.status == TxStatus.SUCCESS) {
@@ -83,7 +92,7 @@ class ChainExecutor(
       val returned = rpc.ethCall(from, target.address, data, value)
       record.results += formatOutputs(fn.outputs, returned)
       if (kind == TxKind.TRANSACT) {
-        val hash = send(chain, rpc, record, from!!, target.address, data, value) ?: return@run
+        val hash = send(chain, rpc, record, from!!, target.address, data, value, fn.signature, "${target.name} ${target.address}") ?: return@run
         applyReceipt(rpc, record, awaitReceipt(chain, rpc, hash), abi)
       }
     }
@@ -118,11 +127,57 @@ class ChainExecutor(
    * Sends a transaction and returns its hash; null when it was not sent (the user cancelled, or signing failed), with
    * [record] saying why. Local nodes sign with the accounts they unlock; networks sign with the chain's wallets.
    */
-  private fun send(chain: ChainConfig, rpc: JsonRpcClient, record: TxRecord, from: String, to: String?, data: ByteArray, value: BigInteger): String? {
+  private fun send(
+    chain: ChainConfig, rpc: JsonRpcClient, record: TxRecord, from: String, to: String?, data: ByteArray, value: BigInteger,
+    action: String, toLabel: String? = null,
+  ): String? {
     if (!chain.isNetwork) return rpc.sendTransaction(from, to, data, value)
-    record.status = TxStatus.FAILED
-    record.error = "Sending transactions on ${chain.name} needs a wallet."
-    return null
+    fun notSent(reason: String): String? {
+      record.status = TxStatus.FAILED
+      record.error = reason
+      return null
+    }
+    val wallet = service.wallet(chain, from) ?: return notSent("$from is not a wallet of ${chain.name}. Edit the chain to add it.")
+    val rt = service.runtime(chain.id)
+    val mainnet = KnownChains.isMainnet(rt.chainId)
+    // estimating also tells a deploy that would revert before anything is signed (calls were simulated already)
+    val gas = rpc.estimateGas(from, to, data, value)
+    val fee = runCatching { gas * rpc.gasPrice() }.getOrNull()
+    if (mainnet || !rt.skipConfirm) {
+      val summary = TxSummary(chain.name, rt.chainId, mainnet, from, wallet.label, toLabel, action, record.args.toList(), value, fee)
+      when (prompts.confirm(service.project, summary)) {
+        WalletPrompts.Confirmation.CANCEL -> return notSent("Not sent: cancelled")
+        WalletPrompts.Confirmation.SEND_AND_STOP_ASKING -> if (!mainnet) rt.skipConfirm = true
+        WalletPrompts.Confirmation.SEND -> {}
+      }
+    }
+    val signer = CastWallet(cast())
+    val tx = TxRequest(to, data, value)
+    return try {
+      when (wallet.kind) {
+        WalletKind.BROWSER -> signer.sendWithBrowser(rpc.url, wallet, tx)
+        WalletKind.KEYSTORE -> {
+          var error: String? = null
+          var raw: String? = null
+          while (raw == null) {
+            val password = prompts.password(service.project, wallet, error) ?: return notSent("Not sent: cancelled")
+            try {
+              raw = signer.sign(rpc.url, wallet, password, tx)
+            } catch (e: CastException) {
+              if (!e.wrongPassword) throw e
+              error = "Wrong password"
+            }
+          }
+          rpc.sendRawTransaction(raw)
+        }
+        WalletKind.LEDGER, WalletKind.TREZOR -> {
+          chainNotification("Confirm on your ${wallet.kind.title}", "$action on ${chain.name}", NotificationType.INFORMATION).notify(service.project)
+          rpc.sendRawTransaction(signer.sign(rpc.url, wallet, null, tx))
+        }
+      }
+    } catch (e: CastException) {
+      notSent("Not sent: ${e.message}")
+    }
   }
 
   /**

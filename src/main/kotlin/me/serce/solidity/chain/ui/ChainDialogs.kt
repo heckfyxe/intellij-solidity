@@ -37,6 +37,7 @@ import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.layout.selected
 import me.serce.solidity.chain.foundry.Artifact
 import me.serce.solidity.chain.rpc.JsonRpcClient
+import me.serce.solidity.chain.wallet.WalletsEditor
 import javax.swing.JComponent
 import javax.swing.JTextField
 import javax.swing.event.DocumentEvent
@@ -59,6 +60,7 @@ class ChainDialog(private val project: Project, private val config: ChainConfig,
   private val networkModel = CollectionComboBoxModel<Network>()
   private val networkCombo = ComboBox(networkModel)
   private lateinit var expectedChainIdField: JTextField
+  private val walletsEditor = WalletsEditor(project, config.wallets)
   private var nameEditedByUser = !isNew
   private var settingName = false
 
@@ -134,6 +136,10 @@ class ChainDialog(private val project: Project, private val config: ChainConfig,
           if (NetworksDialog(project).showAndGet()) reloadNetworks(config.forkUrl)
         }
       }.rowComment("Add your own RPC (Alchemy, Infura, …) with Edit Networks. URLs other than the built-in public ones are kept in the system keychain.")
+      group("Wallets") {
+        row { cell(walletsEditor.component).align(Align.FILL) }.resizableRow()
+          .rowComment("Accounts that sign transactions, through Foundry's cast. Every transaction is shown for confirmation before it is signed.")
+      }.resizableRow()
       collapsibleGroup("Advanced") {
         row("Chain id:") {
           expectedChainIdField = textField().bindText(config::expectedChainId).columns(12)
@@ -173,6 +179,7 @@ class ChainDialog(private val project: Project, private val config: ChainConfig,
   override fun doOKAction() {
     super.doOKAction()
     if (config.kind == ChainKind.NETWORK) {
+      walletsEditor.apply()
       val network = networkCombo.selectedItem as Network?
       if (network != null && network.name != config.network) {
         // another network: pin the chain id it reports on the next connect, unless the user typed one

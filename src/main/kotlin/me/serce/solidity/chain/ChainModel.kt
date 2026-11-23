@@ -65,24 +65,24 @@ enum class WalletKind(val title: String) {
 
 /**
  * An account that signs transactions on a [ChainKind.NETWORK] chain. Signing is done by `cast`; the plugin keeps no
- * key material, only where the key is (a keystore file, a hardware wallet's derivation index) and its address.
+ * key material, only where the key is (a keystore file, a hardware wallet's derivation path) and its address.
  */
 class WalletConfig {
   var kind: WalletKind = WalletKind.KEYSTORE
   var address: String = ""
   /** For [WalletKind.KEYSTORE]: the keystore file. */
   var keystorePath: String = ""
-  /** For [WalletKind.LEDGER] and [WalletKind.TREZOR]: the account index on the device's default derivation path. */
-  var index: Int = 0
+  /** For [WalletKind.LEDGER] and [WalletKind.TREZOR]: e.g. `m/44'/60'/1'/0/0`; empty for cast's default (the first account). */
+  var derivationPath: String = ""
 
   val label: String
     get() = when (kind) {
       WalletKind.KEYSTORE -> "keystore ${java.io.File(keystorePath).name}"
-      WalletKind.LEDGER, WalletKind.TREZOR -> "${kind.title} #$index"
+      WalletKind.LEDGER, WalletKind.TREZOR -> kind.title + (derivationPath.takeIf { it.isNotBlank() }?.let { " $it" } ?: "")
       WalletKind.BROWSER -> kind.title
     }
 
-  fun copy(): WalletConfig = WalletConfig().also { it.kind = kind; it.address = address; it.keystorePath = keystorePath; it.index = index }
+  fun copy(): WalletConfig = WalletConfig().also { it.kind = kind; it.address = address; it.keystorePath = keystorePath; it.derivationPath = derivationPath }
 }
 
 /** A contract instance on a chain, deployed by us or attached by address. */

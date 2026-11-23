@@ -284,7 +284,7 @@ class ChainIntegrationTest : BasePlatformTestCase() {
     val rt = service.runtime(chain.id)
     assertEquals(rt.error, ChainStatus.RUNNING, waitFor(rt, 30))
     val from = rt.accounts.first()
-    val executor = ChainExecutor(service) { foundry }
+    val executor = ChainExecutor(service, foundry = { foundry })
 
     val example = executor.deploy(chain, artifacts.getValue("Example"), emptyList(), from, BigInteger.ZERO).deployment!!
     val checked = executor.deploy(chain, artifacts.getValue("Checked"), emptyList(), from, BigInteger.ZERO).deployment!!

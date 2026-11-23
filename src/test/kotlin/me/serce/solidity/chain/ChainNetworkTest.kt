@@ -7,6 +7,14 @@ import com.intellij.util.ui.UIUtil
 import me.serce.solidity.chain.abi.AbiText
 import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.rpc.JsonRpcClient
+import com.intellij.execution.process.CapturingProcessHandler
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.io.FileUtil
+import me.serce.solidity.chain.foundry.Artifact
+import me.serce.solidity.chain.wallet.CastException
+import me.serce.solidity.chain.wallet.CastWallet
+import me.serce.solidity.chain.wallet.TxSummary
+import me.serce.solidity.chain.wallet.WalletPrompts
 import java.io.File
 import java.math.BigInteger
 import java.net.ServerSocket
@@ -109,6 +117,87 @@ class ChainNetworkTest : BasePlatformTestCase() {
     assertEquals(ChainStatus.FAILED, waitFor(rt, 30))
     assertTrue(rt.error, rt.error!!.contains("reports chain id 11155111"))
     assertNull(rt.rpc)
+  }
+
+  private class FakePrompts(var answer: WalletPrompts.Confirmation = WalletPrompts.Confirmation.SEND, val passwords: ArrayDeque<String>) : WalletPrompts {
+    val confirmed = ArrayList<TxSummary>()
+    val passwordErrors = ArrayList<String?>()
+    override fun confirm(project: Project, summary: TxSummary): WalletPrompts.Confirmation {
+      confirmed += summary
+      return answer
+    }
+
+    override fun password(project: Project, wallet: WalletConfig, error: String?): String? {
+      passwordErrors += error
+      return passwords.removeFirstOrNull()
+    }
+  }
+
+  fun testKeystoreWalletDeploysAndTransacts() {
+    if (!File(bin, "anvil").canExecute() || !File(bin, "cast").canExecute()) return
+    val rpc = startNetwork("Keystore net")
+    val dir = FileUtil.createTempDirectory("keystores", null)
+    val created = GeneralCommandLine(File(bin, "cast").path, "wallet", "new", dir.path, "--unsafe-password", "pw").let {
+      CapturingProcessHandler(it).runProcess(60_000)
+    }
+    assertEquals(created.stderr, 0, created.exitCode)
+    val keystore = dir.listFiles()!!.single()
+    val cast = CastWallet(File(bin, "cast").path)
+    val wallet = WalletConfig().apply { kind = WalletKind.KEYSTORE; keystorePath = keystore.path }
+    wallet.address = cast.address(wallet, "pw")
+    assertTrue(created.stdout, created.stdout.contains(wallet.address))
+    try {
+      cast.address(wallet, "wrong")
+      fail("wrong password accepted")
+    } catch (e: CastException) {
+      assertTrue(e.message, e.wrongPassword)
+    }
+    rpc.call("anvil_setBalance", wallet.address, "0xDE0B6B3A7640000")
+
+    val service = ChainService.getInstance(project)
+    val chain = ChainConfig().apply { kind = ChainKind.NETWORK; network = "Keystore net"; name = "Keystore net"; wallets = arrayListOf(wallet) }
+    service.addChain(chain)
+    service.start(chain)
+    val rt = service.runtime(chain.id)
+    assertEquals(rt.error, ChainStatus.RUNNING, waitFor(rt, 30))
+    assertEquals(listOf(wallet.address), rt.accounts)
+
+    val prompts = FakePrompts(passwords = ArrayDeque(listOf("wrong", "pw", "pw", "pw")))
+    val executor = ChainExecutor(service, prompts = prompts, cast = { File(bin, "cast").path })
+    val artifact = Artifact("Answer", "", """[{"type":"function","name":"poke","inputs":[],"outputs":[],"stateMutability":"nonpayable"}]""",
+      "0x600a600c600039600a6000f3602a60005260206000f3", hasLinkReferences = false)
+    val deployed = executor.deploy(chain, artifact, emptyList(), wallet.address, BigInteger.ZERO)
+    assertEquals(deployed.record.error, TxStatus.SUCCESS, deployed.record.status)
+    assertEquals(listOf(null, "Wrong password"), prompts.passwordErrors)
+    val summary = prompts.confirmed.single()
+    assertNull(summary.to)
+    assertFalse(summary.mainnet)
+    assertEquals(11155111L, summary.chainId)
+    assertNotNull(summary.estimatedFee)
+
+    val d = deployed.deployment!!
+    val poke = d.abi().functions.single()
+    prompts.answer = WalletPrompts.Confirmation.CANCEL
+    val cancelled = executor.invoke(chain, d, poke, emptyList(), wallet.address, BigInteger.ZERO)
+    assertEquals(TxStatus.FAILED, cancelled.record.status)
+    assertEquals("Not sent: cancelled", cancelled.record.error)
+    assertEquals(BigInteger.ONE, rpc.call("eth_getTransactionCount", wallet.address, "latest").asText().removePrefix("0x").toBigInteger(16))
+
+    prompts.answer = WalletPrompts.Confirmation.SEND_AND_STOP_ASKING
+    val sent = executor.invoke(chain, d, poke, emptyList(), wallet.address, BigInteger.ZERO)
+    assertEquals(sent.record.error, TxStatus.SUCCESS, sent.record.status)
+    assertTrue(sent.record.txHash.startsWith("0x"))
+    assertEquals("Answer ${d.address}", prompts.confirmed.last().to)
+    val confirmations = prompts.confirmed.size
+    val again = executor.invoke(chain, d, poke, emptyList(), wallet.address, BigInteger.ZERO)
+    assertEquals(again.record.error, TxStatus.SUCCESS, again.record.status)
+    assertEquals(confirmations, prompts.confirmed.size) // a test network stops asking when told to
+    service.stop(chain)
+  }
+
+  fun testCastErrorMessage() {
+    assertEquals("Failed to decrypt keystore \"/k\" Mac Mismatch",
+      CastWallet.errorMessage("warning: x\nError: Failed to decrypt keystore \"/k\"\n\nContext:\n- Mac Mismatch\n"))
   }
 
   fun testMainnetDetection() {

@@ -60,6 +60,8 @@ class ChainRuntime {
   @Volatile var console: ConsoleView? = null
   /** Deployments whose address no longer has code (chain was reset). */
   @Volatile var missing: Set<String> = emptySet()
+  /** On a test network, the user chose not to confirm each transaction until the IDE restarts. Never set for mainnets. */
+  @Volatile var skipConfirm = false
   /** The "fork cannot mine" notification was shown for this run. */
   @Volatile var staleForkNotified = false
 }

@@ -454,7 +454,9 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       if (ChainDialog(project, copy, isNew = false).showAndGet()) {
         service.updateChain(copy)
         if (service.isRunning(chain)) {
-          Messages.showInfoMessage(project, "Restart ${copy.name} for the changes to take effect.", "Chain Updated")
+          // wallets apply at once; another network needs a new connection
+          if (copy.isNetwork && copy.network == chain.network) service.refresh(copy)
+          else Messages.showInfoMessage(project, "Restart ${copy.name} for the changes to take effect.", "Chain Updated")
         }
       }
     }

@@ -169,6 +169,15 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * On a network `eth_accounts` is not used: the chain's `WalletConfig`s are its accounts, and read-only calls run
   without a sender. `KnownChains` says which chain ids are mainnets (unknown ids count as mainnets) and where their
   explorers are.
+* Wallets sign through `cast` (`CastWallet`), so no key material enters the IDE: keystores and Ledger/Trezor with
+  `cast mktx` (the plugin broadcasts with `eth_sendRawTransaction`), browser wallets with `cast send --browser --async`.
+  The RPC URL goes in `ETH_RPC_URL`, never on the command line (`ps` shows it to everyone). cast 1.9 reads a keystore
+  password from a terminal, `--password` (visible in `ps`) or a regular file (`ETH_PASSWORD` is a file path; FIFOs are
+  rejected), so it is written to a 0600 file in a 0700 temp directory and deleted when cast exits. Passwords are
+  asked with the platform's `askPassword` (optional "Remember" in the password safe). Options must come before
+  `--create`, which is a subcommand.
+* Every network transaction is shown in `TxConfirmDialog` before signing (`WalletPrompts`, faked in tests); test
+  networks may stop asking until restart (`ChainRuntime.skipConfirm`), mainnets always ask.
 * Contracts can be attached by ABI alone (`AbiText`: JSON ABIs, artifacts, Etherscan/Sourcify responses,
   human-readable signatures and pasted Solidity interfaces); `Deployment.sourcePath` is then empty.
 
