@@ -107,12 +107,12 @@ class FunctionForm(
   private fun editorFor(type: AbiType, initial: String): Pair<JComponent, () -> String> = when (type) {
     AbiType.Address -> {
       val combo = ComboBox<String>().apply { isEditable = true }
-      val rt = service.runtime(chain.id)
-      rt.accounts.forEach { combo.addItem(it) }
-      service.deployments(chain.id).forEach { combo.addItem(it.address) }
+      val deployments = service.deployments(chain.id).distinctBy { it.address }.associateBy { it.address }
+      service.runtime(chain.id).accounts.forEach { combo.addItem(it) }
+      deployments.keys.forEach { combo.addItem(it) }
       combo.selectedItem = initial
       combo.renderer = SimpleListCellRenderer.create("") { a ->
-        val d = service.deployments(chain.id).firstOrNull { it.address == a }
+        val d = deployments[a]
         if (d != null) "${d.name}  ${AbiValueFormatter.short(a)}" else "account ${AbiValueFormatter.short(a)}"
       }
       combo to { (combo.editor.item as? String).orEmpty() }
