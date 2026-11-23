@@ -141,8 +141,7 @@ class CastWallet(private val cast: String) {
       Files.deleteIfExists(file.parent)
     }
 
-    fun castPath(project: Project): String =
-      Path.of(FoundryProject.forgePath(project)).resolveSibling(if (SystemInfo.isWindows) "cast.exe" else "cast").toString()
+    fun castPath(project: Project): String = FoundryProject.toolPath(project, "cast")
 
     /** cast's own `Error: …` line and its context, without the noise around it. */
     fun errorMessage(output: String): String {

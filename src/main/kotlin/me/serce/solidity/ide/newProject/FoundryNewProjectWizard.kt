@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.newProject
 
+import me.serce.solidity.chain.foundry.FoundryProject
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.ide.util.projectWizard.WizardContext
@@ -19,7 +20,6 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.startup.StartupManager
-import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.ui.dsl.builder.AlignX
@@ -28,7 +28,6 @@ import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import me.serce.solidity.chain.chainNotification
 import me.serce.solidity.ide.SolidityIcons
-import me.serce.solidity.resolveForgeExecutable
 import me.serce.solidity.settings.ConfigurationMode
 import me.serce.solidity.settings.SoliditySettings
 import java.io.File
@@ -59,7 +58,7 @@ data class ForgeInitOptions(val git: Boolean, val empty: Boolean, val template: 
 }
 
 private class FoundryStep(private val base: NewProjectWizardBaseStep) : AbstractNewProjectWizardStep(base) {
-  private val defaultForge = defaultForgePath()
+  private val defaultForge = FoundryProject.forgePath(ProjectManager.getInstance().defaultProject)
   private val forgeProperty = propertyGraph.property(defaultForge)
   private val gitProperty = propertyGraph.property(true)
   private val emptyProperty = propertyGraph.property(false)
@@ -104,11 +103,6 @@ private class FoundryStep(private val base: NewProjectWizardBaseStep) : Abstract
     val options = ForgeInitOptions(gitProperty.get(), emptyProperty.get(), templateProperty.get())
     StartupManager.getInstance(project).runAfterOpened { forgeInit(project, dir, forge, options) }
   }
-}
-
-private fun defaultForgePath(): String {
-  val settings = SoliditySettings.getInstance(ProjectManager.getInstance().defaultProject)
-  return resolveForgeExecutable(settings.testFoundryExecutablePath, settings.testFoundryConfigurationMode, SystemInfo.isWindows)
 }
 
 /** Runs `forge init` in the background (it clones forge-std, so it takes a few seconds), then shows the result. */

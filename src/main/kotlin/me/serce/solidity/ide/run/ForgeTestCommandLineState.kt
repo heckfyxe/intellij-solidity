@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.run
 
+import me.serce.solidity.chain.foundry.FoundryProject
 import com.intellij.execution.DefaultExecutionResult
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.ExecutionResult
@@ -16,7 +17,6 @@ import com.intellij.execution.ui.ConsoleView
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.util.execution.ParametersListUtil
-import me.serce.solidity.resolveForgeExecutable
 import me.serce.solidity.settings.ConfigurationMode
 import me.serce.solidity.settings.SoliditySettings
 
@@ -34,10 +34,8 @@ class ForgeTestCommandLineState(
   /** [fork]: the resolved [ForgeTestRunConfiguration.fork]; when null, only a typed URL is passed. */
   fun generateCommandLine(isWindows: Boolean = SystemInfo.isWindows, fork: ResolvedTarget? = null): GeneralCommandLine {
     val settings = SoliditySettings.getInstance(configuration.project)
-    val foundryExePath =
-      resolveForgeExecutable(settings.testFoundryExecutablePath, settings.testFoundryConfigurationMode, isWindows)
     val cmd = GeneralCommandLine()
-      .withExePath(foundryExePath)
+      .withExePath(FoundryProject.forgePath(configuration.project, isWindows))
       .withParameters("test", "-vvvv")
 
     if (configuration.workingDirectory.isNotBlank()) {

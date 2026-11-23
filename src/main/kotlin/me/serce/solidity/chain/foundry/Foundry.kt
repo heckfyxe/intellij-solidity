@@ -198,14 +198,17 @@ class FoundryProject(val root: Path, private val forge: String) {
       )
     }
 
-    fun forgePath(project: Project): String {
+    /** forge as configured in the settings, or `~/.foundry/bin/forge`. */
+    fun forgePath(project: Project, isWindows: Boolean = SystemInfo.isWindows): String {
       val s = SoliditySettings.getInstance(project)
-      return resolveForgeExecutable(s.testFoundryExecutablePath, s.testFoundryConfigurationMode, SystemInfo.isWindows)
+      return resolveForgeExecutable(s.testFoundryExecutablePath, s.testFoundryConfigurationMode, isWindows)
     }
 
-    /** anvil sits next to forge in a Foundry install. */
-    fun anvilPath(project: Project): String =
-      Path.of(forgePath(project)).resolveSibling(if (SystemInfo.isWindows) "anvil.exe" else "anvil").toString()
+    /** Another Foundry tool (`anvil`, `cast`): they sit next to forge in a Foundry install. */
+    fun toolPath(project: Project, tool: String): String =
+      Path.of(forgePath(project)).resolveSibling(if (SystemInfo.isWindows) "$tool.exe" else tool).toString()
+
+    fun anvilPath(project: Project): String = toolPath(project, "anvil")
 
     /** The Foundry root for [file], or for the project when [file] is null. */
     fun find(project: Project, file: VirtualFile? = null): FoundryProject? {

@@ -42,8 +42,6 @@ import me.serce.solidity.lang.psi.ContractType
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.Visibility
-import me.serce.solidity.resolveForgeExecutable
-import me.serce.solidity.settings.SoliditySettings
 import org.jdom.Element
 import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.execution.process.ProcessEvent
@@ -268,8 +266,7 @@ class ForgeScriptCommandLineState(private val configuration: ForgeScriptRunConfi
   }
 
   fun generateCommandLine(isWindows: Boolean = SystemInfo.isWindows, target: ResolvedTarget? = null, signer: ScriptSigner? = null): GeneralCommandLine {
-    val settings = SoliditySettings.getInstance(configuration.project)
-    val forge = resolveForgeExecutable(settings.testFoundryExecutablePath, settings.testFoundryConfigurationMode, isWindows)
+    val forge = FoundryProject.forgePath(configuration.project, isWindows)
     val scriptTarget = configuration.scriptPath + (configuration.contractName.takeIf { it.isNotBlank() }?.let { ":$it" } ?: "")
     val cmd = GeneralCommandLine().withExePath(forge).withParameters("script", scriptTarget)
     if (configuration.workingDirectory.isNotBlank()) cmd.withWorkDirectory(configuration.workingDirectory)
