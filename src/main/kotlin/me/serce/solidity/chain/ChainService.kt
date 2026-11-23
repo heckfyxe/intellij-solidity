@@ -137,7 +137,7 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
 
   fun removeChain(config: ChainConfig) {
     stop(config)
-    mutate(restartHighlighting = true) {
+    mutate {
       state.chains.removeIf { it.id == config.id }
       dropChainData(config.id)
       state.selectedAccount.remove(config.id)
@@ -153,9 +153,9 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     state.history.removeIf { it.chainId == chainId }
   }
 
-  fun addDeployment(d: Deployment) = mutate(restartHighlighting = true) { state.deployments.add(d) }
+  fun addDeployment(d: Deployment) = mutate { state.deployments.add(d) }
 
-  fun removeDeployment(d: Deployment) = mutate(restartHighlighting = true) { state.deployments.removeIf { it.id == d.id } }
+  fun removeDeployment(d: Deployment) = mutate { state.deployments.removeIf { it.id == d.id } }
 
   fun addRecord(record: TxRecord) = mutate {
     state.history.add(0, record)
@@ -167,13 +167,19 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
   /** Tells listeners that runtime state (status, balances, …) changed. */
   fun fireChanged() = mutate {}
 
-  /** Saved state is only touched on the EDT and every change is published from here, so callers on any thread go through it. */
-  private fun mutate(restartHighlighting: Boolean = false, change: () -> Unit) {
+  /**
+   * Saved state is only touched on the EDT and every change is published from here, so callers on any thread go through it.
+   * Highlighting restarts only when the deployments changed: the gutter icons depend on nothing else.
+   */
+  private fun mutate(change: () -> Unit) {
     val apply = {
       if (!project.isDisposed) {
         change()
-        deploymentsSnapshot = state.deployments.toList()
-        if (restartHighlighting) DaemonCodeAnalyzer.getInstance(project).restart()
+        val deployments = state.deployments.toList()
+        if (deployments != deploymentsSnapshot) {
+          deploymentsSnapshot = deployments
+          DaemonCodeAnalyzer.getInstance(project).restart()
+        }
         project.messageBus.syncPublisher(ChainListener.TOPIC).chainsChanged()
       }
     }
@@ -376,7 +382,7 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     rt.rpc = null
     rt.process = null
     rt.balances = emptyMap()
-    mutate(restartHighlighting = true) {
+    mutate {
       if (config.kind == ChainKind.ANVIL && !config.persistent) dropChainData(config.id)
     }
   }
