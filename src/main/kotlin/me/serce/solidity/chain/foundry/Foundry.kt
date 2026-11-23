@@ -153,15 +153,12 @@ class FoundryProject(val root: Path, private val forge: String) {
     null
   }
 
-  fun isSource(artifact: Artifact) = isSource(artifact.sourcePath)
-
   /** Under the configured `src` and not a test or script, i.e. something you'd deploy. */
   fun isSource(relativePath: String, config: ForgeConfig = config()): Boolean {
     if (relativePath.endsWith(".t.sol") || relativePath.endsWith(".s.sol")) return false
     return relativePath.startsWith(config.src.trimEnd('/') + "/")
   }
 
-  /** Runs a Foundry tool (or solc) in [workDir]; throws [FoundryException] when it is missing or times out. */
   /** `forge inspect <path>:<name> storageLayout --json`: the storage layout solc reports for a compiled contract. */
   fun storageLayout(sourcePath: String, contract: String): String {
     val out = exec(listOf(forge, "inspect", "$sourcePath:$contract", "storageLayout", "--json"), 180_000)
@@ -169,6 +166,7 @@ class FoundryProject(val root: Path, private val forge: String) {
     return out.stdout
   }
 
+  /** Runs a Foundry tool (or solc) in [workDir]; throws [FoundryException] when it is missing or times out. */
   fun exec(command: List<String>, timeoutMs: Int, stdin: ByteArray? = null, workDir: File = root.toFile()): ProcessOutput {
     val tool = File(command[0])
     if (!tool.exists()) throw FoundryException("${tool.name} not found at ${command[0]}. Install Foundry or set its path in Settings | Solidity")

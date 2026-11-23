@@ -183,7 +183,7 @@ class ChainIntegrationTest : BasePlatformTestCase() {
     val build = foundry.build()
     assertTrue(build.messages.joinToString { it.formatted }, build.success)
     val artifact = foundry.artifacts().single { it.name == "Bank" }
-    assertTrue(foundry.isSource(artifact))
+    assertTrue(foundry.isSource(artifact.sourcePath))
 
     val port = ServerSocket(0).use { it.localPort }
     anvil = GeneralCommandLine(File(bin, "anvil").path, "--port", port.toString()).createProcess()
