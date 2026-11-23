@@ -69,35 +69,13 @@ class ChainExecutor(
 
   /** [from] may be null for read-only calls on a network without wallets. */
   fun invoke(chain: ChainConfig, target: Deployment, fn: AbiEntry.Function, args: List<Any>, from: String?, value: BigInteger): Outcome {
-    val abi = target.abi()
-    val kind = if (fn.mutability.isReadOnly) TxKind.CALL else TxKind.TRANSACT
-    val record = record(chain, kind, target.name, target.sourcePath, fn.signature, from.orEmpty(), target.address, value)
+    val send = !fn.mutability.isReadOnly
+    val record = record(chain, if (send) TxKind.TRANSACT else TxKind.CALL, target.name, target.sourcePath, fn.signature, from.orEmpty(), target.address, value)
     record.args += AbiValueFormatter.formatArgs(fn.inputs, args)
-    if (from == null && kind == TxKind.TRANSACT) {
-      record.status = TxStatus.FAILED
-      record.error = "No account to send from. Add a wallet to ${chain.name} to send transactions."
-      return Outcome(record, null)
-    }
     val data = AbiCodec.encodeCall(fn.selector, fn.inputs.map { it.type }, args)
-    run(chain, record, abi, TraceTarget.Call(from, target.address, data, value)) { rpc ->
-      // Calling an address without code "succeeds" and returns nothing, e.g. after the chain it was deployed on restarted.
-      if (rpc.code(target.address).isEmpty()) {
-        record.status = TxStatus.FAILED
-        record.error = "There is no contract at ${target.address} on ${chain.name}. " +
-          "It may have been deployed to a chain that has since restarted; deploy it again."
-        return@run
-      }
-      // Simulate first: gives the return value of state-changing functions and the revert reason before sending.
-      val returned = rpc.ethCall(from, target.address, data, value)
-      record.results += AbiValueFormatter.formatOutputs(fn.outputs, returned)
-      if (kind == TxKind.TRANSACT) {
-        val hash = send(chain, rpc, record, from!!, target.address, data, value, fn.signature, "${target.name} ${target.address}") ?: return@run
-        applyReceipt(rpc, record, awaitReceipt(chain, rpc, hash), abi)
-      }
+    return call(chain, record, target.abi(), from, target.address, data, value, send, fn.signature, "${target.name} ${target.address}", requireCode = true) {
+      AbiValueFormatter.formatOutputs(fn.outputs, it)
     }
-    service.addRecord(record)
-    if (kind == TxKind.TRANSACT) service.refresh(chain)
-    return Outcome(record, null)
   }
 
   /**
@@ -116,19 +94,38 @@ class ChainExecutor(
     val kind = if (send) TxKind.TRANSACT else TxKind.CALL
     val record = record(chain, kind, known?.name ?: AbiValueFormatter.short(to), known?.sourcePath.orEmpty(), label, from.orEmpty(), to, value)
     record.args += "data: ${if (data.isEmpty()) "(empty)" else data.toHex()}"
+    return call(chain, record, abi, from, to, data, value, send, label, known?.let { "${it.name} $to" } ?: to, requireCode = false) { returned ->
+      val decoded = if (fn != null && fn.outputs.isNotEmpty()) runCatching { AbiValueFormatter.formatOutputs(fn.outputs, returned) }.getOrDefault(emptyList())
+      else emptyList()
+      decoded + "returned: ${if (returned.isEmpty()) "(nothing)" else returned.toHex()}"
+    }
+  }
+
+  /**
+   * Simulates [data] sent to [to] with `eth_call`, which gives the return value of state-changing functions and the
+   * revert reason before anything is signed, then sends it as a transaction when [send]. [results] formats what the
+   * simulation returned. [requireCode]: fail when [to] has no code, instead of reporting an empty success.
+   */
+  private fun call(
+    chain: ChainConfig, record: TxRecord, abi: ContractAbi, from: String?, to: String, data: ByteArray, value: BigInteger,
+    send: Boolean, action: String, toLabel: String, requireCode: Boolean, results: (ByteArray) -> List<String>,
+  ): Outcome {
     if (from == null && send) {
       record.status = TxStatus.FAILED
-      record.error = "No account to send from." + if (chain.isNetworkChain) " Add a wallet to ${chain.name} to send transactions." else ""
+      record.error = noSenderMessage(chain)
       return Outcome(record, null)
     }
     run(chain, record, abi, TraceTarget.Call(from, to, data, value)) { rpc ->
-      // simulate first, as for ABI calls: the return data and a revert reason before anything is signed
-      val returned = rpc.ethCall(from, to, data, value)
-      record.results += if (fn != null && fn.outputs.isNotEmpty()) runCatching { AbiValueFormatter.formatOutputs(fn.outputs, returned) }.getOrDefault(emptyList())
-      else emptyList()
-      record.results += "returned: ${if (returned.isEmpty()) "(nothing)" else returned.toHex()}"
+      // Calling an address without code "succeeds" and returns nothing, e.g. after the chain it was deployed on restarted.
+      if (requireCode && rpc.code(to).isEmpty()) {
+        record.status = TxStatus.FAILED
+        record.error = "There is no contract at $to on ${chain.name}. " +
+          "It may have been deployed to a chain that has since restarted; deploy it again."
+        return@run
+      }
+      record.results += results(rpc.ethCall(from, to, data, value))
       if (send) {
-        val hash = send(chain, rpc, record, from!!, to, data, value, label, known?.let { "${it.name} $to" } ?: to) ?: return@run
+        val hash = send(chain, rpc, record, from!!, to, data, value, action, toLabel) ?: return@run
         applyReceipt(rpc, record, awaitReceipt(chain, rpc, hash), abi)
       }
     }
@@ -344,6 +341,11 @@ class ChainExecutor(
     }
 
   companion object {
+    /** Why there is no account to send a transaction from. */
+    fun noSenderMessage(chain: ChainConfig): String =
+      if (chain.isNetworkChain) "No account to send from. Add a wallet to ${chain.name} to send transactions."
+      else "No account to send from: is ${chain.name} running?"
+
     /** How RPCs (geth, reth, erigon, public endpoints, anvil itself) say they no longer have a block's state. */
     private val STALE_STATE = listOf("historical state", "missing trie node", "header not found", "pruned", "BlockOutOfRange", "not available")
   }

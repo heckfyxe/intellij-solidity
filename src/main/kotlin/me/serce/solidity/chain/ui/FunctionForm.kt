@@ -183,9 +183,7 @@ class FunctionForm(
     if (!runButton.isEnabled) return
     val from = fromCombo.selectedItem as? String
     if (from == null && needsSender) {
-      return showResult {
-        showError(if (chain.isNetworkChain) "No account to send from. Add a wallet to ${chain.name} to send transactions." else "No account: is ${chain.name} running?")
-      }
+      return showResult { showError(ChainExecutor.noSenderMessage(chain)) }
     }
     val args = try {
       inputs.map { (p, text) ->
