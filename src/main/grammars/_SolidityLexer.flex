@@ -62,7 +62,7 @@ BOOLEANLITERAL=true|false
 SPACE=[ \t\n\x0B\f\r]+
 IDENTIFIER=[a-zA-Z_$][a-zA-Z_$0-9]*
 // Pragma parses anything up to the trailing ';' to be fully forward-compatible.
-PRAGMAALL=[^ ][^;]*
+PRAGMAALL=[^ \t\r\n;][^;]*
 
 %%
 <YYINITIAL> {
@@ -284,6 +284,11 @@ PRAGMAALL=[^ ][^;]*
 <PRAGMA_OPEN> {
   {WHITE_SPACE}           { return WHITE_SPACE; }
 
+  ";"                     {
+                            yybegin(YYINITIAL);
+                            return SEMICOLON;
+                          }
+
   {IDENTIFIER}            {
                             yybegin(PRAGMA_REST);
                             return IDENTIFIER;
@@ -294,6 +299,12 @@ PRAGMAALL=[^ ][^;]*
 
 <PRAGMA_REST> {
   {WHITE_SPACE}           { return WHITE_SPACE; }
+
+  // `pragma foo;`: no value
+  ";"                     {
+                            yybegin(YYINITIAL);
+                            return SEMICOLON;
+                          }
 
   {PRAGMAALL}             {
                             yybegin(YYINITIAL);

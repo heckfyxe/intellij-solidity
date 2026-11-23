@@ -123,7 +123,7 @@ private UntilParenRecover ::= !(')' | ';' | '{' | '}')
 private UntilSemicolonOrNewLineRecover ::= !(';' | '}' | <<afterNewLine>>)
 
 // Pragma actually parses anything up to the trailing ';' to be fully forward-compatible.
-private PragmaPart ::= pragma Identifier pragmaAll {
+private PragmaPart ::= pragma Identifier pragmaAll? {
     pin = 2
     recoverWhile = UntilSemicolonRecover
 }
