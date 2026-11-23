@@ -30,7 +30,8 @@ import javax.swing.JComponent
 
 /**
  * Reads a contract's storage, like `cast storage`: any slot by number, and for contracts compiled in this project every
- * state variable decoded from its layout (packed values, strings, array lengths) plus mapping entries by key.
+ * state variable decoded from its layout (packed values, strings, arrays with their first elements), plus mapping
+ * entries, array elements and struct members reached by a key, an index or a path like `[0xBEEF][2].amount`.
  */
 class StorageDialog(
   private val project: Project,
@@ -92,8 +93,9 @@ class StorageDialog(
       group("Layout") {
         row { cell(layoutStatus) ; button("Reload Values") { readAll() } }
         row { cell(JBScrollPane(table)).align(Align.FILL) }.resizableRow()
-        row("Mapping key:") {
-          cell(keyField).align(AlignX.FILL).resizableColumn().comment("Select a mapping above, then enter a key: an address, number, string, …")
+        row("Key / index:") {
+          cell(keyField).align(AlignX.FILL).resizableColumn()
+            .comment("Select a mapping or an array above, then enter a key or an index; go deeper with a path like [1][0xBEEF].amount")
           cell(lookUpButton)
         }
         row("") { cell(keyResult) }
@@ -188,25 +190,34 @@ class StorageDialog(
     }
   }
 
-  private fun selectedMapping(): StorageLayout.Row? = table.selectedObject?.row?.takeIf { it.type.encoding == "mapping" }
+  /** The selected variable when it can be looked into: a mapping or an array, fixed or dynamic. */
+  private fun selectedContainer(): StorageLayout.Row? = table.selectedObject?.row?.takeIf {
+    it.type.encoding == "mapping" || it.type.encoding == "dynamic_array" || it.type.base != null
+  }
 
   private fun updateLookUp() {
-    val mapping = selectedMapping()
-    lookUpButton.isEnabled = mapping != null
-    keyField.isEnabled = mapping != null
-    keyField.emptyText.text = mapping?.let { layout?.type(it.type.key.orEmpty())?.label } ?: ""
+    val row = selectedContainer()
+    lookUpButton.isEnabled = row != null
+    keyField.isEnabled = row != null
+    keyField.emptyText.text = when {
+      row == null -> ""
+      row.type.encoding == "mapping" -> layout?.type(row.type.key.orEmpty())?.label.orEmpty()
+      else -> "index"
+    }
   }
 
   private fun lookUp() {
-    val row = selectedMapping() ?: return
+    val row = selectedContainer() ?: return
     val layout = layout ?: return
     problem()?.let { keyResult.text = it; return }
     val reader = reader() ?: return
-    val key = keyField.text
+    val path = keyField.text
     keyResult.text = "reading…"
     background({
-      val slot = layout.mappingSlot(row, key)
-      "${row.name}[${key.trim()}] = ${layout.readMapping(row, key, reader)}   (slot ${slot.slotLabel()})"
+      val shown = StorageLayout.parsePath(path).joinToString("")
+      val loc = layout.access(row, path, reader)
+      val at = "slot ${loc.slot.slotLabel()}" + if (loc.offset > 0) " +${loc.offset}" else ""
+      "${row.name}$shown = ${layout.read(loc, reader)}   ($at)"
     }) { keyResult.text = it }
   }
 

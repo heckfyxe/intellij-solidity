@@ -17,7 +17,8 @@ fun interface StorageReader {
 
 /**
  * A contract's storage layout as solc reports it (`forge inspect C storageLayout --json`), and how to read its
- * variables from raw slots: packed value types, short and long strings, dynamic arrays and mapping entries by key.
+ * variables from raw slots: packed value types, short and long strings, fixed and dynamic arrays (elements packed like
+ * solc packs them), structs, and entries reached by an access path such as `[0xBEEF][2].amount`.
  */
 class StorageLayout(val variables: List<Variable>, private val types: Map<String, Type>) {
 
@@ -38,6 +39,15 @@ class StorageLayout(val variables: List<Variable>, private val types: Map<String
   /** One line of the layout view: struct members are flattened as `p.a`, with absolute slots. */
   class Row(val name: String, val slot: BigInteger, val offset: Int, val type: Type)
 
+  /** Where a value lives: its slot, its byte offset from the slot's low-order end, and its type. */
+  class Location(val slot: BigInteger, val offset: Int, val type: Type)
+
+  /** One step of an access path: `[key]` for a mapping key or array index, `.name` for a struct member. */
+  sealed class Step {
+    class Key(val text: String) : Step() { override fun toString() = "[$text]" }
+    class Member(val name: String) : Step() { override fun toString() = ".$name" }
+  }
+
   fun type(id: String): Type = types[id] ?: Type(id, id, "inplace", 32, null, null, null, emptyList())
 
   fun rows(): List<Row> = buildList { variables.forEach { addRows(it.label, it.slot, it, this) } }
@@ -52,22 +62,106 @@ class StorageLayout(val variables: List<Variable>, private val types: Map<String
   }
 
   /** What [row] holds, read through [reader]. */
-  fun read(row: Row, reader: StorageReader): String = read(row.slot, row.offset, row.type, reader)
+  fun read(row: Row, reader: StorageReader): String = read(Location(row.slot, row.offset, row.type), reader)
 
-  private fun read(slot: BigInteger, offset: Int, t: Type, reader: StorageReader): String = when (t.encoding) {
-    "mapping" -> "mapping: look up a key"
-    "dynamic_array" -> {
-      val length = BigInteger(1, reader.word(slot))
-      "length $length" + if (length.signum() > 0) ", elements from slot ${elementsSlot(slot).slotLabel()}" else ""
+  /**
+   * What [loc] holds: a value, a string, an array with its first elements when they are value types, a struct's
+   * members, or a hint for mappings. [depth] stops structs nested in structs from reading without bound.
+   */
+  fun read(loc: Location, reader: StorageReader, depth: Int = 0): String {
+    val t = loc.type
+    val words = cached(reader)
+    return when {
+      t.encoding == "mapping" -> "mapping: look up a key"
+      t.encoding == "dynamic_array" -> {
+        val length = BigInteger(1, words.word(loc.slot))
+        val start = elementsSlot(loc.slot)
+        val base = type(t.base.orEmpty())
+        when {
+          length.signum() == 0 -> "length 0"
+          isValue(base) -> "length $length: " + preview(start, length, base, words)
+          else -> "length $length, elements from slot ${start.slotLabel()}"
+        }
+      }
+      t.encoding == "bytes" -> readBytes(loc.slot, t, words)
+      t.base != null -> {
+        val base = type(t.base)
+        val length = staticLength(t)
+        if (isValue(base) && length != null) preview(loc.slot, length, base, words) else "${(t.size + 31) / 32} slots from ${loc.slot.slotLabel()}"
+      }
+      t.members.isNotEmpty() -> if (depth >= 2) "struct at slot ${loc.slot.slotLabel()}" else t.members.joinToString(", ", "{", "}") { m ->
+        "${m.label}: " + read(Location(loc.slot + m.slot, m.offset, type(m.type)), words, depth + 1)
+      }
+      t.size <= 32 -> decodeValue(extract(words.word(loc.slot), loc.offset, t.size), t.label)
+      else -> "${(t.size + 31) / 32} slots from ${loc.slot.slotLabel()}"
     }
-    "bytes" -> readBytes(slot, t, reader)
-    else -> if (t.size <= 32 && t.members.isEmpty()) decodeValue(extract(reader.word(slot), offset, t.size), t.label)
-    else "${(t.size + 31) / 32} slots from ${slot.slotLabel()}"
+  }
+
+  /** `[a, b, …]`: the first [PREVIEW] elements of an array of value types starting at [start]. */
+  private fun preview(start: BigInteger, length: BigInteger, base: Type, words: StorageReader): String {
+    val shown = length.min(BigInteger.valueOf(PREVIEW.toLong())).toInt()
+    val values = (0 until shown).map { read(element(start, it.toBigInteger(), base), words) }
+    return values.joinToString(", ", "[", if (length > shown.toBigInteger()) ", …]" else "]")
+  }
+
+  /**
+   * Element [index] of an array whose elements start at [start]: elements of 16 bytes or less are packed several to a
+   * slot from its low-order end, bigger ones (structs, fixed arrays) take whole slots each.
+   */
+  private fun element(start: BigInteger, index: BigInteger, base: Type): Location =
+    if (base.size <= 32) {
+      val perSlot = (32 / base.size).toBigInteger()
+      Location(start + index / perSlot, (index % perSlot).toInt() * base.size, base)
+    } else {
+      Location(start + index * ((base.size + 31) / 32).toBigInteger(), 0, base)
+    }
+
+  private fun isValue(t: Type) = t.encoding == "inplace" && t.base == null && t.members.isEmpty() && t.size <= 32
+
+  /** The length of a fixed array from its label: `uint256[3]`, `bool[2][]` is dynamic (its last brackets are empty). */
+  private fun staticLength(t: Type): BigInteger? = STATIC_LENGTH.find(t.label)?.groupValues?.get(1)?.toBigInteger()
+
+  /** Follows [path] (see [parsePath]) from [row]: mapping keys, array indexes with a bounds check, struct members. */
+  fun access(row: Row, path: String, reader: StorageReader): Location =
+    parsePath(path).fold(Location(row.slot, row.offset, row.type)) { loc, step ->
+      when (step) {
+        is Step.Key -> index(loc, step.text, reader)
+        is Step.Member -> {
+          if (loc.type.members.isEmpty()) throw AbiInputException("${loc.type.label} is not a struct")
+          val m = loc.type.members.firstOrNull { it.label == step.name } ?: throw AbiInputException("${loc.type.label} has no member ${step.name}")
+          Location(loc.slot + m.slot, m.offset, type(m.type))
+        }
+      }
+    }
+
+  private fun index(loc: Location, text: String, reader: StorageReader): Location {
+    val t = loc.type
+    return when {
+      t.encoding == "mapping" -> Location(keySlot(loc.slot, t, text), 0, type(t.value.orEmpty()))
+      t.encoding == "dynamic_array" -> {
+        val length = BigInteger(1, reader.word(loc.slot))
+        element(elementsSlot(loc.slot), checkedIndex(text, length), type(t.base.orEmpty()))
+      }
+      t.base != null -> element(loc.slot, checkedIndex(text, staticLength(t) ?: BigInteger.ZERO), type(t.base))
+      else -> throw AbiInputException("${t.label} is not a mapping or an array")
+    }
+  }
+
+  private fun checkedIndex(text: String, length: BigInteger): BigInteger {
+    val i = try {
+      parseSlot(text)
+    } catch (e: AbiInputException) {
+      throw AbiInputException("Enter an index: a number from 0")
+    }
+    if (i >= length) throw AbiInputException("Index $i is out of bounds: the length is $length")
+    return i
   }
 
   /** The slot of `mapping[key]` for the mapping at [row], or of the key's struct/array start. */
-  fun mappingSlot(row: Row, keyText: String): BigInteger {
-    val keyType = type(row.type.key ?: throw AbiInputException("Not a mapping"))
+  fun mappingSlot(row: Row, keyText: String): BigInteger = keySlot(row.slot, row.type, keyText)
+
+  private fun keySlot(slot: BigInteger, mapping: Type, keyText: String): BigInteger {
+    val keyType = type(mapping.key ?: throw AbiInputException("Not a mapping"))
     val abi = abiType(keyType.label)
     val key = AbiValueParser.parse(abi, keyText)
     // string and bytes keys are hashed as they are; value types padded to a word, bytesN left-aligned
@@ -77,14 +171,14 @@ class StorageLayout(val variables: List<Variable>, private val types: Map<String
       is AbiType.FixedBytes -> (key as ByteArray).copyOf(32)
       else -> AbiCodec.encode(listOf(abi), listOf(key))
     }
-    return BigInteger(1, Keccak.hash(keyBytes + row.slot.toWord()))
+    return BigInteger(1, Keccak.hash(keyBytes + slot.toWord()))
   }
 
   /** The value stored at `mapping[key]`, decoded by the mapping's value type (nested mappings give their slot). */
   fun readMapping(row: Row, keyText: String, reader: StorageReader): String {
     val slot = mappingSlot(row, keyText)
     val valueType = type(row.type.value ?: return slot.toHex32())
-    return if (valueType.encoding == "mapping") "mapping at slot ${slot.slotLabel()}" else read(slot, 0, valueType, reader)
+    return if (valueType.encoding == "mapping") "mapping at slot ${slot.slotLabel()}" else read(Location(slot, 0, valueType), reader)
   }
 
   private fun readBytes(slot: BigInteger, t: Type, reader: StorageReader): String {
@@ -106,6 +200,53 @@ class StorageLayout(val variables: List<Variable>, private val types: Map<String
 
   companion object {
     private const val MAX_BYTES = 256
+    private const val PREVIEW = 10
+    private val STATIC_LENGTH = Regex("\\[(\\d+)]$")
+
+    /** A reader that asks [reader] for each slot once: packed array elements share slots. */
+    private fun cached(reader: StorageReader): StorageReader =
+      if (reader is CachedReader) reader else CachedReader(reader)
+
+    private class CachedReader(private val reader: StorageReader) : StorageReader {
+      private val words = HashMap<BigInteger, ByteArray>()
+      override fun word(slot: BigInteger): ByteArray = words.getOrPut(slot) { reader.word(slot) }
+    }
+
+    /**
+     * Parses an access path: `[key]` steps for mapping keys and array indexes, `.name` steps for struct members, e.g.
+     * `[0xBEEF][2].amount`. Text that doesn't start with `[` or `.` is one key. A key may be a quoted string holding `]`.
+     */
+    fun parsePath(text: String): List<Step> {
+      val t = text.trim()
+      if (t.isEmpty()) throw AbiInputException("Enter a key or index")
+      if (t[0] != '[' && t[0] != '.') return listOf(Step.Key(t))
+      val steps = ArrayList<Step>()
+      var i = 0
+      while (i < t.length) {
+        when (t[i]) {
+          '[' -> {
+            var j = i + 1
+            var quote: Char? = null
+            while (j < t.length && (quote != null || t[j] != ']')) {
+              if (quote == null && (t[j] == '"' || t[j] == '\'')) quote = t[j] else if (t[j] == quote) quote = null
+              j++
+            }
+            if (j >= t.length) throw AbiInputException("Missing ] in $t")
+            steps += Step.Key(t.substring(i + 1, j).trim())
+            i = j + 1
+          }
+          '.' -> {
+            var j = i + 1
+            while (j < t.length && (t[j].isLetterOrDigit() || t[j] == '_' || t[j] == '$')) j++
+            if (j == i + 1) throw AbiInputException("Expected a member name after . in $t")
+            steps += Step.Member(t.substring(i + 1, j))
+            i = j
+          }
+          else -> if (t[i].isWhitespace()) i++ else throw AbiInputException("Expected [ or . at \"${t.substring(i)}\"")
+        }
+      }
+      return steps
+    }
     private val mapper = ObjectMapper()
 
     fun parse(json: String): StorageLayout {
