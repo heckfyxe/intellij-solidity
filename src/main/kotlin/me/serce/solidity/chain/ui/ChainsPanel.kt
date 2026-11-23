@@ -403,9 +403,10 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       val chain = selectedChain() ?: return
       val foundry = FoundryProject.find(project) ?: return noFoundry()
       ChainUi.buildThen(project, foundry) { artifacts ->
-        val deployable = artifacts.filter { it.isDeployable && foundry.isSource(it.sourcePath) }
+        val config = foundry.config()
+        val deployable = artifacts.filter { it.isDeployable && foundry.isSource(it.sourcePath, config) }
         if (deployable.isEmpty()) {
-          Messages.showInfoMessage(project, "No deployable contracts in ${foundry.config().src}/", "Deploy Contract")
+          Messages.showInfoMessage(project, "No deployable contracts in ${config.src}/", "Deploy Contract")
           return@buildThen
         }
         ChainUi.choose("Deploy to ${chain.name}", deployable, { "${it.name}  (${it.sourcePath})" }, null, project) { artifact ->
@@ -600,7 +601,10 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
         Messages.showErrorDialog(project, ex.message ?: ex.toString(), "Generate Solidity Interface")
         return
       }
-      val root = FoundryProject.find(project)?.root?.let { r -> r.resolve("src").takeIf { Files.isDirectory(it) } ?: r }
+      // the cached config only: never run forge on the EDT
+      val root = FoundryProject.find(project)?.let { f ->
+        f.root.resolve(f.cachedConfig()?.getOrNull()?.src ?: "src").takeIf { Files.isDirectory(it) } ?: f.root
+      }
       val dir = root?.let { LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it) }
       val target = FileChooserFactory.getInstance().createSaveFileDialog(FileSaverDescriptor("Save Interface", "Where to write $name", "sol"), project)
         .save(dir, "$name.sol") ?: return
