@@ -127,6 +127,30 @@ class SolVarResolveTest : SolResolveTestBase() {
       }
   """)
 
+  fun testTypedTupleDeclarationWithTupleInitializer() = checkByCode("""
+        contract B {
+            function f() public pure returns (uint) {
+                (uint first, uint second) = (1, 2);
+                                 //x
+                return second;
+                      //^
+            }
+        }
+  """)
+
+  fun testTupleAssignmentResolvesToOuterVariable() = checkByCode("""
+        contract B {
+            function f() public pure returns (uint) {
+                uint first;
+                    //x
+                uint second;
+                (first, second) = (1, 2);
+                 //^
+                return first;
+            }
+        }
+  """)
+
   fun testFunctionParams() = checkByCode("""
         contract B {
             function B(uint abc) {

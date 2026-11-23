@@ -737,19 +737,6 @@ object SolResolver {
 
       is SolidityFile -> fileDeclarations(scope).asSequence()
 
-      is SolTupleStatement -> {
-        scope.variableDeclaration?.let {
-          val declarationList = it.declarationList
-          val typedDeclarationList = it.typedDeclarationList
-          val identifier = it.identifier
-          when {
-            declarationList != null -> declarationList.declarationItemList.asSequence()
-            typedDeclarationList != null -> typedDeclarationList.typedDeclarationItemList.asSequence()
-            identifier != null -> listOf(it).asSequence()
-            else -> emptySequence()
-          }
-        } ?: emptySequence()
-      }
       is SolTryStatement -> {
         scope.parameterList?.parameterDefList?.asSequence() ?: emptySequence()
       }

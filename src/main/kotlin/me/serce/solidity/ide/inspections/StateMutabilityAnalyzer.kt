@@ -64,18 +64,7 @@ object StateMutabilityAnalyzer {
           return
         }
         is SolAssignmentExpression -> element.expressionList.firstOrNull()?.let { markWritten(it) }
-        is SolTupleStatement -> {
-          val declaration = element.variableDeclaration
-          if (declaration == null) {
-            element.expressionList.firstOrNull()?.let { markWritten(it) }
-          } else {
-            // `(a, b) = ...` without types is parsed as a declaration list, it's an assignment since 0.5.0
-            val items = declaration.declarationList?.declarationItemList
-            if (items != null && declaration.firstChild?.text != "var") {
-              items.forEach { markWritten(it) }
-            }
-          }
-        }
+        is SolTupleStatement -> element.expressionList.firstOrNull()?.let { markWritten(it) }
         is SolIncrementExpression -> element.expression?.let { markWritten(it) }
         is SolUnaryExpression -> if (element.firstChild?.text in setOf("++", "--", "delete")) {
           element.expression?.let { markWritten(it) }
@@ -114,16 +103,6 @@ object StateMutabilityAnalyzer {
       if (writesState) {
         writtenRoots += literal
         effects += MutabilityEffect(target, MutabilityLevel.NONPAYABLE)
-      }
-    }
-
-    private fun markWritten(item: SolDeclarationItem) {
-      val name = item.name ?: return
-      val candidates = SolResolver.lexicalDeclarations(item)
-        .filter { it.name == name && it !is SolDeclarationItem }
-        .toList()
-      if (candidates.isNotEmpty() && candidates.all { it is SolStateVariableDeclaration && !it.isBuiltin() && it.mutability == null }) {
-        effects += MutabilityEffect(item.identifier ?: item, MutabilityLevel.NONPAYABLE)
       }
     }
 

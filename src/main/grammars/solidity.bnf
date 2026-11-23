@@ -456,10 +456,11 @@ private FinishedStatementKind ::=
 private FinishedStatementWithSemicolon ::= FinishedStatement ';' {pin = 1}
 Statement ::= IfStatement | TryStatement | WhileStatement | ForStatement | Block | InlineAssemblyStatement | TupleStatement | ReturnTupleStatement | FinishedStatementWithSemicolon
 
-// intentionally not pinned
-TupleStatement ::= VariableDeclaration '=' SeqExpression ';'
-    | SeqExpression '=' SeqExpression ';'
-    | SeqExpression '=' Expression ';'
+// a tuple assignment `(a, b) = ...;`, intentionally not pinned. Declarations (`uint x = (a + b);`,
+// `(uint a, uint b) = ...;`, `var (a, b) = ...;`) are VariableDefinitions.
+TupleStatement ::= !TypedTupleStart SeqExpression '=' Expression ';'
+// `(uint a, ...`/`(, uint b, ...`: a type followed by a name only starts a declaration
+private TypedTupleStart ::= '(' ','* TypeName StorageLocationSpecifier? Identifier
 
 // intentionally not pinned
 ReturnTupleStatement ::= return SeqExpression ';'

@@ -46,12 +46,6 @@ private fun SolStatement.hasAssignment(el: SolNamedElement): Boolean {
   ifStatement?.let { return it.hasAssignment(el) }
   tryStatement?.let { return it.hasAssignment(el) }
   tupleStatement?.let { st ->
-    val declaration = st.variableDeclaration
-    if (declaration != null) {
-      return declaration.declarationList?.declarationItemList?.any { it.identifier?.text == el.name }
-        ?: declaration.typedDeclarationList?.typedDeclarationItemList?.any { it.identifier?.text == el.name }
-        ?: false
-    }
     (st.expressionList.firstOrNull() as? SolSeqExpression)?.let { seq ->
       return seq.expressionList.any { it.isReferenceTo(el) }
     }

@@ -123,6 +123,24 @@ class SolLocalVariableRefactoringsTest : SolTestBase() {
     """.trimIndent()
   )
 
+  fun testInlineParenthesizedInitializer() = inline(
+    """
+      contract A {
+          function f(uint a, uint b) external pure returns (uint) {
+              uint s<caret>um = (a + b);
+              return sum * 2;
+          }
+      }
+    """.trimIndent(),
+    """
+      contract A {
+          function f(uint a, uint b) external pure returns (uint) {
+              return (a + b) * 2;
+          }
+      }
+    """.trimIndent()
+  )
+
   fun testInlineFromUsage() = inline(
     """
       contract A {
