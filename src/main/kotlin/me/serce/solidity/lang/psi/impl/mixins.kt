@@ -67,13 +67,25 @@ abstract class SolEnumValueMixin(node: ASTNode) : SolNamedElementImpl(node), Sol
 }
 
 abstract class SolContractOrLibMixin : SolStubbedNamedElementImpl<SolContractOrLibDefStub>, SolContractDefinition {
-  /**
-   * In solidity, the given bases are searched from right to left (left to right in Python) in a depth-first manner, so we need reversed order
-   * @return list of super contracts in reversed order
-   */
   override val supers: List<SolUserDefinedTypeName>
     get() = inheritanceSpecifierList
       .mapNotNull { it.userDefinedTypeName }
+
+  override val superContracts: List<SolContractDefinition>
+    get() = supers.mapNotNull { base -> base.reference?.multiResolve()?.firstNotNullOfOrNull { it as? SolContractDefinition } }
+
+  override val allSuperContracts: Set<SolContractDefinition>
+    get() = RecursionManager.doPreventingRecursion(this, true) {
+      CachedValuesManager.getCachedValue(this) {
+        val result = LinkedHashSet<SolContractDefinition>()
+        for (base in superContracts) {
+          result += base
+          result += base.allSuperContracts
+        }
+        result -= this
+        CachedValueProvider.Result.create<Set<SolContractDefinition>>(result, PsiModificationTracker.MODIFICATION_COUNT)
+      }
+    } ?: emptySet()
 
   override val collectSupers: Collection<SolUserDefinedTypeName>
     get() = RecursionManager.doPreventingRecursion(this, true) {

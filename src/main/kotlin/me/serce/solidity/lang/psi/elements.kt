@@ -100,8 +100,13 @@ interface SolModifierElement : SolNamedElement {
 }
 
 interface SolContractOrLibElement : SolCallableElement {
+  /** The base contracts as written in the `is` list, in source order. */
   val supers: List<SolUserDefinedTypeName>
   val collectSupers: Collection<SolUserDefinedTypeName>
+  /** The contracts [supers] resolve to, in source order. */
+  val superContracts: List<SolContractDefinition>
+  /** Every base contract, direct or not (each once, the contract itself excluded); cached. */
+  val allSuperContracts: Set<SolContractDefinition>
   val isAbstract: Boolean
   val contractType: ContractType
   val isPayable: Boolean

@@ -54,7 +54,7 @@ class SolEventCompletionContributor : CompletionContributor() {
 
       // contracts whose events are not visible unqualified: `emit IERC20.Transfer(...)`
       val current = PsiTreeUtil.getParentOfType(position, SolContractDefinition::class.java)
-      val inScope = current?.let { setOf(it) + it.superContracts() }.orEmpty()
+      val inScope = current?.let { setOf(it) + it.allSuperContracts }.orEmpty()
       declarations.filterIsInstance<SolContractDefinition>()
         .filter { it !in inScope && it.events().isNotEmpty() }
         .distinctBy { it.name }
@@ -163,12 +163,9 @@ private fun eventBeforeTail(position: PsiElement): SolEventDefinition? {
 
 private fun SolEventDefinition.isAnonymous() = node.findChildByType(SolidityTokenTypes.ANONYMOUS) != null
 
-private fun SolContractDefinition.superContracts(): List<SolContractDefinition> =
-  collectSupers.mapNotNull { it.reference?.resolve() as? SolContractDefinition }
-
 /** Events that can be emitted as `emit C.E()`: those of the contract and of its bases. */
 private fun SolContractDefinition.events(): List<SolEventDefinition> =
-  eventDefinitionList + superContracts().flatMap { it.eventDefinitionList }
+  eventDefinitionList + allSuperContracts.flatMap { it.eventDefinitionList }
 
 /** Identifies a declaration across the completion copy of the file and the original. */
 private fun PsiNamedElement.key(): Triple<String, String?, String?> {

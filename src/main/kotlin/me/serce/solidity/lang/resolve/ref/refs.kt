@@ -84,10 +84,10 @@ class SolModifierReference(
 
   override fun doMultiResolve(): Collection<PsiElement> {
     val contract = modifierElement.findContract() ?: return emptyList()
-    val superNames = (contract.collectSupers.map { it.name } + contract.name).filterNotNullTo(hashSetOf())
+    val contracts = contract.allSuperContracts + contract
     return SolResolver.resolveTypeNameUsingImports(modifierElement)
       .filterIsInstance<SolModifierDefinition>()
-      .filter { it.contract.name in superNames }
+      .filter { it.contract in contracts }
   }
 
   override fun getVariants() = SolCompleter.completeModifier(modifierElement)

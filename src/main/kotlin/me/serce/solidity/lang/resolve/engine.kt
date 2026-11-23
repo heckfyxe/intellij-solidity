@@ -388,8 +388,7 @@ object SolResolver {
   private fun inheritedUsingForDeclarations(
     contract: SolContractDefinition,
     visited: MutableSet<SolContractDefinition>
-  ): List<SolUsingForDeclaration> = contract.supers
-    .mapNotNull { resolveTypeNameStrict(it).firstOrNull() as? SolContractDefinition }
+  ): List<SolUsingForDeclaration> = contract.superContracts
     .filter { visited.add(it) }
     .flatMap { it.usingForDeclarationList + inheritedUsingForDeclarations(it, visited) }
 
@@ -582,10 +581,8 @@ object SolResolver {
     }
   }
 
-  private fun inheritedMembers(contract: SolContractDefinition): List<SolMember> = contract.supers
-    .map { resolveTypeNameStrict(it).firstOrNull() }
-    .filterIsInstance<SolContractDefinition>()
-    .flatMap { resolveContractMembers(it) }
+  private fun inheritedMembers(contract: SolContractDefinition): List<SolMember> =
+    contract.superContracts.flatMap { resolveContractMembers(it) }
 
 
   fun resolveUsingForElement(element: SolUserDefinedTypeNameElement): SolCallableElement? {
@@ -608,8 +605,7 @@ object SolResolver {
       val result = RecursionManager.doPreventingRecursion(contract, true) {
         val own = contract.stateVariableDeclarationList + contract.enumDefinitionList + contract.structDefinitionList +
           contract.eventDefinitionList + contract.errorDefinitionList + contract.userDefinedValueTypeDefinitionList
-        val inherited = contract.supers
-          .mapNotNull { resolveTypeNameStrict(it).firstOrNull() as? SolContractDefinition }
+        val inherited = contract.superContracts
           .flatMap { contractDeclarations(it) }
           .filterNot { it.isPrivateMember() } // private members are visible only inside the contract declaring them
         (own + inherited + contract.functionDefinitionList).distinct()

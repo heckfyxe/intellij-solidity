@@ -376,22 +376,11 @@ data class SolContract(val ref: SolContractDefinition, val builtin: Boolean = fa
     } ?: emptyList()
   }
 
-  override fun getParents(): List<SolContract> {
-    return ref.supers
-    .flatMap { it.reference?.multiResolve() ?: emptyList() }
-    .filterIsInstance<SolContractDefinition>()
-    .map { SolContract(it) }
-    .asReversed()
-  }
+  /** The direct bases, right to left: solc searches them in that order (left to right in Python), depth-first. */
+  override fun getParents(): List<SolContract> = ref.superContracts.map { SolContract(it) }.asReversed()
 
   override fun isAssignableFrom(other: SolType): Boolean =
-    when (other) {
-      is SolContract -> {
-        other.ref == ref
-          || other.ref.collectSupers.any { ref in SolResolver.resolveTypeNameUsingImports(it) }
-      }
-      else -> false
-    }
+    other is SolContract && (other.ref == ref || ref in other.ref.allSuperContracts)
 
   override fun getMembers(project: Project): List<SolMember> {
     return SolResolver.resolveContractMembers(ref, false)
