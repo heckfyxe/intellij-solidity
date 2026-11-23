@@ -2,7 +2,9 @@ package me.serce.solidity.chain.ui
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.ui.ColorUtil
 import com.intellij.ui.JBColor
+import com.intellij.util.text.DateFormatUtil
 import com.intellij.util.ui.HTMLEditorKitBuilder
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -11,8 +13,6 @@ import me.serce.solidity.chain.TxRecord
 import me.serce.solidity.chain.TxStatus
 import me.serce.solidity.chain.abi.AbiValueFormatter
 import java.math.BigInteger
-import java.text.SimpleDateFormat
-import java.util.Date
 import javax.swing.JEditorPane
 import javax.swing.event.HyperlinkEvent
 
@@ -56,14 +56,11 @@ class ResultView(private val project: Project, private val onLink: (String) -> U
 
   companion object {
     private const val FRAME_LINK = "frame:"
-    /** Time of day shown next to transactions; used on the EDT only. */
-    internal val TIME = SimpleDateFormat("HH:mm:ss")
-
     fun esc(s: String): String = StringUtil.escapeXmlEntities(s)
     fun grey() = colorHex(UIUtil.getContextHelpForeground())
     fun red() = colorHex(JBColor.RED)
     private fun green() = colorHex(JBColor(0x2E7D32, 0x5FB865))
-    private fun colorHex(c: java.awt.Color) = String.format("#%02x%02x%02x", c.red, c.green, c.blue)
+    private fun colorHex(c: java.awt.Color) = ColorUtil.toHtmlColor(c)
 
     fun html(body: String) =
       "<html><body style='font-family:${UIUtil.getLabelFont().family}; font-size:${UIUtil.getLabelFont().size}pt'>$body</body></html>"
@@ -77,7 +74,7 @@ class ResultView(private val project: Project, private val onLink: (String) -> U
       append("<b style='color:$color'>$word</b>")
       if (r.gasUsed.isNotEmpty()) append(" <span style='color:${grey()}'>· ${r.gasUsed} gas · block ${r.blockNumber}</span>")
       if (detailed) {
-        append("<br><b>${esc(r.title)}</b> <span style='color:${grey()}'>${TIME.format(Date(r.timestamp))}</span>")
+        append("<br><b>${esc(r.title)}</b> <span style='color:${grey()}'>${DateFormatUtil.formatTimeWithSeconds(r.timestamp)}</span>")
         if (r.sourcePath.isNotEmpty()) append(" &nbsp;<a href='source'>Go to source</a>")
         row("from", r.from)
         if (r.to.isNotEmpty()) row(if (r.kind == TxKind.DEPLOY) "contract" else "to", r.to)

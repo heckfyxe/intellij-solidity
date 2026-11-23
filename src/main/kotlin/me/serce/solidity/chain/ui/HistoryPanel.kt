@@ -14,6 +14,7 @@ import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.table.TableView
+import com.intellij.util.text.DateFormatUtil
 import com.intellij.util.ui.ColumnInfo
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.ListTableModel
@@ -26,7 +27,6 @@ import me.serce.solidity.chain.TxStatus
 import me.serce.solidity.chain.abi.AbiValueFormatter
 import java.awt.BorderLayout
 import java.math.BigInteger
-import java.util.Date
 import javax.swing.JPanel
 import javax.swing.JTable
 import javax.swing.ListSelectionModel
@@ -43,7 +43,7 @@ class HistoryPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         TxStatus.FAILED -> AllIcons.General.Error
       }
     },
-    column("Time", 70) { r -> append(ResultView.TIME.format(Date(r.timestamp)), SimpleTextAttributes.GRAYED_ATTRIBUTES) },
+    column("Time", 70) { r -> append(DateFormatUtil.formatTimeWithSeconds(r.timestamp), SimpleTextAttributes.GRAYED_ATTRIBUTES) },
     column("Chain", 110) { r -> append(service.chain(r.chainId)?.name ?: "?") },
     column("Action", 260) { r ->
       append(r.title, if (r.status == TxStatus.SUCCESS) SimpleTextAttributes.REGULAR_ATTRIBUTES else SimpleTextAttributes.ERROR_ATTRIBUTES)
