@@ -17,6 +17,12 @@ contract C is A, {
 
     function g() public returns uint {}
 
+    function t(function () external returns uint cb, uint y) public {
+        try this.g() returns uint {
+        } catch {
+        }
+    }
+
     function h() external view override(A, ) {}
 
     function i(uint x) public {

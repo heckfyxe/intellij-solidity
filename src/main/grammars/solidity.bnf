@@ -202,10 +202,12 @@ StateVariableDeclaration ::= TypeName (MutationModifier | VisibilityModifier | O
 }
 
 // like a state variable: a member missing its ';' keeps its PSI and the next line still parses
-private StructMember ::= VariableDeclaration StructMemberEnd ';' {pin=1}
-private StructMemberEnd ::= <<semicolonExpected>> {recoverWhile = UntilSemicolonOrNewLineRecover}
+private StructMember ::= VariableDeclaration SemicolonExpected ';' {pin=1}
+// reports `';' expected` and skips the rest of the line; FinishedStatement has its own copy since its recovery must
+// also run when the statement itself fails
+private SemicolonExpected ::= <<semicolonExpected>> {recoverWhile = UntilSemicolonOrNewLineRecover}
 
-private StateVariableInitializer ::= ('=' Expression)? <<semicolonExpected>> {recoverWhile = UntilSemicolonOrNewLineRecover}
+private StateVariableInitializer ::= ('=' Expression)? SemicolonExpected
 
 /**
  * The declaration of a constant variable.
@@ -288,7 +290,7 @@ ConstructorDefinition ::= constructor ParameterList
 FunctionDefinition ::= (function <<keywordFunctionName>> Identifier? | fallback | receive )
                         ParameterList
                         ( FunctionVisibilitySpecifier | StateMutabilitySpecifier | ModifierInvocation)*
-                        FunctionReturns? ( ';' | Block ) {
+                        BodyReturnsList? ( ';' | Block ) {
     pin = 1
     implements = "me.serce.solidity.lang.psi.SolFunctionDefElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolFunctionDefMixin"
@@ -347,9 +349,11 @@ ParameterDef ::= TypeName (constant StorageLocationSpecifier? | StorageLocationS
 ParameterList ::= '(' ParameterListItems ')' {pin=1}
 private ParameterListItems ::= ( ParameterDef NextParameterDef* )? {recoverWhile = UntilParenRecover}
 private NextParameterDef ::= ',' ParameterDef {pin=1}
+// a function type is followed by more of its declaration (`returns (uint) f;`), so its list has no recovery
 private ReturnsList ::= returns ParameterList {pin=1}
-// `returns uint` skips to the body, so the function and the rest of the contract still parse
-private FunctionReturns ::= returns ParameterList {pin=1 recoverWhile = UntilBodyRecover}
+// recovery always runs, so it is only used where a body follows: `returns uint` skips to the body of a function or
+// try statement, so it and the rest of the code still parse
+private BodyReturnsList ::= returns ParameterList {pin=1 recoverWhile = UntilBodyRecover}
 private UntilBodyRecover ::= !('{' | ';' | '}' | <<afterNewLine>>)
 
 // semantic restriction: mappings and structs (recursively) containing mappings
@@ -474,7 +478,7 @@ ReturnTupleStatement ::= return SeqExpression ';'
 
 private ExpressionStatement ::= Expression
 IfStatement ::= if '(' Expression ')' Statement ( else Statement )? {pin = 1}
-TryStatement ::= try Expression ReturnsList? Block CatchClause+ {pin = 1}
+TryStatement ::= try Expression BodyReturnsList? Block CatchClause+ {pin = 1}
 CatchClause ::= catch ( Identifier? ParameterList )? Block {pin = 1}
 WhileStatement ::= while '(' Expression ')' Statement {pin = 1}
 // only `_;` (or `_` missing its `;`): elsewhere `_` is a name (`_ = 1;`)

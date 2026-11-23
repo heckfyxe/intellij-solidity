@@ -36,7 +36,7 @@ object SolidityParserUtil : GeneratedParserUtilBase() {
    */
   @JvmStatic
   fun semicolonExpected(b: PsiBuilder, level: Int): Boolean {
-    addVariant(b, ";")
+    if (b.tokenType != SolidityTokenTypes.SEMICOLON) addVariant(b, ";")
     return true
   }
 
