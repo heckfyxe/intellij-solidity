@@ -31,10 +31,11 @@ class AbiFetcher(
   private class Found(val abi: ArrayNode, val name: String?, val source: String, val implementation: String?)
 
   fun fetch(rpc: JsonRpcClient?, chainId: Long, address: String): FetchedAbi {
-    val own = find(chainId, address)
+    val key = etherscanKey() // once: on macOS each keychain read may prompt
+    val own = find(chainId, address, key)
     val implementation = rpc?.let { proxyImplementation(it, address) } ?: own?.implementation
     if (implementation != null && !implementation.equals(address, ignoreCase = true)) {
-      val impl = find(chainId, implementation)
+      val impl = find(chainId, implementation, key)
       if (impl != null) {
         val merged = mapper.createArrayNode().addAll(impl.abi)
         val seen = impl.abi.map(::key).toHashSet()
@@ -43,12 +44,13 @@ class AbiFetcher(
       }
     }
     if (own != null) return FetchedAbi(mapper.writeValueAsString(own.abi), own.name, own.source)
-    val where = if (etherscanKey() == null) "Sourcify (add an Etherscan API key to search Etherscan too)" else "Sourcify or Etherscan"
+    val where = if (key == null) "Sourcify (add an Etherscan API key to search Etherscan too)" else "Sourcify or Etherscan"
     throw AbiFetchException("No verified contract at $address on $where" +
       (implementation?.let { ", nor at its implementation $it" } ?: "") + ". Paste its ABI instead.")
   }
 
-  private fun find(chainId: Long, address: String): Found? = sourcify(chainId, address) ?: etherscan(chainId, address)
+  private fun find(chainId: Long, address: String, key: String?): Found? =
+    sourcify(chainId, address) ?: key?.let { etherscan(chainId, address, it) }
 
   private fun sourcify(chainId: Long, address: String): Found? {
     val (status, body) = request("https://sourcify.dev/server/v2/contract/$chainId/$address?fields=abi,compilation", "Sourcify")
@@ -59,8 +61,7 @@ class AbiFetcher(
     return Found(abi, node["compilation"]?.get("name")?.asText(), "Sourcify", null)
   }
 
-  private fun etherscan(chainId: Long, address: String): Found? {
-    val key = etherscanKey() ?: return null
+  private fun etherscan(chainId: Long, address: String, key: String): Found? {
     val url = "https://api.etherscan.io/v2/api?chainid=$chainId&module=contract&action=getsourcecode&address=$address&apikey=" +
       URLEncoder.encode(key, Charsets.UTF_8)
     val (status, body) = request(url, "Etherscan")
