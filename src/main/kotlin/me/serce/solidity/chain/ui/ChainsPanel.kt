@@ -67,11 +67,16 @@ import javax.swing.tree.TreeSelectionModel
 
 /** Tree items. [key] identifies a node across rebuilds so selection and expansion survive refreshes. */
 sealed class ChainItem(val key: String, val config: ChainConfig) {
+  /** The contract this item is or belongs to. */
+  open val deployment: Deployment? get() = null
+  /** The address this item stands for: an account's, or its contract's. */
+  open val address: String? get() = deployment?.address
+
   class Chain(config: ChainConfig) : ChainItem("chain:${config.id}", config)
   class Accounts(config: ChainConfig) : ChainItem("accounts:${config.id}", config)
-  class Account(config: ChainConfig, val address: String) : ChainItem("account:${config.id}:$address", config)
-  class Contract(config: ChainConfig, val deployment: Deployment) : ChainItem("contract:${deployment.id}", config)
-  class Function(config: ChainConfig, val deployment: Deployment, val fn: AbiEntry.Function) :
+  class Account(config: ChainConfig, override val address: String) : ChainItem("account:${config.id}:$address", config)
+  class Contract(config: ChainConfig, override val deployment: Deployment) : ChainItem("contract:${deployment.id}", config)
+  class Function(config: ChainConfig, override val deployment: Deployment, val fn: AbiEntry.Function) :
     ChainItem("fn:${deployment.id}:${fn.signature}", config)
 }
 
@@ -340,6 +345,13 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
   }
 
+  /** Enabled only while the selected chain runs. */
+  private abstract inner class RunningChainAction(text: String, icon: javax.swing.Icon?) : ChainAction(text, icon) {
+    override fun update(e: AnActionEvent) {
+      e.presentation.isEnabled = selectedChain()?.let(service::isRunning) == true
+    }
+  }
+
   private inner class AddChainGroup : DefaultActionGroup("Add Chain", true) {
     init {
       templatePresentation.icon = AllIcons.General.Add
@@ -393,11 +405,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     }
   }
 
-  private inner class DeployAction : ChainAction("Deploy Contract…", AllIcons.Nodes.Deploy) {
-    override fun update(e: AnActionEvent) {
-      e.presentation.isEnabled = selectedChain()?.let(service::isRunning) == true
-    }
-
+  private inner class DeployAction : RunningChainAction("Deploy Contract…", AllIcons.Nodes.Deploy) {
     override fun actionPerformed(e: AnActionEvent) {
       val chain = selectedChain() ?: return
       val foundry = FoundryProject.find(project) ?: return noFoundry()
@@ -444,35 +452,17 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     }
   }
 
-  private inner class LowLevelCallAction : ChainAction("Low-level Call…", AllIcons.Nodes.Function) {
-    override fun update(e: AnActionEvent) {
-      e.presentation.isEnabled = selectedChain()?.let(service::isRunning) == true
-    }
-
+  private inner class LowLevelCallAction : RunningChainAction("Low-level Call…", AllIcons.Nodes.Function) {
     override fun actionPerformed(e: AnActionEvent) {
       val chain = selectedChain() ?: return
-      val target = when (val item = selected()) {
-        is ChainItem.Contract -> item.deployment.address
-        is ChainItem.Function -> item.deployment.address
-        is ChainItem.Account -> item.address
-        else -> null
-      }
-      ChainUi.showFormPopup(project, ChainUi.lowLevelForm(project, chain, target), null)
+      ChainUi.showFormPopup(project, ChainUi.lowLevelForm(project, chain, selected()?.address), null)
     }
   }
 
-  private inner class ReadStorageAction : ChainAction("Read Storage…", AllIcons.Nodes.DataTables) {
-    override fun update(e: AnActionEvent) {
-      e.presentation.isEnabled = selectedChain()?.let(service::isRunning) == true
-    }
-
+  private inner class ReadStorageAction : RunningChainAction("Read Storage…", AllIcons.Nodes.DataTables) {
     override fun actionPerformed(e: AnActionEvent) {
       val chain = selectedChain() ?: return
-      val deployment = when (val item = selected()) {
-        is ChainItem.Contract -> item.deployment
-        is ChainItem.Function -> item.deployment
-        else -> null
-      }
+      val deployment = selected()?.deployment
       StorageDialog(project, chain, deployment, deployment?.address).show()
     }
   }
@@ -484,11 +474,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     }
   }
 
-  private inner class RefreshAction : ChainAction("Refresh", AllIcons.Actions.Refresh) {
-    override fun update(e: AnActionEvent) {
-      e.presentation.isEnabled = selectedChain()?.let(service::isRunning) == true
-    }
-
+  private inner class RefreshAction : RunningChainAction("Refresh", AllIcons.Actions.Refresh) {
     override fun actionPerformed(e: AnActionEvent) {
       selectedChain()?.let { service.refresh(it) }
     }
@@ -534,19 +520,12 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
   }
 
   private inner class CopyAddressAction : ChainAction("Copy Address", AllIcons.Actions.Copy) {
-    private fun address() = when (val item = selected()) {
-      is ChainItem.Account -> item.address
-      is ChainItem.Contract -> item.deployment.address
-      is ChainItem.Function -> item.deployment.address
-      else -> null
-    }
-
     override fun update(e: AnActionEvent) {
-      e.presentation.isEnabledAndVisible = address() != null
+      e.presentation.isEnabledAndVisible = selected()?.address != null
     }
 
     override fun actionPerformed(e: AnActionEvent) {
-      address()?.let { CopyPasteManagerEx.getInstance().setContents(StringSelection(it)) }
+      selected()?.address?.let { CopyPasteManagerEx.getInstance().setContents(StringSelection(it)) }
     }
   }
 
@@ -555,13 +534,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       val item = selected() ?: return null
       val chainId = service.runtime(item.config.id).chainId ?: item.config.expectedChainId.toLongOrNull()
       if (!item.config.isNetworkChain) return null
-      val address = when (item) {
-        is ChainItem.Account -> item.address
-        is ChainItem.Contract -> item.deployment.address
-        is ChainItem.Function -> item.deployment.address
-        else -> return null
-      }
-      return KnownChains.addressUrl(chainId, address)
+      return KnownChains.addressUrl(chainId, item.address ?: return null)
     }
 
     override fun update(e: AnActionEvent) {
