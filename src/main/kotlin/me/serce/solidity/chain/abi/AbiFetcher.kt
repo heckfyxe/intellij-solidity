@@ -3,6 +3,7 @@ package me.serce.solidity.chain.abi
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
+import me.serce.solidity.chain.rpc.ChainHttp
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import me.serce.solidity.chain.rpc.RpcException
 import java.io.IOException
@@ -117,7 +118,7 @@ class AbiFetcher(
     private fun key(entry: JsonNode): String =
       "${entry["type"]?.asText()}:${entry["name"]?.asText()}(${entry["inputs"]?.joinToString(",") { it["type"]?.asText().orEmpty() }})"
 
-    private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NORMAL).build()
+    private val http by lazy { ChainHttp.client(connectTimeout = Duration.ofSeconds(10), redirect = HttpClient.Redirect.NORMAL) }
 
     private fun httpGet(url: String): Pair<Int, String> {
       val request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30)).header("Accept", "application/json").GET().build()

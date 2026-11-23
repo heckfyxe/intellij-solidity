@@ -196,6 +196,9 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   URLs other than the built-in public RPCs are kept in the password safe (`Secrets`), never in settings files; RPC
   errors and the UI show `JsonRpcClient.displayUrl` (no path or query, where API keys live). The first connect pins
   `expectedChainId`; a different id later refuses to connect.
+* HTTP to RPCs, Sourcify and Etherscan goes through `ChainHttp.client`: the IDE's proxy and trusted certificates, with
+  local hosts (anvil) always direct. `JsonRpcClient.batch` sends many reads in one request (balances, code after each
+  change) and falls back to single calls when a node rejects batches.
 * On a network `eth_accounts` is not used: the chain's `WalletConfig`s are its accounts, and read-only calls run
   without a sender. `KnownChains` says which chain ids are mainnets (unknown ids count as mainnets) and where their
   explorers are.

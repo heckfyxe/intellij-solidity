@@ -7,7 +7,6 @@ import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.abi.toHex
 import java.math.BigInteger
 import java.net.URI
-import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
@@ -132,7 +131,7 @@ class JsonRpcClient(val url: String) {
     /** Public RPCs cap batches; some at 10 calls. */
     private const val MAX_BATCH = 10
     /** One client for all chains: each HttpClient owns a selector thread. */
-    private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
+    private val http by lazy { ChainHttp.client(connectTimeout = Duration.ofSeconds(5)) }
 
     fun redact(url: String): String = runCatching {
       val u = URI.create(url)
