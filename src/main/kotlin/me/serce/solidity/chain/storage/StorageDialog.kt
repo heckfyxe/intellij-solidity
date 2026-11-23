@@ -57,7 +57,8 @@ class StorageDialog(
     column("Slot") { it.row.slot.slotLabel() + if (it.row.offset > 0) " +${it.row.offset}" else "" },
     column("Value") { it.value },
   )
-  private val table = TableView(model)
+  // Cells are selected one by one so Copy takes just the selected values (a single slot's value), not whole rows.
+  private val table = TableView(model).apply { cellSelectionEnabled = true }
 
   init {
     title = "Storage" + (deployment?.let { " of ${it.name}" } ?: "") + " on ${chain.name}"
