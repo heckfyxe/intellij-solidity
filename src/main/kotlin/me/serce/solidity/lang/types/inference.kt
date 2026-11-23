@@ -109,7 +109,7 @@ fun inferDeclType(decl: SolNamedElement): SolType {
     is SolDeclarationItem -> {
       val list = decl.findParent<SolDeclarationList>() ?: decl.findParent<SolTypedDeclarationList>() ?: return SolUnknown
       val def = list.findParent<SolVariableDefinition>() ?: return SolUnknown
-      val inferred = inferExprType(def.expression)
+      val inferred = def.expression.typeOrUnknown
       val declarationItemList = (list as? SolDeclarationList)?.declarationItemList
         ?: (list as? SolTypedDeclarationList)?.typedDeclarationItemList ?: return SolUnknown
       val declIndex = declarationItemList.indexOf(decl)
@@ -119,7 +119,7 @@ fun inferDeclType(decl: SolNamedElement): SolType {
     is SolVariableDeclaration -> {
       return if (decl.typeName == null || decl.typeName?.firstChild?.text == "var") {
         when (val parent = decl.parent) {
-          is SolVariableDefinition -> inferExprType(parent.expression)
+          is SolVariableDefinition -> parent.expression.typeOrUnknown
           else -> SolUnknown
         }
       } else getSolType(decl.typeName)
@@ -146,9 +146,9 @@ fun inferRefType(ref: SolVarLiteral): SolType {
     }
     "super" -> SolUnknown
     else -> {
-      val declarations = SolResolver.resolveVarLiteral(ref)
+      val declarations = ref.reference?.multiResolve().orEmpty()
       return declarations.asSequence()
-        .map { inferDeclType(it) }
+        .map { (it as? SolNamedElement)?.let(::inferDeclType) ?: SolUnknown }
         .firstOrNull { it != SolUnknown } ?: SolUnknown
     }
   }
@@ -186,8 +186,8 @@ fun inferExprType(expr: SolExpression?): SolType {
       val operands = PsiTreeUtil.getChildrenOfTypeAsList(expr, SolExpression::class.java)
       getNumericExpressionType(
         operands.firstOrNull()?.let { PsiTreeUtil.skipWhitespacesAndCommentsForward(it) }?.text,
-        inferExprType(operands.firstOrNull()),
-        inferExprType(operands.secondOrNull())
+        operands.firstOrNull().typeOrUnknown,
+        operands.secondOrNull().typeOrUnknown
       )
     }
     is SolFunctionCallExpression -> {
@@ -203,9 +203,9 @@ fun inferExprType(expr: SolExpression?): SolType {
     is SolOrExpression,
     is SolEqExpression,
     is SolCompExpression -> SolBoolean
-    is SolTernaryExpression -> inferExprType(expr.expressionList.secondOrNull())
+    is SolTernaryExpression -> expr.expressionList.secondOrNull().typeOrUnknown
     is SolIndexAccessExpression -> {
-      when (val arrType = inferExprType(expr.expressionList.firstOrNull())) {
+      when (val arrType = expr.expressionList.firstOrNull().typeOrUnknown) {
         is SolArray -> arrType.type
         is SolMapping -> arrType.to
         is SolFixedBytes -> SolFixedBytes(1)
@@ -224,10 +224,10 @@ fun inferExprType(expr: SolExpression?): SolType {
     }
     is SolSeqExpression -> when {
       expr.expressionList.isEmpty() -> SolUnknown
-      else -> inferExprType(expr.expressionList.firstOrNull())
+      else -> expr.expressionList.firstOrNull().typeOrUnknown
     }
     is SolUnaryExpression -> {
-      val operandType = inferExprType(expr.expression)
+      val operandType = expr.expression.typeOrUnknown
       val constant = operandType.constantValue
       when (expr.firstChild?.text) {
         "!" -> SolBoolean
@@ -355,7 +355,7 @@ private fun typeOfTypeExpression(expr: SolExpression): SolType = when (expr) {
       }
     }
   }
-  else -> when (val type = inferExprType(expr)) {
+  else -> when (val type = expr.type) {
     is SolUserDefinedValueTypeReferenceType -> SolUserDefinedValueTypeType(type.ref)
     else -> type
   }
@@ -385,6 +385,10 @@ fun SolMemberAccessExpression.getMembers(): List<SolMember> {
     }
   }
 }
+
+/** The cached [type] of a possibly missing expression. */
+private val SolExpression?.typeOrUnknown: SolType
+  get() = this?.type ?: SolUnknown
 
 val SolExpression.type: SolType
   get() {
