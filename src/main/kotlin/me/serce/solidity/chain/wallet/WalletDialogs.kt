@@ -71,7 +71,7 @@ class AddWalletDialog(private val project: Project, private val kind: WalletKind
   val wallet = WalletConfig().also { it.kind = kind }
   private val keystoreModel = CollectionComboBoxModel(CastWallet.defaultKeystores().toMutableList())
   private val keystoreCombo = ComboBox(keystoreModel).apply {
-    renderer = SimpleListCellRenderer.create("") { f -> f?.let { if (it.parentFile == CastWallet.defaultKeystores().firstOrNull()?.parentFile) it.name else it.path } ?: "" }
+    renderer = SimpleListCellRenderer.create("") { f -> f?.let { if (it.parentFile == CastWallet.defaultKeystoreDir) it.name else it.path } ?: "" }
   }
   private val pathField = JBTextField()
   private val addressField = JBTextField()

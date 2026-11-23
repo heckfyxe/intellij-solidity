@@ -140,7 +140,10 @@ class CastWallet(private val cast: String) {
     }
 
     /** Foundry's default keystore folder, where `cast wallet import` puts keys. */
+    val defaultKeystoreDir = File(System.getProperty("user.home"), ".foundry/keystores")
+
+    /** The keystores in [defaultKeystoreDir]. */
     fun defaultKeystores(): List<File> =
-      File(System.getProperty("user.home"), ".foundry/keystores").listFiles { f -> f.isFile && !f.name.startsWith(".") }.orEmpty().sortedBy { it.name }
+      defaultKeystoreDir.listFiles { f -> f.isFile && !f.name.startsWith(".") }.orEmpty().sortedBy { it.name }
   }
 }
