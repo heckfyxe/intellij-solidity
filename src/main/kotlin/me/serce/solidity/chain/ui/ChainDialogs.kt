@@ -370,11 +370,20 @@ class AttachDialog(
     return a.length == 40 && a.all { Character.digit(it, 16) >= 0 }
   }
 
+  /** [parsedAbi]'s last text and result: validation asks on every tick, and a large ABI takes a while to parse. */
+  private var lastParsed: Pair<String, Pair<AbiText.Parsed?, String?>>? = null
+
   /** The parsed ABI when attaching by ABI; null with a validation error otherwise. */
-  private fun parsedAbi(): Pair<AbiText.Parsed?, String?> = try {
-    AbiText.parse(abiArea.text) to null
-  } catch (e: AbiInputException) {
-    null to e.message
+  private fun parsedAbi(): Pair<AbiText.Parsed?, String?> {
+    val text = abiArea.text
+    lastParsed?.let { (t, result) -> if (t == text) return result }
+    val result = try {
+      AbiText.parse(text) to null
+    } catch (e: AbiInputException) {
+      null to e.message
+    }
+    lastParsed = text to result
+    return result
   }
 
   override fun doValidate(): ValidationInfo? {
