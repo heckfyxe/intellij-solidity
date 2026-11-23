@@ -29,4 +29,14 @@ object SolidityParserUtil : GeneratedParserUtilBase() {
       i--
     }
   }
+
+  /**
+   * Adds `';'` to the tokens expected at the current position without consuming anything, so a declaration or
+   * statement followed by junk (`address a private;`) reports `';' expected` before recovery skips the junk.
+   */
+  @JvmStatic
+  fun semicolonExpected(b: PsiBuilder, level: Int): Boolean {
+    addVariant(b, ";")
+    return true
+  }
 }

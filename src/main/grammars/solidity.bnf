@@ -110,6 +110,8 @@ SourceUnit ::= (
 
 private UntilSemicolonRecover ::= !(';')
 private UntilBraceRecover ::= !('}')
+// Recovery inside a parenthesized list (parameters, mapping types): stops at its ')' or where the declaration ends.
+private UntilParenRecover ::= !(')' | ';' | '{' | '}')
 // Recovery of a statement or declaration that should end with ';': stops at the line break before the next
 // line, so a missing ';' is reported at the end of the line and the next line still parses.
 private UntilSemicolonOrNewLineRecover ::= !(';' | '}' | <<afterNewLine>>)
@@ -150,7 +152,7 @@ ImportDirective ::= ImportDirectivePart ';'
 
 ContractDefinition ::= abstract? ( contract | library | interface ) Identifier
                      ( LayoutAtSpecifier
-                     | is InheritanceSpecifier (',' InheritanceSpecifier )* )*
+                     | InheritanceList )*
                      '{' ContractPart* '}' {
     pin = 2
     implements = "me.serce.solidity.lang.psi.SolContractOrLibElement"
@@ -177,6 +179,8 @@ private ContractPart ::=
     | ConstructorDefinition
 
 InheritanceSpecifier ::= UserDefinedTypeName CallArgumentList?
+private InheritanceList ::= is InheritanceSpecifier NextInheritanceSpecifier* {pin=1}
+private NextInheritanceSpecifier ::= ',' InheritanceSpecifier {pin=1}
 
 VisibilityModifier ::= ( public | internal | private )
 private transient_kw ::= &('transient' (Identifier | VisibilityModifier)) Identifier
@@ -191,7 +195,11 @@ StateVariableDeclaration ::= TypeName (MutationModifier | VisibilityModifier | O
     elementTypeFactory = "me.serce.solidity.lang.stubs.ImplKt.factory"
 }
 
-private StateVariableInitializer ::= ('=' Expression)? {recoverWhile = UntilSemicolonOrNewLineRecover}
+// like a state variable: a member missing its ';' keeps its PSI and the next line still parses
+private StructMember ::= VariableDeclaration StructMemberEnd ';' {pin=1}
+private StructMemberEnd ::= <<semicolonExpected>> {recoverWhile = UntilSemicolonOrNewLineRecover}
+
+private StateVariableInitializer ::= ('=' Expression)? <<semicolonExpected>> {recoverWhile = UntilSemicolonOrNewLineRecover}
 
 /**
  * The declaration of a constant variable.
@@ -231,8 +239,7 @@ UsingForDeclaration ::= using ( UserDefinedTypeName |
     mixin = "me.serce.solidity.lang.psi.impl.SolUsingForMixin"
 }
 
-StructDefinition ::= struct Identifier '{'
-                     ( VariableDeclaration ';' (VariableDeclaration ';')* )? '}' {
+StructDefinition ::= struct Identifier '{' StructMember* '}' {
     pin=1
     implements = "me.serce.solidity.lang.psi.SolCallableElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolStructDefMixin"
@@ -250,7 +257,9 @@ ModifierDefinition ::= modifier Identifier ParameterList? ( VirtualSpecifier | O
 }
 
 VirtualSpecifier ::= virtual {pin=1}
-OverrideSpecifier ::= override ( '(' UserDefinedTypeName (',' UserDefinedTypeName)* ')' )? {pin=1}
+OverrideSpecifier ::= override OverrideBases? {pin=1}
+private OverrideBases ::= '(' UserDefinedTypeName NextOverrideBase* ')' {pin=1}
+private NextOverrideBase ::= ',' UserDefinedTypeName {pin=1}
 
 FunctionVisibilitySpecifier ::= VisibilitySpecifier | VirtualSpecifier | OverrideSpecifier
 // qualified for base constructors: `constructor() Lib.Base(1)`
@@ -272,7 +281,7 @@ ConstructorDefinition ::= constructor ParameterList
 FunctionDefinition ::= (function Identifier? | fallback | receive )
                         ParameterList
                         ( FunctionVisibilitySpecifier | StateMutabilitySpecifier | ModifierInvocation)*
-                        ( returns ParameterList )? ( ';' | Block ) {
+                        FunctionReturns? ( ';' | Block ) {
     pin = 1
     implements = "me.serce.solidity.lang.psi.SolFunctionDefElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolFunctionDefMixin"
@@ -319,13 +328,22 @@ UserDefinedValueTypeDefinition ::= type Identifier is ElementaryTypeName ';' {
 }
 
 // pinned so that an unclosed list (`event E(uint a` while typing) stays inside its event or error
-IndexedParameterList ::= '(' (  IndexedParamDef (',' IndexedParamDef )*)? ')' {pin=1}
+IndexedParameterList ::= '(' IndexedParameterListItems ')' {pin=1}
+private IndexedParameterListItems ::= ( IndexedParamDef NextIndexedParamDef* )? {recoverWhile = UntilParenRecover}
+private NextIndexedParamDef ::= ',' IndexedParamDef {pin=1}
 IndexedParamDef ::= TypeName indexed?  Identifier?
 ParameterDef ::= TypeName (constant StorageLocationSpecifier? | StorageLocationSpecifier constant?)? Identifier? {
     implements = "me.serce.solidity.lang.psi.SolNamedElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolParameterDefMixin"
 }
-ParameterList ::= '(' ( ParameterDef (',' ParameterDef)* )? ')'
+// pinned: an error inside the list stays there instead of making the whole function backtrack
+ParameterList ::= '(' ParameterListItems ')' {pin=1}
+private ParameterListItems ::= ( ParameterDef NextParameterDef* )? {recoverWhile = UntilParenRecover}
+private NextParameterDef ::= ',' ParameterDef {pin=1}
+private ReturnsList ::= returns ParameterList {pin=1}
+// `returns uint` skips to the body, so the function and the rest of the contract still parse
+private FunctionReturns ::= returns ParameterList {pin=1 recoverWhile = UntilBodyRecover}
+private UntilBodyRecover ::= !('{' | ';' | '}' | <<afterNewLine>>)
 
 // semantic restriction: mappings and structs (recursively) containing mappings
 // are not allowed in argument lists
@@ -383,9 +401,10 @@ UserDefinedTypeName ::= Identifier ( '.' Identifier )* {
     elementTypeFactory = "me.serce.solidity.lang.stubs.ImplKt.factory"
 }
 
+private MappingTypes ::= MappingKey '=>' MappingValue {pin=1 recoverWhile = UntilParenRecover}
 private MappingKey ::= (BytesArrayTypeName | ElementaryTypeName | UserDefinedTypeName ) Identifier?
 private MappingValue ::= TypeName Identifier?
-MappingTypeName ::= mapping '(' MappingKey '=>' MappingValue ')' {
+MappingTypeName ::= mapping '(' MappingTypes ')' {
     pin = 1
     stubClass = "me.serce.solidity.lang.stubs.SolTypeRefStub"
     elementTypeFactory = "me.serce.solidity.lang.stubs.ImplKt.factory"
@@ -393,7 +412,7 @@ MappingTypeName ::= mapping '(' MappingKey '=>' MappingValue ')' {
 
 // According to grammar.txt, it should be only TypeNameList after function, but according to reality ...
 FunctionTypeName ::= function ParameterList ( VisibilitySpecifier | StateMutabilitySpecifier )*
-                   ( returns ParameterList )? {
+                   ReturnsList? {
     pin = 1
     stubClass = "me.serce.solidity.lang.stubs.SolTypeRefStub"
     elementTypeFactory = "me.serce.solidity.lang.stubs.ImplKt.factory"
@@ -419,7 +438,11 @@ private UnfinishedBlock ::= '{' (UncheckedBlock | Statement)* {
 }
 Block ::= UnfinishedBlock '}'
 
-private FinishedStatement ::=
+// <<semicolonExpected>> makes the error before recovery say that ';' was expected, as solc does
+private FinishedStatement ::= FinishedStatementKind <<semicolonExpected>> {
+    recoverWhile = UntilSemicolonOrNewLineRecover
+}
+private FinishedStatementKind ::=
     DoWhileStatement
     | PlaceholderStatement
     | ContinueSt
@@ -428,9 +451,7 @@ private FinishedStatement ::=
     | ThrowSt
     | EmitStatement
     | RevertStatement
-    | SimpleStatement {
-    recoverWhile = UntilSemicolonOrNewLineRecover
-}
+    | SimpleStatement
 // pinned so that a missing ';' is reported as such and the statement keeps its PSI
 private FinishedStatementWithSemicolon ::= FinishedStatement ';' {pin = 1}
 Statement ::= IfStatement | TryStatement | WhileStatement | ForStatement | Block | InlineAssemblyStatement | TupleStatement | ReturnTupleStatement | FinishedStatementWithSemicolon
@@ -445,7 +466,7 @@ ReturnTupleStatement ::= return SeqExpression ';'
 
 private ExpressionStatement ::= Expression
 IfStatement ::= if '(' Expression ')' Statement ( else Statement )? {pin = 1}
-TryStatement ::= try Expression ( returns ParameterList )? Block CatchClause* {pin = 1}
+TryStatement ::= try Expression ReturnsList? Block CatchClause* {pin = 1}
 CatchClause ::= catch ( Identifier? ParameterList )? Block {pin = 1}
 WhileStatement ::= while '(' Expression ')' Statement {pin = 1}
 PlaceholderStatement ::= '_'
@@ -538,8 +559,10 @@ FunctionInvocation ::= MapExpression? '(' FunctionCallArguments? ')'
 FunctionCallArguments ::= MapExpression | Expression? NextCallArgument*
 private NextCallArgument ::= ',' Expression {pin=1}
 MapExpressionClause ::= Identifier ':' (Expression | MapExpression) {pin=2}
-private UnfinishedMapExpression ::= '{' MapExpressionClause (',' MapExpressionClause )* {
-    pin=1
+// pinned only after `{ name:` (or `{ :`, a missing name): a pinned `{` that turns out not to be call options (`if (x > 1 {`) is rolled back
+// but still hides the real error after it (`')' expected`)
+private UnfinishedMapExpression ::= '{' &(Identifier? ':') MapExpressionClause (',' MapExpressionClause )* {
+    pin=2
     recoverWhile = UntilBraceRecover
 }
 

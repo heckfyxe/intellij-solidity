@@ -197,4 +197,6 @@ class SolidityCompleteOfficialFailingParsingTest :
 
 class SolidityRecoveryParsingTest : SolidityParsingTestBase("fixtures/parser/recovery") {
   fun testMissingSemicolon() = doTest(true)
+  fun testStateVariableModifiersAfterName() = doTest(true)
+  fun testListErrors() = doTest(true)
 }

@@ -18,7 +18,7 @@ Solidity File
       SolPrimaryExpressionImpl(PRIMARY_EXPRESSION)
         SolNumberLiteralImpl(NUMBER_LITERAL)
           PsiElement(fixedNumber)('3.14')
-      PsiErrorElement:<function invocation> or <number unit> expected, got '.15'
+      PsiErrorElement:';', <function invocation> or <number unit> expected, got '.15'
         PsiElement(fixedNumber)('.15')
       PsiElement(;)(';')
     PsiWhiteSpace('\n')

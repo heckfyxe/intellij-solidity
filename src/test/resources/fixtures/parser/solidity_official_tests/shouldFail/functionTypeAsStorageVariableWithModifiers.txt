@@ -40,13 +40,9 @@ Solidity File
             SolNumberTypeImpl(NUMBER_TYPE)
               PsiElement(uIntNumType)('uint')
         PsiElement())(')')
-      PsiErrorElement:';' or '{' expected, got 'f1'
-        <empty list>
-  PsiWhiteSpace(' ')
-  SolPrimaryExpressionImpl(PRIMARY_EXPRESSION)
-    SolVarLiteralImpl(VAR_LITERAL)
-      PsiElement(Identifier)('f1')
-  PsiErrorElement:'.', <constant variable declaration>, <contract definition>, <expression>, <function definition>, <function invocation>, <mutation modifier>, <storage location specifier>, <visibility modifier>, Identifier, enum, error, event, import, override, pragma, struct, type or using expected, got ';'
-    PsiElement(;)(';')
-  PsiWhiteSpace('\n')
-  PsiElement(})('}')
+      PsiWhiteSpace(' ')
+      PsiErrorElement:'f1' unexpected
+        PsiElement(Identifier)('f1')
+      PsiElement(;)(';')
+    PsiWhiteSpace('\n')
+    PsiElement(})('}')

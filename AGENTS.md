@@ -35,6 +35,17 @@ unless `(` follows, so `function f(`/`error E(` still parse as declarations) kee
 (`SolidityParserUtil.afterNewLine`, an external `<<rule>>`), so the next line parses normally and keeps highlighting,
 completion and resolve. Recovery tests with expected errors are in `fixtures/parser/recovery` (`SolidityRecoveryParsingTest`).
 
+Error messages should name what solc expects, at the token solc points to:
+* `<<semicolonExpected>>` (`SolidityParserUtil.semicolonExpected`) adds `';'` to the expected tokens right before a
+  `recoverWhile`, so `address a private;` reports `';' or '=' expected` instead of only `'=' expected`.
+* Lists are pinned on their opening token (parameter lists and `,` continuations, `returns`, `override(...)`, `is ...`,
+  mapping types, struct members) and recover up to `)` (`UntilParenRecover`), so an error stays inside the list
+  instead of making the whole declaration backtrack and report at its first token.
+* A pinned rule that fails and is rolled back still hides the next real error (the frame remembers the error offset).
+  Call options (`UnfinishedMapExpression`) are therefore pinned only after `{ name:`, otherwise `if (x > 1 {` lost its
+  `')' expected`. Pin only where the construct can't be anything else.
+Recovery tests for these are in `fixtures/parser/recovery` (`listErrors`, `stateVariableModifiersAfterName`).
+
 NatSpec tags (`NAT_SPEC_TAG`) are lexed inside comments only when the `@` follows whitespace, `*` or `/`
 (`/// @notice`, `///@notice`, ` *@dev`, a tag at the start of a block comment line), as solc accepts them; `a@b` stays
 comment text. Quick Documentation, NatSpec completion/inspections and highlighting all depend on that token.
