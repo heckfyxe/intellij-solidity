@@ -49,7 +49,13 @@ Recovery tests for these are in `fixtures/parser/recovery` (`listErrors`, `state
 Expression rules (the alternatives of `Expression`) are parsed by Grammar-Kit's operator-precedence parser; later
 alternatives bind tighter. Never `pin` an expression rule: a pinned prefix rule becomes an ATOM taking a whole
 `Expression`, so `-a + b` parsed as `-(a + b)`. Check the "Operator priority table" comment in the generated
-`SolidityParser.java` (`PREFIX(UnaryExpression)`, `BINARY(...)`) after changing them.
+`SolidityParser.java` (`PREFIX(UnaryExpression)`, `BINARY(...)`) after changing them. A reference to one expression
+rule from a non-expression rule (`emit FunctionCallExpression`) accepts *any* expression; `emit`/`revert` use the
+external `<<callExpression>>`, which reports `'(' expected` when the expression isn't a call.
+
+`revert` is not a keyword. `RevertStatement` is only `revert Error(...)`/`revert L.Error(...)` (an identifier must
+follow); the builtin `revert("msg")`/`revert()` is an ordinary `FunctionCallExpression` resolving to the global
+function.
 
 NatSpec tags (`NAT_SPEC_TAG`) are lexed inside comments only when the `@` follows whitespace, `*` or `/`
 (`/// @notice`, `///@notice`, ` *@dev`, a tag at the start of a block comment line), as solc accepts them; `a@b` stays

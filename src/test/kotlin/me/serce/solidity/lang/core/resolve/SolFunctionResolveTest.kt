@@ -425,6 +425,28 @@ class SolFunctionResolveTest : SolResolveTestBase() {
   """)
   }
 
+  fun testResolveBuiltinRevertWithMessage() {
+    checkIsResolved("""
+        contract B {
+            function doit() public {
+                revert("failed");
+                 //^
+            }
+        }
+  """)
+  }
+
+  fun testResolveBuiltinRevertWithoutArguments() {
+    checkIsResolved("""
+        contract B {
+            function doit() public {
+                revert();
+                 //^
+            }
+        }
+  """)
+  }
+
   fun testResolveArrayPush() {
     checkIsResolved("""
         contract B {

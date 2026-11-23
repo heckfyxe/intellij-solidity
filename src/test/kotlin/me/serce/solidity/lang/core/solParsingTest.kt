@@ -63,6 +63,7 @@ class SolidityCompleteCustomParsingTest : SolidityParsingTestBase("fixtures/pars
   fun testNew() = doTest(true, true)
   fun testPragma() = doTest(true, true)
   fun testReturnTuples() = doTest(true, true)
+  fun testRevertEmit() = doTest(true, true)
   fun testSlice() = doTest(true, true)
   fun testStateMutability() = doTest(true, true)
   fun testStateVars() = doTest(true, true)
@@ -205,4 +206,5 @@ class SolidityRecoveryParsingTest : SolidityParsingTestBase("fixtures/parser/rec
   fun testMissingSemicolon() = doTest(true)
   fun testStateVariableModifiersAfterName() = doTest(true)
   fun testListErrors() = doTest(true)
+  fun testRevertEmitErrors() = doTest(true)
 }

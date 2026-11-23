@@ -39,4 +39,18 @@ object SolidityParserUtil : GeneratedParserUtilBase() {
     addVariant(b, ";")
     return true
   }
+
+  /**
+   * The call after `emit`/`revert`: an expression that must be a function call. A rule reference to
+   * `FunctionCallExpression` would accept any expression (Grammar-Kit parses the whole precedence level), so
+   * `emit x;` parsed without an error; here a non-call keeps its PSI and gets solc's `'(' expected`.
+   */
+  @JvmStatic
+  fun callExpression(b: PsiBuilder, level: Int): Boolean {
+    if (!me.serce.solidity.SolidityParser.Expression(b, level + 1, -1)) return false
+    if (b.latestDoneMarker?.tokenType != SolidityTokenTypes.FUNCTION_CALL_EXPRESSION) {
+      b.error(if (b.eof()) "'(' expected, unexpected end of file" else "'(' expected, got '${b.tokenText}'")
+    }
+    return true
+  }
 }

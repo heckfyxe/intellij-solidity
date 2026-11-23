@@ -481,10 +481,12 @@ BreakSt ::= break
 ReturnSt ::= return Expression? {pin=1}
 ThrowSt ::= throw
 /* An emit statement. The contained expression needs to refer to an event. */
-EmitStatement ::= emit FunctionCallExpression {pin=1}
+EmitStatement ::= emit <<callExpression>> {pin=1}
 /* A revert statement. The contained expression needs to refer to an error. */
 // Note, revert can't be a keyword as it could be used as e.g. a function name
-RevertStatement ::= 'revert' FunctionCallExpression
+// only `revert Error(...)`/`revert L.Error(...)`: the builtin `revert("msg")`/`revert()` stays an ordinary call, so it
+// resolves to the global function
+RevertStatement ::= 'revert' &Identifier <<callExpression>> {pin=2}
 // Tuple or parenthesized expression. Allow optional elements like `(,x)`
 // and avoid excessive backtracking on deeply nested expressions by using
 // a comma-separated list of optional expressions.
