@@ -191,7 +191,8 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   project decodes every state variable from `forge inspect <path>:<name> storageLayout --json` (`StorageLayout`):
   packed values sit at `offset` bytes from the word's right end, strings are short (length*2 in the last byte) or long
   (data at `keccak(slot)`), mapping entries are at `keccak(key . slot)` with value-type keys padded to a word and
-  string/bytes keys unpadded.
+  string/bytes keys unpadded. "Decode as" (`StorageLayout.decodePacked`) unpacks user-listed value types the same way,
+  moving to the next slot when one does not fit.
 
 ## Foundry Integration
 

@@ -149,6 +149,38 @@ class StorageLayout(val variables: List<Variable>, private val types: Map<String
       }
     }
 
+    /**
+     * Decodes value types the user lists for [slot] (e.g. `uint128, address, bool`), packed as solc packs state
+     * variables: from the word's low-order end, a value that doesn't fit what is left moving to the next slot.
+     * Returns one `slot +offset type: value` line per type.
+     */
+    fun decodePacked(typesText: String, slot: BigInteger, reader: StorageReader): List<String> {
+      val types = typesText.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+      if (types.isEmpty()) throw AbiInputException("Enter types, e.g. uint128, address, bool")
+      val sized = types.map { name ->
+        val label = name.replace(Regex("\\s+"), " ")
+        val size = when (val t = AbiType.parse(label.removePrefix("address payable").ifEmpty { "address" })) {
+          is AbiType.UInt -> t.bits / 8
+          is AbiType.Int -> t.bits / 8
+          AbiType.Address -> 20
+          AbiType.Bool -> 1
+          is AbiType.FixedBytes -> t.size
+          else -> if (label.startsWith("enum")) 1 else throw AbiInputException("$name is not a value type that fits in a slot")
+        }
+        if (size !in 1..32) throw AbiInputException("$name is not a valid type")
+        label to size
+      }
+      val words = HashMap<BigInteger, ByteArray>()
+      var current = slot
+      var offset = 0
+      return sized.map { (label, size) ->
+        if (offset + size > 32) { current += BigInteger.ONE; offset = 0 }
+        val word = words.getOrPut(current) { reader.word(current) }
+        val value = decodeValue(extract(word, offset, size), if (label.startsWith("enum")) "enum" else label)
+        "slot ${current.slotLabel()}${if (offset > 0) " +$offset" else ""}  $label: $value".also { offset += size }
+      }
+    }
+
     /** Parses a slot typed by the user: decimal or 0x-hex. */
     fun parseSlot(text: String): BigInteger {
       val t = text.trim().replace("_", "")

@@ -36,6 +36,22 @@ class StorageLayoutTest : BasePlatformTestCase() {
     assertEquals("255", StorageLayout.decodeValue(byteArrayOf(-1), "uint8"))
   }
 
+  fun testDecodePackedTypes() {
+    // slot 0: int8 -3 at offset 0, bool true at 1, address 0xdead at 2; slot 1: uint256 42
+    val slot0 = ("0x" + "00".repeat(10) + "000000000000000000000000000000000000dead" + "01" + "fd").hexToBytes()
+    val slot1 = BigInteger.valueOf(42).toWord()
+    val reader = StorageReader { if (it.signum() == 0) slot0 else slot1 }
+    assertEquals(
+      listOf("slot 0  int8: -3", "slot 0 +1  bool: true", "slot 0 +2  address: ${AbiCodec.checksum("0x000000000000000000000000000000000000dead")}"),
+      StorageLayout.decodePacked("int8, bool, address", BigInteger.ZERO, reader),
+    )
+    // a uint256 doesn't fit after the int8, so it is read from the next slot
+    assertEquals(listOf("slot 0  uint8: 253", "slot 1  uint256: 42"), StorageLayout.decodePacked("uint8,uint256", BigInteger.ZERO, reader))
+    assertEquals(listOf("slot 0 +1  uint8: 1"), StorageLayout.decodePacked("bytes1, uint8", BigInteger.ZERO, reader).drop(1))
+    assertThrows { StorageLayout.decodePacked("string", BigInteger.ZERO, reader) }
+    assertThrows { StorageLayout.decodePacked(" ", BigInteger.ZERO, reader) }
+  }
+
   private fun assertThrows(body: () -> Unit) {
     try {
       body()

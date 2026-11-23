@@ -4,6 +4,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextField
@@ -41,6 +42,7 @@ class StorageDialog(
   private val addressField = JBTextField(address.orEmpty())
   private val slotField = JBTextField("0")
   private val slotResult = JBLabel(" ").apply { setCopyable(true) }
+  private val typesField = JBTextField()
   private val layoutStatus = JBLabel(" ")
   private val keyField = JBTextField()
   private val keyResult = JBLabel(" ").apply { setCopyable(true) }
@@ -62,6 +64,8 @@ class StorageDialog(
     isModal = false
     slotField.emptyText.text = "5, 0x360894…"
     slotField.addActionListener { readSlot() }
+    typesField.emptyText.text = "uint128, address, bool  (optional)"
+    typesField.addActionListener { readSlot() }
     keyField.addActionListener { lookUp() }
     lookUpButton.addActionListener { lookUp() }
     table.selectionModel.addListSelectionListener { updateLookUp() }
@@ -77,6 +81,10 @@ class StorageDialog(
     row("Slot:") {
       cell(slotField).align(AlignX.FILL).resizableColumn()
       button("Read") { readSlot() }
+    }
+    row("Decode as:") {
+      cell(typesField).align(AlignX.FILL)
+        .comment("Value types packed in the slot, from its low-order end as solc packs them; one that doesn't fit continues in the next slot")
     }
     row("") { cell(slotResult) }
     if (deployment?.sourcePath?.isNotEmpty() == true) {
@@ -134,8 +142,12 @@ class StorageDialog(
       return
     }
     val reader = reader() ?: return
+    val types = typesField.text
     slotResult.text = "reading…"
-    background({ describeWord(reader.word(slot)) }) { slotResult.text = it }
+    background({
+      if (types.isBlank()) describeWord(reader.word(slot))
+      else "<html>" + StorageLayout.decodePacked(types, slot, reader).joinToString("<br>") { StringUtil.escapeXmlEntities(it) } + "</html>"
+    }) { slotResult.text = it }
   }
 
   private fun loadLayout() {
