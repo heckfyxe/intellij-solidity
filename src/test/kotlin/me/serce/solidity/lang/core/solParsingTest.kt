@@ -77,6 +77,7 @@ class SolidityCompleteCustomParsingTest : SolidityParsingTestBase("fixtures/pars
   fun testUnicodeStrings() = doTest(true, true)
   fun testUserDefinedValueTypes() = doTest(true, true)
   fun testUsing() = doTest(true, true)
+  fun testYulKeywordNames() = doTest(true, true)
   // The code below test is inlined as is rather than being placed in a .sol file
   // because prior to 2.4.7, the parser would cause IntelliJ to hang on this input.
   fun testDeepNesting() = doCodeTest("""

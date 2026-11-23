@@ -17,6 +17,19 @@ class SolYulResolveTest : SolResolveTestBase() {
         }
   """)
 
+  fun testSolidityKeywordAsYulName() = checkByCode("""
+        contract C {
+            function f() public {
+                assembly {
+                    let days := 1
+                        //x
+                    let y := add(days, 2)
+                                //^
+                }
+            }
+        }
+  """)
+
   fun testMultipleLetVariables() = checkByCode("""
         contract C {
             function f() public {

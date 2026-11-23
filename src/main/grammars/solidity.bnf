@@ -630,7 +630,8 @@ YulDefault ::= 'default'
 private YulLParen ::= '('
 private YulRParen ::= ')'
 private YulArrow ::= '->'
-private YulIdentifier ::= Identifier
+// Solidity keywords are names in Yul (`let days := 1`): <<yulName>> remaps them to Identifier
+private YulIdentifier ::= <<yulName>> Identifier
 // Keep in sync with
 // https://github.com/ethereum/solidity/blob/develop/docs/grammar/SolidityLexer.g4#L274-L288
 private YulEVMBuiltin ::=
@@ -699,7 +700,7 @@ YulBlock ::= YulLBrace YulStatement* YulRBrace { pin=1 }
 YulVariableDeclaration ::= YulLet YulVariable (YulComma YulVariable)* (YulAssign YulExpression)?  { pin=1 }
 
 /** A Yul variable, function parameter or return variable being declared. */
-YulVariable ::= Identifier {
+YulVariable ::= <<yulName>> Identifier {
     implements = "me.serce.solidity.lang.psi.SolNamedElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolYulVariableMixin"
 }
