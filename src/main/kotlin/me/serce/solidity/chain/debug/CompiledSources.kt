@@ -6,10 +6,11 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import me.serce.solidity.chain.LinePositions
 import me.serce.solidity.chain.Offsets
 import me.serce.solidity.chain.abi.hexToBytes
-import me.serce.solidity.chain.foundry.artifactFiles
 import me.serce.solidity.chain.foundry.compilationTarget
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Optional
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
@@ -111,11 +112,16 @@ data class SourceMapEntry(val start: Int, val length: Int, val file: Int) {
   }
 }
 
-/** Contracts compiled by forge into [outDir], read lazily and only when a failure needs explaining. */
-class CompiledSources(private val root: Path, private val outDir: Path) {
-  private val sourceCache = HashMap<String, String?>()
+/**
+ * Contracts compiled by forge into [outDir] ([artifacts]: their JSON, see `ForgeOutput`), with their source maps read
+ * lazily and only when a failure needs explaining. Shared by all failures until the next build, so thread-safe.
+ */
+class CompiledSources(private val root: Path, private val outDir: Path, private val artifacts: List<JsonNode>) {
+  private val sourceCache = ConcurrentHashMap<String, Optional<String>>()
   private val readSource: (String) -> String? = { path ->
-    sourceCache.getOrPut(path) { root.resolve(path).takeIf { it.isRegularFile() }?.let { runCatching { it.readText() }.getOrNull() } }
+    sourceCache.computeIfAbsent(path) {
+      Optional.ofNullable(root.resolve(path).takeIf { it.isRegularFile() }?.let { runCatching { it.readText() }.getOrNull() })
+    }.orElse(null)
   }
 
   private val buildInfos: List<Map<Int, String>> by lazy {
@@ -127,7 +133,7 @@ class CompiledSources(private val root: Path, private val outDir: Path) {
     }
   }
 
-  private val contracts: List<Pair<CompiledCode?, CompiledCode?>> by lazy { artifactFiles(outDir).mapNotNull { read(it) } }
+  private val contracts: List<Pair<CompiledCode?, CompiledCode?>> by lazy { artifacts.mapNotNull { read(it) } }
 
   fun runtime(code: ByteArray): CompiledCode? =
     if (code.isEmpty()) null else contracts.firstNotNullOfOrNull { (_, runtime) -> runtime?.takeIf { it.matches(code, prefix = false) } }
@@ -135,8 +141,7 @@ class CompiledSources(private val root: Path, private val outDir: Path) {
   fun creation(initCode: ByteArray): CompiledCode? =
     if (initCode.isEmpty()) null else contracts.firstNotNullOfOrNull { (creation, _) -> creation?.takeIf { it.matches(initCode, prefix = true) } }
 
-  private fun read(file: Path): Pair<CompiledCode?, CompiledCode?>? = try {
-    val json = mapper.readTree(file.toFile())
+  private fun read(json: JsonNode): Pair<CompiledCode?, CompiledCode?>? = try {
     val target = json.compilationTarget()
     val sourceId = json["id"]?.asInt()
     if (target == null || sourceId == null) null else {

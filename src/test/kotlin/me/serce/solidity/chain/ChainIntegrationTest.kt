@@ -276,6 +276,8 @@ class ChainIntegrationTest : BasePlatformTestCase() {
     val build = foundry.build()
     assertTrue(build.messages.joinToString { it.formatted }, build.success)
     val artifacts = foundry.artifacts().associateBy { it.name }
+    // read once per build: failures below reuse it for revert decoding and source lines
+    assertSame(foundry.output(), foundry.output())
 
     val port = ServerSocket(0).use { it.localPort }
     anvil = GeneralCommandLine(File(bin, "anvil").path, "--port", port.toString()).createProcess()

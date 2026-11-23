@@ -133,25 +133,10 @@ class FoundryProject(val root: Path, private val forge: String) {
     return BuildResult(success, messages)
   }
 
-  fun artifacts(): List<Artifact> = artifactFiles(root.resolve(config().out)).mapNotNull { readArtifact(it) }.sortedBy { it.name }
+  /** What forge last compiled into the configured `out` directory; parsed once per build. */
+  fun output(): ForgeOutput = ForgeOutput.of(root, root.resolve(config().out))
 
-  private fun readArtifact(file: Path): Artifact? = try {
-    val json = mapper.readTree(file.toFile())
-    val abi = json["abi"]
-    val target = json.compilationTarget()
-    if (abi == null || target == null) null else {
-      val bytecode = json["bytecode"]
-      Artifact(
-        name = target.value.asText(),
-        sourcePath = target.key,
-        abiJson = mapper.writeValueAsString(abi),
-        bytecode = bytecode?.get("object")?.asText() ?: "0x",
-        hasLinkReferences = (bytecode?.get("linkReferences")?.size() ?: 0) > 0,
-      )
-    }
-  } catch (e: Exception) {
-    null
-  }
+  fun artifacts(): List<Artifact> = output().artifacts
 
   /** Under the configured `src` and not a test or script, i.e. something you'd deploy. */
   fun isSource(relativePath: String, config: ForgeConfig = config()): Boolean {

@@ -274,7 +274,7 @@ class ChainExecutor(
   }
 
   private fun compiledSources(): CompiledSources? = runCatching {
-    foundry()?.let { CompiledSources(it.root, it.root.resolve(it.config().out)) }
+    foundry()?.output()?.sources
   }.getOrNull()
 
   /** Decodes revert data with the errors of known deployments first, then of every compiled contract. */

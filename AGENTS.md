@@ -189,6 +189,9 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * `ChainExecutor` explains failures with `RevertTracer` (`debug_traceCall`/`debug_traceTransaction`) and maps the
   failing pc to source with forge artifacts' source maps (`CompiledSources`). anvil returns no `structLogs` for mined
   transactions unless started with `--steps-tracing`, so those are replayed with `debug_traceCall` on the parent block.
+* Forge artifacts are read through `FoundryProject.output()` (`ForgeOutput`): parsed once per build (cached until an
+  artifact file is written, added or removed), streaming only `abi`, bytecode, `id` and the compilation target, and
+  shared by Deploy/Attach, revert decoding and `CompiledSources`.
 
 ## Networks and Wallets
 
