@@ -61,6 +61,16 @@ object SolidityParserUtil : GeneratedParserUtilBase() {
     return true
   }
 
+  /** After `function`: `receive`/`fallback` are the function's name, remapped to `Identifier`. Always succeeds. */
+  @JvmStatic
+  fun keywordFunctionName(b: PsiBuilder, level: Int): Boolean {
+    val type = b.tokenType
+    if (type == SolidityTokenTypes.RECEIVE || type == SolidityTokenTypes.FALLBACK) {
+      b.remapCurrentToken(SolidityTokenTypes.IDENTIFIER)
+    }
+    return true
+  }
+
   /**
    * `szabo`/`finney` after a number literal: removed in Solidity 0.7.0, so they are lexed as identifiers (a variable
    * may be called `szabo`), but code for older compilers still uses them as units. The token is remapped to

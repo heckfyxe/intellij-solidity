@@ -281,7 +281,8 @@ ConstructorDefinition ::= constructor ParameterList
     mixin = "me.serce.solidity.lang.psi.impl.SolConstructorDefMixin"
 }
 
-FunctionDefinition ::= (function Identifier? | fallback | receive )
+// `function receive()`/`function fallback()` declare functions with those names (solc only warns)
+FunctionDefinition ::= (function <<keywordFunctionName>> Identifier? | fallback | receive )
                         ParameterList
                         ( FunctionVisibilitySpecifier | StateMutabilitySpecifier | ModifierInvocation)*
                         FunctionReturns? ( ';' | Block ) {
