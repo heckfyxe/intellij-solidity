@@ -46,6 +46,11 @@ Error messages should name what solc expects, at the token solc points to:
   `')' expected`. Pin only where the construct can't be anything else.
 Recovery tests for these are in `fixtures/parser/recovery` (`listErrors`, `stateVariableModifiersAfterName`).
 
+Expression rules (the alternatives of `Expression`) are parsed by Grammar-Kit's operator-precedence parser; later
+alternatives bind tighter. Never `pin` an expression rule: a pinned prefix rule becomes an ATOM taking a whole
+`Expression`, so `-a + b` parsed as `-(a + b)`. Check the "Operator priority table" comment in the generated
+`SolidityParser.java` (`PREFIX(UnaryExpression)`, `BINARY(...)`) after changing them.
+
 NatSpec tags (`NAT_SPEC_TAG`) are lexed inside comments only when the `@` follows whitespace, `*` or `/`
 (`/// @notice`, `///@notice`, ` *@dev`, a tag at the start of a block comment line), as solc accepts them; `a@b` stays
 comment text. Quick Documentation, NatSpec completion/inspections and highlighting all depend on that token.

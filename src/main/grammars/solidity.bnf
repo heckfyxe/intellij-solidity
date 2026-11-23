@@ -534,7 +534,8 @@ ShiftExpression ::= Expression ('<<' | '>>') Expression
 PlusMinExpression ::= Expression ('+' | '-') Expression
 MultDivExpression ::= Expression ('*' | '/' | '%') Expression
 ExponentExpression ::= Expression '**' Expression
-UnaryExpression ::= ('!' | '~' | delete | '++' | '--' | '+' | '-') Expression {pin=1}
+// no pin: a pin makes Grammar-Kit treat it as an atom taking a whole Expression, so `-a + b` would be `-(a + b)`
+UnaryExpression ::= ('!' | '~' | delete | '++' | '--' | '+' | '-') Expression
 IncrementExpression ::= Expression ('++' | '--')
 // see https://docs.soliditylang.org/en/v0.8.8/units-and-global-variables.html#type-information
 MetaTypeExpression ::= type '(' TypeName ')'

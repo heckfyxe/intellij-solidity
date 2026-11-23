@@ -57,6 +57,19 @@ class SolConstantTypesTest : SolTestBase() {
     "1 / 0" to "<unknown>",
   )
 
+  // unary operators bind tighter than binary ones: `-1 + 2` is `(-1) + 2`
+  fun testUnaryBindsTighterThanBinary() = checkTypes("""
+      contract C {
+        function f() public {
+          -1 + 2;
+          -2 * 3 + 10;
+        }
+      }
+    """,
+    "-1 + 2" to "int_const 1",
+    "-2 * 3 + 10" to "int_const 4",
+  )
+
   fun testLongConstantsAbbreviated() = checkTypes("""
       contract C {
         function f() public {
