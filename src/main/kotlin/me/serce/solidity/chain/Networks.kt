@@ -13,6 +13,8 @@ import com.intellij.openapi.components.service
 class Network(var name: String = "", var url: String = "", var secret: Boolean = false) {
   override fun toString() = name
 
+  fun copy() = Network(name, url, secret)
+
   companion object {
     /** URLs compare equal regardless of surrounding spaces and a trailing slash. */
     fun sameUrl(a: String, b: String) = a.trim().trimEnd('/') == b.trim().trimEnd('/')
@@ -35,13 +37,16 @@ class Networks : PersistentStateComponent<Networks.State> {
     resolved = null
   }
 
-  /** [list] with secret URLs read once: the tree renderer names forks on every repaint. */
+  /** [list] with secret URLs read once: the tree renderer names forks on every repaint. Never handed out: [Network] is mutable. */
   @Volatile private var resolved: List<Network>? = null
 
-  /** With the URLs of secret networks read from the password safe, which can be slow: avoid calling it repeatedly on the EDT. */
+  private fun resolved(): List<Network> = resolved
+    ?: state.networks.map { Network(it.name, if (it.secret) Secrets.get(Secrets.networkUrlKey(it.name)).orEmpty() else it.url, it.secret) }
+      .also { resolved = it }
+
+  /** Copies, with the URLs of secret networks read from the password safe, which can be slow: avoid calling it repeatedly on the EDT. */
   var list: List<Network>
-    get() = (resolved ?: state.networks.map { Network(it.name, if (it.secret) Secrets.get(Secrets.networkUrlKey(it.name)).orEmpty() else it.url, it.secret) }
-      .also { resolved = it }).map { Network(it.name, it.url, it.secret) }
+    get() = resolved().map { it.copy() }
     set(value) {
       resolved = null
       val old = state.networks.filter { it.secret }.map { it.name }.toSet()
@@ -54,9 +59,9 @@ class Networks : PersistentStateComponent<Networks.State> {
       (old - kept.map { it.name }.toSet()).forEach { Secrets.set(Secrets.networkUrlKey(it), null) }
     }
 
-  fun find(name: String): Network? = list.firstOrNull { it.name == name }
+  fun find(name: String): Network? = resolved().firstOrNull { it.name == name }?.copy()
 
-  fun nameOf(url: String): String? = list.firstOrNull { Network.sameUrl(it.url, url) }?.name
+  fun nameOf(url: String): String? = resolved().firstOrNull { Network.sameUrl(it.url, url) }?.name
 
   companion object {
     val DEFAULTS = listOf(
