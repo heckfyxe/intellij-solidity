@@ -49,7 +49,6 @@ object SolHighlighter : SyntaxHighlighterBase() {
     FIXEDNUMBER to SolColor.NUMBER,
     DECIMALNUMBER to SolColor.NUMBER,
     HEXNUMBER to SolColor.NUMBER,
-    NUMBERUNIT to SolColor.NUMBER,
 
     STRINGLITERAL to SolColor.STRING,
     HEXLITERAL to SolColor.STRING

@@ -54,15 +54,17 @@ WHITE_SPACE=\s+
 // see https://docs.soliditylang.org/en/v0.8.7/natspec-format.html for NatSpec tags support
 NAT_SPEC_TAG=@custom:[a-z][a-z0-9-]*|@[a-zA-Z_0-9:]*
 HEXLITERAL=(hex\"([_0-9a-fA-F]*)\"|hex\'([_0-9a-fA-F]*)\')
-// a backslash before a line break continues the string on the next line
-STRINGLITERAL=(\"([^\"\r\n\\]|\\(.|\r\n|\r|\n))*\")|(\'([^\'\r\n\\]|\\(.|\r\n|\r|\n))*\')|unicode(\"([^\"\r\n\\]|\\(.|\r\n|\r|\n))*\")|unicode(\'([^\'\r\n\\]|\\(.|\r\n|\r|\n))*\')
+// an escape; a backslash before a line break continues the string on the next line
+ESC=\\(.|\r\n|\r|\n)
+DQ_CHARS=([^\"\r\n\\]|{ESC})*
+SQ_CHARS=([^\'\r\n\\]|{ESC})*
+STRINGLITERAL=(unicode)?(\"{DQ_CHARS}\"|\'{SQ_CHARS}\')
 // a string still being typed: lexed as a string up to the end of the line, so it stays highlighted and quotes pair
-UNTERMINATED_STRINGLITERAL=(\"([^\"\r\n\\]|\\(.|\r\n|\r|\n))*)|(\'([^\'\r\n\\]|\\(.|\r\n|\r|\n))*)
+UNTERMINATED_STRINGLITERAL=\"{DQ_CHARS}|\'{SQ_CHARS}
 DECIMALNUMBER=[0-9][_0-9]*
 FIXEDNUMBER=(([0-9][_0-9]*)+\.[_0-9]*|([0-9][_0-9]*)*\.([0-9][_0-9]*))
 SCIENTIFICNUMBER=((([0-9][_0-9]*)+|([0-9][_0-9]*)+\.[_0-9]*|([0-9][_0-9]*|[0-9])*\.([0-9][_0-9]*))[Ee][+-]?[_0-9]+)
 HEXNUMBER=(0[xX][_0-9a-fA-F]+)
-NUMBERUNIT=(wei|gwei|ether|seconds|minutes|hours|days|weeks|years)
 INTNUMTYPE=int(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?
 UINTNUMTYPE=uint(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?
 BYTENUMTYPE=byte(1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32)?
@@ -269,7 +271,6 @@ PRAGMAALL=[^ \t\r\n;][^;]*
   "string"                { return STRING; }
   "bool"                  { return BOOL; }
 
-  {NUMBERUNIT}            { return NUMBERUNIT; }
   {INTNUMTYPE}            { return INTNUMTYPE; }
   {UINTNUMTYPE}           { return UINTNUMTYPE; }
   {BYTENUMTYPE}           { return BYTENUMTYPE; }
