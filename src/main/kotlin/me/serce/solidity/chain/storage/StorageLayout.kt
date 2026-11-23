@@ -8,6 +8,7 @@ import me.serce.solidity.chain.abi.AbiType
 import me.serce.solidity.chain.abi.AbiValueParser
 import me.serce.solidity.chain.abi.Keccak
 import me.serce.solidity.chain.abi.toHex
+import me.serce.solidity.chain.abi.toWord
 import java.math.BigInteger
 
 /** Reads one 32-byte storage word of the contract being inspected. */
@@ -340,11 +341,6 @@ class StorageLayout(val variables: List<Variable>, private val types: Map<String
       else -> AbiType.parse(label).takeIf { it !is AbiType.Unsupported } ?: throw AbiInputException("Can't encode a $label key")
     }
   }
-}
-
-fun BigInteger.toWord(): ByteArray {
-  val raw = toByteArray().let { if (it.size > 32) it.copyOfRange(it.size - 32, it.size) else it }
-  return ByteArray(32 - raw.size) + raw
 }
 
 fun BigInteger.toHex32(): String = toWord().toHex()

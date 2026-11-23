@@ -79,13 +79,7 @@ object AbiCodec {
 
   private fun dynamicBytes(b: ByteArray) = uint(BigInteger.valueOf(b.size.toLong())) + padRight(b)
 
-  private fun uint(n: BigInteger): ByteArray {
-    val raw = n.toByteArray()
-    val out = ByteArray(32)
-    val src = if (raw.size > 32) raw.copyOfRange(raw.size - 32, raw.size) else raw
-    System.arraycopy(src, 0, out, 32 - src.size, src.size)
-    return out
-  }
+  private fun uint(n: BigInteger): ByteArray = n.toWord()
 
   private fun padRight(b: ByteArray): ByteArray = b.copyOf(((b.size + 31) / 32) * 32)
 

@@ -1,6 +1,7 @@
 package me.serce.solidity.chain.abi
 
 import org.bouncycastle.crypto.digests.KeccakDigest
+import java.math.BigInteger
 
 /** Keccak-256 as used by Ethereum (original Keccak padding, not SHA3-256). */
 object Keccak {
@@ -22,6 +23,12 @@ fun ByteArray.toHex(prefix: Boolean = true): String {
   }
   return sb.toString()
 }
+
+/** Left-pads to a 32-byte ABI/storage word; longer input keeps its last 32 bytes. */
+fun ByteArray.toWord(): ByteArray = if (size >= 32) copyOfRange(size - 32, size) else ByteArray(32 - size) + this
+
+/** The 32-byte big-endian word of a non-negative number (callers turn negatives into two's complement first). */
+fun BigInteger.toWord(): ByteArray = toByteArray().toWord()
 
 fun String.hexToBytes(): ByteArray {
   val s = removePrefix("0x").removePrefix("0X").let { if (it.length % 2 == 1) "0$it" else it }

@@ -7,6 +7,7 @@ import com.intellij.util.SystemProperties
 import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiInputException
 import me.serce.solidity.chain.abi.hexToBytes
+import me.serce.solidity.chain.abi.toWord
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import java.io.File

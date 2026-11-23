@@ -21,6 +21,7 @@ import me.serce.solidity.chain.Deployment
 import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiInputException
 import me.serce.solidity.chain.abi.toHex
+import me.serce.solidity.chain.abi.toWord
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.RpcException
 import java.math.BigInteger
@@ -113,7 +114,7 @@ class StorageDialog(
   private fun reader(): StorageReader? {
     val rpc = service.runtime(chain.id).rpc ?: return null
     val address = address() ?: return null
-    return StorageReader { slot -> rpc.storageAt(address, slot.toHex32()).let { if (it.size < 32) ByteArray(32 - it.size) + it else it } }
+    return StorageReader { slot -> rpc.storageAt(address, slot.toHex32()).toWord() }
   }
 
   /** Runs [read] off the EDT and shows what it returns, or its error, with [show] on the EDT. */
