@@ -6,6 +6,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.util.EnvironmentUtil
 import me.serce.solidity.chain.WalletConfig
 import me.serce.solidity.chain.WalletKind
 import me.serce.solidity.chain.abi.AbiCodec
@@ -102,11 +103,10 @@ class CastWallet(private val cast: String) {
 
   private fun run(command: List<String>, env: Map<String, String>, timeout: Long): String {
     if (!File(cast).canExecute()) throw CastException("cast not found at $cast. Install Foundry with foundryup.")
-    // cast must not wait for a password on a terminal it doesn't have, and must not pick up the user's own wallet settings
-    val cmd = GeneralCommandLine(command).withEnvironment(env).withEnvironment("NO_COLOR", "1")
-      .withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
-    WALLET_ENV.forEach { cmd.environment.remove(it) }
-    env.forEach { (k, v) -> cmd.environment[k] = v }
+    // cast must not pick up the user's own wallet settings. GeneralCommandLine merges the parent environment only when the
+    // process starts, so removing them from its `environment` would not work: pass the whole environment instead.
+    val cmd = GeneralCommandLine(command).withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.NONE)
+      .withEnvironment(EnvironmentUtil.getEnvironmentMap() - WALLET_ENV.toSet() + env + ("NO_COLOR" to "1"))
     val handler = CapturingProcessHandler(cmd)
     val indicator: ProgressIndicator? = ProgressManager.getInstance().progressIndicator
     val output = if (indicator != null) handler.runProcessWithProgressIndicator(indicator, TimeUnit.SECONDS.toMillis(timeout).toInt())
