@@ -1,5 +1,6 @@
 package me.serce.solidity.chain
 
+import com.intellij.util.xmlb.XmlSerializerUtil
 import me.serce.solidity.chain.abi.AbiEntry
 import me.serce.solidity.chain.abi.ContractAbi
 import me.serce.solidity.chain.debug.FailedFrame
@@ -46,11 +47,8 @@ class ChainConfig {
   /** Identifies what anvil's saved state depends on: loading it on a different fork or chain id breaks the chain. */
   val stateKey: String get() = Integer.toHexString("${forkUrl.trim().trimEnd('/')}|${forkBlock.trim()}|${chainId.trim()}".hashCode())
 
-  fun copy(): ChainConfig = ChainConfig().also {
-    it.id = id; it.name = name; it.kind = kind; it.forkUrl = forkUrl; it.forkBlock = forkBlock; it.chainId = chainId
-    it.port = port; it.accounts = accounts; it.balanceEth = balanceEth; it.persistent = persistent; it.url = url
-    it.network = network; it.expectedChainId = expectedChainId; it.wallets = wallets.mapTo(ArrayList()) { w -> w.copy() }
-  }
+  /** A deep copy of every saved property, wallets included. */
+  fun copy(): ChainConfig = XmlSerializerUtil.createCopy(this)
 
   val description: String
     get() = when {
@@ -85,7 +83,7 @@ class WalletConfig {
       WalletKind.BROWSER -> kind.title
     }
 
-  fun copy(): WalletConfig = WalletConfig().also { it.kind = kind; it.address = address; it.keystorePath = keystorePath; it.derivationPath = derivationPath }
+  fun copy(): WalletConfig = XmlSerializerUtil.createCopy(this)
 }
 
 /** A contract instance on a chain, deployed by us or attached by address. */
