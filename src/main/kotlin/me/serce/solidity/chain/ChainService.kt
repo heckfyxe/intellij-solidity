@@ -97,6 +97,7 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     // Nothing runs before the project opens, so a temporary chain's leftovers are from a session that ended
     // without its stop being recorded (the IDE closed while it ran).
     loaded.chains.filter { it.kind == ChainKind.ANVIL && !it.persistent }.forEach { dropChainData(it.id) }
+    loaded.chains.filter { it.kind == ChainKind.ANVIL && it.persistent }.forEach(::migrateLegacyStateFile)
     deploymentsSnapshot = loaded.deployments.toList()
   }
 
@@ -411,12 +412,13 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
    * Named after what the state depends on, so a state saved on one fork is never loaded onto another,
    * even when anvil writes it again after the fork was edited.
    */
-  fun stateFile(config: ChainConfig): Path {
-    val file = stateDir.resolve("${config.id}-${config.stateKey}.json")
-    // states from before the key was added belong to the current settings, which used to delete them on change
+  fun stateFile(config: ChainConfig): Path = stateDir.resolve("${config.id}-${config.stateKey}.json")
+
+  /** States from before the key was added belong to the current settings, which used to delete them on change. */
+  private fun migrateLegacyStateFile(config: ChainConfig) {
     val legacy = stateDir.resolve("${config.id}.json")
-    if (!Files.exists(file) && Files.exists(legacy)) runCatching { Files.move(legacy, file) }
-    return file
+    val file = stateFile(config)
+    if (Files.exists(legacy) && !Files.exists(file)) runCatching { Files.move(legacy, file) }
   }
 
   private fun stateFiles(config: ChainConfig): List<Path> =
