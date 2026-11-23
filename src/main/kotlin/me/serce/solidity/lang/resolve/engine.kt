@@ -460,9 +460,8 @@ object SolResolver {
           }
         }
 
-        lexicalDeclarations(element)
-          .filter { it.name == elementToSearch.name }
-          .toList().let {
+        lexicalDeclarations(element, elementToSearch.name ?: return emptyList())
+          .let {
             if (it.size == 1 || it.any { it !is SolContractDefinition }) it
             // resolve by imports to distinguish elements with the same name
             else resolveTypeNameUsingImports(element).filterNot { found ->
@@ -592,8 +591,7 @@ object SolResolver {
   fun resolveUsingForElement(element: SolUserDefinedTypeNameElement): SolCallableElement? {
     val identifiers = element.findIdentifiers()
     val first = identifiers.first()
-    val lexicalFinding = lexicalDeclarations(first).filterIsInstance<SolCallableElement>()
-      .firstOrNull { it.name == first.text }
+    val lexicalFinding = lexicalDeclarations(first, first.text).firstNotNullOfOrNull { it as? SolCallableElement }
     return if (identifiers.size > 1 && lexicalFinding is SolContractDefinition) {
       lexicalFinding.functionDefinitionList.find { function -> function.name == identifiers[1].text }
     } else {
@@ -608,25 +606,25 @@ object SolResolver {
   private fun contractDeclarations(contract: SolContractDefinition): List<SolNamedElement> =
     CachedValuesManager.getCachedValue(contract) {
       val result = RecursionManager.doPreventingRecursion(contract, true) {
-        val visitedScopes = hashSetOf<Pair<PsiElement, PsiElement>>()
-        val scope = contract
-        val place: PsiElement = contract
-          val childrenScope = sequenceOf(
-            scope.stateVariableDeclarationList as List<PsiElement>,
-            scope.enumDefinitionList,
-            scope.structDefinitionList
-          ).flatten()
-            .map { lexicalDeclarations(visitedScopes, it, place) }
-            .flatten() + scope.structDefinitionList + scope.eventDefinitionList + scope.errorDefinitionList + scope.userDefinedValueTypeDefinitionList
-          val extendsScope = scope.supers.asSequence()
-            .map { resolveTypeNameStrict(it).firstOrNull() }
-            .filterNotNull()
-            .map { lexicalDeclarations(visitedScopes, it, place) }
-            .flatten()
-            .filterNot { it.isPrivateMember() } // private members are visible only inside the contract declaring them
-          (childrenScope + extendsScope + scope.functionDefinitionList).distinct().toList()
+        val own = contract.stateVariableDeclarationList + contract.enumDefinitionList + contract.structDefinitionList +
+          contract.eventDefinitionList + contract.errorDefinitionList + contract.userDefinedValueTypeDefinitionList
+        val inherited = contract.supers
+          .mapNotNull { resolveTypeNameStrict(it).firstOrNull() as? SolContractDefinition }
+          .flatMap { contractDeclarations(it) }
+          .filterNot { it.isPrivateMember() } // private members are visible only inside the contract declaring them
+        (own + inherited + contract.functionDefinitionList).distinct()
       } ?: emptyList()
       CachedValueProvider.Result.create(result, PsiModificationTracker.MODIFICATION_COUNT)
+    }
+
+  private fun contractDeclarationsByName(contract: SolContractDefinition): Map<String?, List<SolNamedElement>> =
+    CachedValuesManager.getCachedValue(contract) {
+      CachedValueProvider.Result.create(contractDeclarations(contract).groupBy { it.name }, PsiModificationTracker.MODIFICATION_COUNT)
+    }
+
+  private fun fileDeclarationsByName(file: SolidityFile): Map<String?, List<SolNamedElement>> =
+    CachedValuesManager.getCachedValue(file) {
+      CachedValueProvider.Result.create(fileDeclarations(file).groupBy { it.name }, PsiModificationTracker.MODIFICATION_COUNT)
     }
 
   /**
@@ -664,41 +662,55 @@ object SolResolver {
     return (imported + own).distinct().also { done[file] = it }
   }
 
-  fun lexicalDeclarations(place: PsiElement, stop: (PsiElement) -> Boolean = { false }): Sequence<SolNamedElement> {
+  /** Every declaration visible at [place], innermost scope first. */
+  fun lexicalDeclarations(place: PsiElement, stop: (PsiElement) -> Boolean = { false }): Sequence<SolNamedElement> =
+    lexicalDeclarations(place, null, stop)
+
+  /**
+   * The declarations named [name] visible at [place], innermost scope first; contract and file scopes are looked up
+   * by name instead of being walked.
+   */
+  fun lexicalDeclarations(place: PsiElement, name: String): List<SolNamedElement> =
+    lexicalDeclarations(place, name, { false }).toList()
+
+  private fun lexicalDeclarations(place: PsiElement, name: String?, stop: (PsiElement) -> Boolean): Sequence<SolNamedElement> {
+    // scopes are visited once: in some cases the walk could loop
     val visitedScopes = hashSetOf<Pair<PsiElement, PsiElement>>()
-    return lexicalDeclarations0(visitedScopes, place, stop)
-  }
-
-  private fun lexicalDeclarations0(
-    visitedScopes: HashSet<Pair<PsiElement, PsiElement>>,
-    place: PsiElement,
-    stop: (PsiElement) -> Boolean = { false }
-  ): Sequence<SolNamedElement> {
     val globalType = SolInternalTypeFactory.of(place.project).globalType
-    return lexicalDeclarations(visitedScopes, globalType.ref, place) + lexicalDeclRec(visitedScopes, place, stop).distinct()
-  }
-
-  private fun lexicalDeclRec(
-    visitedScopes: HashSet<Pair<PsiElement, PsiElement>>,
-    place: PsiElement,
-    stop: (PsiElement) -> Boolean
-  ): Sequence<SolNamedElement> {
-    return place.ancestors
+    val scopes = place.ancestors
       .drop(1) // current element might not be a SolElement
       .takeWhileInclusive { it is SolElement && !stop(it) }
-      .flatMap { lexicalDeclarations(visitedScopes, it, place) }
+      .flatMap { lexicalDeclarations(visitedScopes, it, place, name) }
+    return lexicalDeclarations(visitedScopes, globalType.ref, place, name) + scopes.distinct()
   }
 
   private fun lexicalDeclarations(
     visitedScopes: HashSet<Pair<PsiElement, PsiElement>>,
     scope: PsiElement,
-    place: PsiElement
+    place: PsiElement,
+    name: String?,
   ): Sequence<SolNamedElement> {
-    // Note that in some cases, loops are possible to encounter when searching for definitions.
-    // To avoid the issue, ensure that we only visit place that haven't been visited before.
     if (!visitedScopes.add(scope to place)) {
       return emptySequence()
     }
+    return when (scope) {
+      is SolContractDefinition ->
+        (if (name == null) contractDeclarations(scope) else contractDeclarationsByName(scope)[name].orEmpty()).asSequence()
+      is SolidityFile ->
+        (if (name == null) fileDeclarations(scope) else fileDeclarationsByName(scope)[name].orEmpty()).asSequence()
+      else -> localDeclarations(visitedScopes, scope, place, name).let { all ->
+        if (name == null) all else all.filter { it.name == name }
+      }
+    }
+  }
+
+  /** The declarations of a local scope (statements, blocks, parameters); [name] is passed on to nested scopes. */
+  private fun localDeclarations(
+    visitedScopes: HashSet<Pair<PsiElement, PsiElement>>,
+    scope: PsiElement,
+    place: PsiElement,
+    name: String?,
+  ): Sequence<SolNamedElement> {
     return when (scope) {
       is SolVariableDeclaration -> {
         scope.declarationList?.declarationItemList?.filterIsInstance<SolNamedElement>()?.asSequence()
@@ -706,10 +718,9 @@ object SolResolver {
           ?: sequenceOf(scope)
       }
 
-      is SolVariableDefinition -> lexicalDeclarations(visitedScopes, scope.firstChild, place)
+      is SolVariableDefinition -> lexicalDeclarations(visitedScopes, scope.firstChild, place, name)
 
       is SolStateVariableDeclaration -> sequenceOf(scope)
-      is SolContractDefinition -> contractDeclarations(scope).asSequence()
       is SolFunctionDefinition -> {
         scope.parameters.asSequence() +
           (scope.returns?.parameterDefList?.asSequence() ?: emptySequence())
@@ -724,21 +735,18 @@ object SolResolver {
       is SolForStatement -> when {
           PsiTreeUtil.isAncestor(scope, place, false) -> {
             scope.children.firstOrNull()
-              ?.let { lexicalDeclarations(visitedScopes, it, place) } ?: emptySequence()
+              ?.let { lexicalDeclarations(visitedScopes, it, place, name) } ?: emptySequence()
           }
           else -> emptySequence()
       }
 
       is SolStatement -> {
         scope.children.asSequence()
-          .map { lexicalDeclarations(visitedScopes, it, place) }
-          .flatten()
+          .flatMap { lexicalDeclarations(visitedScopes, it, place, name) }
       }
 
-      is SolBlock -> scope.statementList.declaredBefore(place).flatMap { lexicalDeclarations(visitedScopes, it, place) }
-      is SolUncheckedBlock -> scope.statementList.declaredBefore(place).flatMap { lexicalDeclarations(visitedScopes, it, place) }
-
-      is SolidityFile -> fileDeclarations(scope).asSequence()
+      is SolBlock -> scope.statementList.declaredBefore(place).flatMap { lexicalDeclarations(visitedScopes, it, place, name) }
+      is SolUncheckedBlock -> scope.statementList.declaredBefore(place).flatMap { lexicalDeclarations(visitedScopes, it, place, name) }
 
       is SolTryStatement -> {
         scope.parameterList?.parameterDefList?.asSequence() ?: emptySequence()
