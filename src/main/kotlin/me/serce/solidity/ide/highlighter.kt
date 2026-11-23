@@ -13,6 +13,17 @@ class SolHighlighterFactory : SingleLazyInstanceSyntaxHighlighterFactory() {
   override fun createHighlighter() = SolHighlighter
 }
 
+class YulHighlighterFactory : SingleLazyInstanceSyntaxHighlighterFactory() {
+  override fun createHighlighter() = YulHighlighter
+}
+
+/** `.yul` files: the same colors, with the lexer in Yul mode. */
+object YulHighlighter : SyntaxHighlighterBase() {
+  override fun getHighlightingLexer() = SolidityLexer(yul = true)
+
+  override fun getTokenHighlights(tokenType: IElementType): Array<out TextAttributesKey> = SolHighlighter.getTokenHighlights(tokenType)
+}
+
 object SolHighlighter : SyntaxHighlighterBase() {
   override fun getHighlightingLexer() = SolidityLexer()
 

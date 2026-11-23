@@ -101,7 +101,7 @@
         <lang.syntaxHighlighterFactory language="Solidity"
                                        implementationClass="me.serce.solidity.ide.SolHighlighterFactory"/>
         <lang.syntaxHighlighterFactory language="Yul"
-                                       implementationClass="me.serce.solidity.ide.SolHighlighterFactory"/>
+                                       implementationClass="me.serce.solidity.ide.YulHighlighterFactory"/>
 
         <annotator language="Solidity" implementationClass="me.serce.solidity.ide.annotation.SolidityAnnotator"/>
         <annotator language="Yul" implementationClass="me.serce.solidity.ide.annotation.SolidityAnnotator"/>

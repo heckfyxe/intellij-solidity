@@ -40,27 +40,6 @@ object SolidityParserUtil : GeneratedParserUtilBase() {
     return true
   }
 
-  /** Yul's own keywords: never a name, although some are Solidity keyword tokens. */
-  private val YUL_KEYWORDS = setOf(
-    "let", "function", "if", "switch", "case", "default", "for", "break", "continue", "leave", "true", "false"
-  )
-  private val NAME = Regex("[a-zA-Z_$][a-zA-Z0-9_$]*")
-
-  /**
-   * Before a Yul name: Solidity keywords (`days`, `memory`, `storage`, `type`, `payable`, `new`, ...) are plain names
-   * in Yul, so such a token is remapped to `Identifier` and the PSI is the same as for any other name. Yul keywords
-   * and EVM built-ins (some of which are Solidity keywords, like `return`) keep their token. Always succeeds.
-   */
-  @JvmStatic
-  fun yulName(b: PsiBuilder, level: Int): Boolean {
-    val type = b.tokenType ?: return true
-    if (type == SolidityTokenTypes.IDENTIFIER) return true
-    val text = b.tokenText ?: return true
-    if (text in YUL_KEYWORDS || me.serce.solidity.lang.resolve.YulBuiltins.isBuiltin(text) || !NAME.matches(text)) return true
-    b.remapCurrentToken(SolidityTokenTypes.IDENTIFIER)
-    return true
-  }
-
   /** After `function`: `receive`/`fallback` are the function's name, remapped to `Identifier`. Always succeeds. */
   @JvmStatic
   fun keywordFunctionName(b: PsiBuilder, level: Int): Boolean {

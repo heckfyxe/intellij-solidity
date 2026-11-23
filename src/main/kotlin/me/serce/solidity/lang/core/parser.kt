@@ -64,7 +64,7 @@ class YulParserDefinition : ParserDefinition {
   override fun createFile(viewProvider: FileViewProvider): PsiFile = YulFile(viewProvider)
 
   override fun spaceExistenceTypeBetweenTokens(left: ASTNode, right: ASTNode): ParserDefinition.SpaceRequirements =
-    LanguageUtil.canStickTokensTogetherByLexer(left, right, SolidityLexer())
+    LanguageUtil.canStickTokensTogetherByLexer(left, right, SolidityLexer(yul = true))
 
   override fun getStringLiteralElements(): TokenSet = TokenSet.EMPTY
 
@@ -74,7 +74,7 @@ class YulParserDefinition : ParserDefinition {
 
   override fun getFileNodeType(): IFileElementType = YulFileElementType
 
-  override fun createLexer(project: Project?): Lexer = SolidityLexer()
+  override fun createLexer(project: Project?): Lexer = SolidityLexer(yul = true)
 
   override fun createElement(node: ASTNode?): PsiElement {
     val element = node?.let { SolidityTokenTypes.Factory.createElement(it) }

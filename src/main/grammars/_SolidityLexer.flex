@@ -18,6 +18,10 @@ import static me.serce.solidity.lang.core.SolidityTokenTypes.*;
 %{
   // indicates the start of the comment
   private int zzBlockCommentStarted = -1;
+  // the state a comment returns to: comments occur in Solidity, in an assembly header and in Yul
+  private int commentReturnState = YYINITIAL;
+  // the depth of `{` inside an assembly block (state YUL); the block ends when it drops to 0
+  private int yulBraceDepth = 0;
 
   private static boolean isNatSpecTagStart(char previous) {
     return Character.isWhitespace(previous) || previous == '*' || previous == '/';
@@ -33,6 +37,13 @@ import static me.serce.solidity.lang.core.SolidityTokenTypes.*;
 
 %state PRAGMA_OPEN
 %state PRAGMA_REST
+// after `assembly`, up to its `{` (flags and dialect: `assembly "evmasm" ("memory-safe") {`)
+%state ASSEMBLY_HEADER
+// inside an assembly block: Solidity keywords other than Yul's own and the built-ins are names (`let days := 1`).
+// Highlighting restarts only at tokens lexed in YYINITIAL, so yulBraceDepth needn't be part of the state.
+%state YUL
+// a .yul file: Yul without an end (SolidityLexer maps it to state 0 for .yul files, so it is restartable)
+%state YUL_FILE
 
 EOL=\R
 %state IN_BLOCK_COMMENT
@@ -59,19 +70,66 @@ BYTESNUMTYPE=bytes(1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|2
 FIXEDNUMTYPE=fixed([1-9][0-9]*x[0-9]+)?
 UFIXEDNUMTYPE=ufixed([1-9][0-9]*x[0-9]+)?
 BOOLEANLITERAL=true|false
-SPACE=[ \t\n\x0B\f\r]+
 IDENTIFIER=[a-zA-Z_$][a-zA-Z_$0-9]*
 // Pragma parses anything up to the trailing ';' to be fully forward-compatible.
 PRAGMAALL=[^ \t\r\n;][^;]*
 
 %%
-<YYINITIAL> {
+<YYINITIAL, ASSEMBLY_HEADER, YUL, YUL_FILE> {
   {WHITE_SPACE}           { return WHITE_SPACE; }
 
+  "/*"                    {
+                            commentReturnState = yystate();
+                            yybegin(IN_BLOCK_COMMENT);
+                            yypushback(2);
+                            zzBlockCommentStarted = zzCurrentPos;
+                          }
+  "//"                    {
+                            commentReturnState = yystate();
+                            yybegin(IN_EOL_COMMENT);
+                            yypushback(2);
+                          }
+
+  {STRINGLITERAL}         { return STRINGLITERAL; }
+  {UNTERMINATED_STRINGLITERAL} { return STRINGLITERAL; }
+  "("                     { return LPAREN; }
+  ")"                     { return RPAREN; }
+  ","                     { return COMMA; }
+}
+
+<ASSEMBLY_HEADER> {
+  "{"                     {
+                            yulBraceDepth = 1;
+                            yybegin(YUL);
+                            return LBRACE;
+                          }
+  // not an assembly block after all (code being typed): lex the rest as Solidity
+  [^]                     {
+                            yypushback(1);
+                            yybegin(YYINITIAL);
+                          }
+}
+
+<YUL> {
+  "{"                     {
+                            yulBraceDepth++;
+                            return LBRACE;
+                          }
+  "}"                     {
+                            if (--yulBraceDepth == 0) yybegin(YYINITIAL);
+                            return RBRACE;
+                          }
+}
+
+<YUL_FILE> {
+  "{"                     { return LBRACE; }
+  "}"                     { return RBRACE; }
+}
+
+<YYINITIAL, YUL, YUL_FILE> {
   "."                     { return DOT; }
   ":"                     { return COLON; }
   ";"                     { return SEMICOLON; }
-  ","                     { return COMMA; }
   "+"                     { return PLUS; }
   "-"                     { return MINUS; }
   "*"                     { return MULT; }
@@ -106,10 +164,6 @@ PRAGMAALL=[^ \t\r\n;][^;]*
   "||"                    { return OROR; }
   "["                     { return LBRACKET; }
   "]"                     { return RBRACKET; }
-  "{"                     { return LBRACE; }
-  "}"                     { return RBRACE; }
-  "("                     { return LPAREN; }
-  ")"                     { return RPAREN; }
   "?"                     { return QUESTION; }
   "%"                     { return PERCENT; }
   "~"                     { return TILDE; }
@@ -118,15 +172,31 @@ PRAGMAALL=[^ \t\r\n;][^;]*
   ">>"                    { return RSHIFT; }
   ":="                    { return LEFT_ASSEMBLY; }
   "=:"                    { return RIGHT_ASSEMBLY; }
-  "/*"                    {
-                            yybegin(IN_BLOCK_COMMENT);
-                            yypushback(2);
-                            zzBlockCommentStarted = zzCurrentPos;
-                          }
-  "//"                    {
-                            yybegin(IN_EOL_COMMENT);
-                            yypushback(2);
-                          }
+
+  {HEXLITERAL}            { return HEXLITERAL; }
+  {DECIMALNUMBER}         { return DECIMALNUMBER; }
+  {FIXEDNUMBER}           { return FIXEDNUMBER; }
+  {SCIENTIFICNUMBER}      { return SCIENTIFICNUMBER; }
+  {HEXNUMBER}             { return HEXNUMBER; }
+  {BOOLEANLITERAL}        { return BOOLEANLITERAL; }
+}
+
+<YUL, YUL_FILE> {
+  // Yul's keywords and the built-ins that are Solidity keywords keep their tokens; any other word is a name
+  "function"              { return FUNCTION; }
+  "if"                    { return IF; }
+  "for"                   { return FOR; }
+  "break"                 { return BREAK; }
+  "continue"              { return CONTINUE; }
+  "return"                { return RETURN; }
+  "address"               { return ADDRESS; }
+  "byte"                  { return BYTENUMTYPE; }
+  {IDENTIFIER}            { return IDENTIFIER; }
+}
+
+<YYINITIAL> {
+  "{"                     { return LBRACE; }
+  "}"                     { return RBRACE; }
   "pragma"                {
                             yybegin(PRAGMA_OPEN);
                             return PRAGMA;
@@ -174,7 +244,10 @@ PRAGMAALL=[^ \t\r\n;][^;]*
   "try"                   { return TRY; }
   "catch"                 { return CATCH; }
   "while"                 { return WHILE; }
-  "assembly"              { return ASSEMBLY; }
+  "assembly"              {
+                            yybegin(ASSEMBLY_HEADER);
+                            return ASSEMBLY;
+                          }
   "do"                    { return DO; }
   "continue"              { return CONTINUE; }
   "break"                 { return BREAK; }
@@ -196,13 +269,6 @@ PRAGMAALL=[^ \t\r\n;][^;]*
   "string"                { return STRING; }
   "bool"                  { return BOOL; }
 
-  {HEXLITERAL}            { return HEXLITERAL; }
-  {STRINGLITERAL}         { return STRINGLITERAL; }
-  {UNTERMINATED_STRINGLITERAL} { return STRINGLITERAL; }
-  {DECIMALNUMBER}         { return DECIMALNUMBER; }
-  {FIXEDNUMBER}           { return FIXEDNUMBER; }
-  {SCIENTIFICNUMBER}      { return SCIENTIFICNUMBER; }
-  {HEXNUMBER}             { return HEXNUMBER; }
   {NUMBERUNIT}            { return NUMBERUNIT; }
   {INTNUMTYPE}            { return INTNUMTYPE; }
   {UINTNUMTYPE}           { return UINTNUMTYPE; }
@@ -210,8 +276,6 @@ PRAGMAALL=[^ \t\r\n;][^;]*
   {BYTESNUMTYPE}          { return BYTESNUMTYPE; }
   {FIXEDNUMTYPE}          { return FIXEDNUMTYPE; }
   {UFIXEDNUMTYPE}         { return UFIXEDNUMTYPE; }
-  {BOOLEANLITERAL}        { return BOOLEANLITERAL; }
-  {SPACE}                 { return SPACE; }
   {IDENTIFIER}            { return IDENTIFIER; }
 }
 
@@ -228,7 +292,7 @@ PRAGMAALL=[^ \t\r\n;][^;]*
   "*/"                    {
                             // do not treat /*/ as a comment
                             if (zzCurrentPos - zzBlockCommentStarted >= 2) {
-                                yybegin(YYINITIAL);
+                                yybegin(commentReturnState);
                                 return COMMENT;
                             }
                           }
@@ -242,7 +306,7 @@ PRAGMAALL=[^ \t\r\n;][^;]*
                           }
 
   <<EOF>>                 {
-                            yybegin(YYINITIAL);
+                            yybegin(commentReturnState);
                             return COMMENT;
                           }
 
@@ -267,14 +331,14 @@ PRAGMAALL=[^ \t\r\n;][^;]*
                           }
 
   {EOL}                   {
-                            yybegin(YYINITIAL);
+                            yybegin(commentReturnState);
                             // do not include '\n' in the comment
                             yypushback(1);
                             return COMMENT;
                           }
 
   <<EOF>>                 {
-                            yybegin(YYINITIAL);
+                            yybegin(commentReturnState);
                             return COMMENT;
                           }
 
