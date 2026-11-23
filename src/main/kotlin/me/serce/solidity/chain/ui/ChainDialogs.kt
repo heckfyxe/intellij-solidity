@@ -266,7 +266,6 @@ class NetworksDialog(project: Project) : DialogWrapper(project) {
   }
 }
 
-/** Attach a contract that is already on the chain, using the ABI of one of the project's contracts. */
 /**
  * Attach a contract that is already on the chain: by a compiled contract of this project, or by an ABI alone
  * (pasted, opened from a file, or written as signatures), for contracts whose source you don't have.
