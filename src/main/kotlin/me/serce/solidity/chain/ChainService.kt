@@ -15,6 +15,7 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
@@ -207,55 +208,67 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
       }
       return
     }
-    try {
-      val foundry = FoundryProject.find(project)
-      val anvil = FoundryProject.anvilPath(project)
-      if (!Path.of(anvil).toFile().canExecute()) throw IllegalStateException("anvil not found at $anvil. Install Foundry with foundryup.")
-      val port = freePort(config.port)
-      val cmd = GeneralCommandLine(anvilArgs(config, anvil, port)).withEnvironment("NO_COLOR", "1")
-      foundry?.let { cmd.withWorkDirectory(it.root.toFile()) }
-      val handler = KillableColoredProcessHandler(cmd)
-      handler.setShouldKillProcessSoftly(true) // SIGINT, so anvil dumps --state before exiting
-      rt.process = handler
+    // finding a free port, cleaning up old state files and spawning anvil all block: keep them off the EDT
+    ApplicationManager.getApplication().executeOnPooledThread {
+      try {
+        startAnvil(config, rt)
+      } catch (e: Exception) {
+        fail(config, e.message ?: e.toString())
+      }
+    }
+  }
+
+  private fun startAnvil(config: ChainConfig, rt: ChainRuntime) {
+    val foundry = FoundryProject.find(project)
+    val anvil = FoundryProject.anvilPath(project)
+    if (!Path.of(anvil).toFile().canExecute()) throw IllegalStateException("anvil not found at $anvil. Install Foundry with foundryup.")
+    val port = freePort(config.port)
+    val cmd = GeneralCommandLine(anvilArgs(config, anvil, port)).withEnvironment("NO_COLOR", "1")
+    foundry?.let { cmd.withWorkDirectory(it.root.toFile()) }
+    val handler = KillableColoredProcessHandler(cmd)
+    handler.setShouldKillProcessSoftly(true) // SIGINT, so anvil dumps --state before exiting
+    rt.process = handler
+    if (rt.status != ChainStatus.STARTING) { // stopped or removed while anvil was being spawned
+      handler.process.destroy()
+      rt.process = null
+      return
+    }
+    ApplicationManager.getApplication().invokeAndWait({
       val console = rt.console ?: TextConsoleBuilderFactory.getInstance().createBuilder(project).console.also {
         Disposer.register(this, it)
         rt.console = it
       }
       console.print("$ ${cmd.commandLineString}\n", ConsoleViewContentType.SYSTEM_OUTPUT)
       console.attachToProcess(handler)
-      // Connect only once *our* anvil says where it listens, so we never talk to another node on the same port.
-      val listening = CompletableFuture<String>()
-      val tail = ArrayDeque<String>()
-      handler.addProcessListener(object : ProcessListener {
-        override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-          synchronized(tail) {
-            event.text.lines().filter { it.isNotBlank() }.forEach { tail.addLast(it.trim()); if (tail.size > 15) tail.removeFirst() }
-          }
-          LISTENING.find(event.text)?.let { listening.complete("http://127.0.0.1:${it.groupValues[1]}") }
+    }, ModalityState.any())
+    // Connect only once *our* anvil says where it listens, so we never talk to another node on the same port.
+    val listening = CompletableFuture<String>()
+    val tail = ArrayDeque<String>()
+    handler.addProcessListener(object : ProcessListener {
+      override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
+        synchronized(tail) {
+          event.text.lines().filter { it.isNotBlank() }.forEach { tail.addLast(it.trim()); if (tail.size > 15) tail.removeFirst() }
         }
-
-        override fun processTerminated(event: ProcessEvent) {
-          val output = synchronized(tail) { tail.toList() }
-          listening.completeExceptionally(IllegalStateException(startupError(event.exitCode, output)))
-          onStopped(config, event.exitCode, output)
-        }
-      })
-      handler.startNotify()
-      ApplicationManager.getApplication().executeOnPooledThread {
-        val url = try {
-          listening.get(if (config.isFork) 180L else 60L, TimeUnit.SECONDS)
-        } catch (e: ExecutionException) {
-          return@executeOnPooledThread // onStopped reported it
-        } catch (e: TimeoutException) {
-          fail(config, "anvil did not start listening in time" + if (config.isFork) " (is the fork RPC reachable?)" else "")
-          stop(config)
-          return@executeOnPooledThread
-        }
-        connect(config, JsonRpcClient(url), attempts = 20)
+        LISTENING.find(event.text)?.let { listening.complete("http://127.0.0.1:${it.groupValues[1]}") }
       }
-    } catch (e: Exception) {
-      fail(config, e.message ?: e.toString())
+
+      override fun processTerminated(event: ProcessEvent) {
+        val output = synchronized(tail) { tail.toList() }
+        listening.completeExceptionally(IllegalStateException(startupError(event.exitCode, output)))
+        onStopped(config, event.exitCode, output)
+      }
+    })
+    handler.startNotify()
+    val url = try {
+      listening.get(if (config.isFork) 180L else 60L, TimeUnit.SECONDS)
+    } catch (e: ExecutionException) {
+      return // onStopped reported it
+    } catch (e: TimeoutException) {
+      fail(config, "anvil did not start listening in time" + if (config.isFork) " (is the fork RPC reachable?)" else "")
+      stop(config)
+      return
     }
+    connect(config, JsonRpcClient(url), attempts = 20)
   }
 
   /** Stops [config] if it runs and starts it again once anvil has exited (and saved its state). */
