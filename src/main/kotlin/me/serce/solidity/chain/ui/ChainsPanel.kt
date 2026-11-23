@@ -33,6 +33,20 @@ import me.serce.solidity.chain.ChainService
 import me.serce.solidity.chain.ChainStatus
 import me.serce.solidity.chain.Deployment
 import me.serce.solidity.chain.KnownChains
+import me.serce.solidity.chain.Secrets
+import me.serce.solidity.chain.abi.AbiFetcher
+import me.serce.solidity.chain.abi.AbiText
+import me.serce.solidity.chain.wallet.CastWallet
+import com.intellij.execution.configurations.GeneralCommandLine
+import com.intellij.execution.process.CapturingProcessHandler
+import com.intellij.openapi.application.WriteAction
+import com.intellij.openapi.fileChooser.FileChooserFactory
+import com.intellij.openapi.fileChooser.FileSaverDescriptor
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VfsUtil
+import java.nio.file.Files
 import com.intellij.ide.BrowserUtil
 import me.serce.solidity.chain.abi.AbiEntry
 import me.serce.solidity.chain.abi.AbiValueFormatter
@@ -116,7 +130,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     setToolbar(toolbar.component)
     PopupHandler.installPopupMenu(tree, DefaultActionGroup(
       StartAction(), StopAction(), Separator(), DeployAction(), AttachAction(), Separator(),
-      CopyAddressAction(), OpenInExplorerAction(), RefreshAction(), EditAction(), RemoveAction(),
+      CopyAddressAction(), OpenInExplorerAction(), GenerateInterfaceAction(), Separator(), RefreshAction(), EditAction(), RemoveAction(),
     ), "SolidityChainsPopup")
 
     project.messageBus.connect(this).subscribe(ChainListener.TOPIC, ChainListener { rebuild() })
@@ -417,7 +431,10 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     }
 
     private fun attach(chain: ChainConfig, artifacts: List<me.serce.solidity.chain.foundry.Artifact>) {
-      val dialog = AttachDialog(project, artifacts)
+      val rt = service.runtime(chain.id)
+      val chainId = rt.chainId?.takeIf { service.isRunning(chain) }
+      val fetch = chainId?.let { id -> { address: String -> AbiFetcher(::etherscanKey).fetch(rt.rpc, id, address) } }
+      val dialog = AttachDialog(project, artifacts, fetch)
       if (!dialog.showAndGet()) return
       val d = dialog.deployment(chain.id)
       service.addDeployment(d)
@@ -522,6 +539,46 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     }
   }
 
+  /** Writes a Solidity interface for a contract attached by ABI, so code can call it with completion and checks. */
+  private inner class GenerateInterfaceAction : ChainAction("Generate Solidity Interface…", AllIcons.Nodes.Interface) {
+    override fun update(e: AnActionEvent) {
+      e.presentation.isEnabledAndVisible = selected() is ChainItem.Contract
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+      val d = (selected() as? ChainItem.Contract)?.deployment ?: return
+      val base = d.name.replace(Regex("[^A-Za-z0-9_]"), "").ifEmpty { "Contract" }
+      val name = if (base.length > 1 && base[0] == 'I' && base[1].isUpperCase()) base else "I$base"
+      val cast = CastWallet.castPath(project)
+      val generated = try {
+        ProgressManager.getInstance().runProcessWithProgressSynchronously<String, Exception>({
+        val abiFile = Files.createTempFile("abi", ".json")
+        try {
+          Files.writeString(abiFile, AbiText.withStructNames(d.abiJson, name))
+          val out = CapturingProcessHandler(GeneralCommandLine(cast, "interface", abiFile.toString(), "-n", name)).runProcess(60_000)
+          if (out.exitCode != 0) throw IllegalStateException(CastWallet.errorMessage(out.stderr + "\n" + out.stdout))
+          out.stdout
+        } finally {
+          Files.deleteIfExists(abiFile)
+        }
+        }, "Generating interface", false, project)
+      } catch (ex: Exception) {
+        Messages.showErrorDialog(project, ex.message ?: ex.toString(), "Generate Solidity Interface")
+        return
+      }
+      val root = FoundryProject.find(project)?.root?.let { r -> r.resolve("src").takeIf { Files.isDirectory(it) } ?: r }
+      val dir = root?.let { LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it) }
+      val target = FileChooserFactory.getInstance().createSaveFileDialog(FileSaverDescriptor("Save Interface", "Where to write $name", "sol"), project)
+        .save(dir, "$name.sol") ?: return
+      val file = WriteAction.compute<com.intellij.openapi.vfs.VirtualFile, Exception> {
+        val vf = target.getVirtualFile(true)!!
+        VfsUtil.saveText(vf, generated)
+        vf
+      }
+      OpenFileDescriptor(project, file).navigate(true)
+    }
+  }
+
   private inner class CompileWhileEditingAction : ToggleAction("Show Compiler Errors While Editing", null, AllIcons.General.InspectionsEye) {
     override fun isSelected(e: AnActionEvent) = service.compileWhileEditing
     override fun setSelected(e: AnActionEvent, state: Boolean) {
@@ -530,6 +587,8 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
 
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
   }
+
+  private fun etherscanKey(): String? = Secrets.get(Secrets.ETHERSCAN_KEY) ?: System.getenv("ETHERSCAN_API_KEY")?.takeIf { it.isNotBlank() }
 
   private fun noFoundry() {
     Messages.showWarningDialog(project, "No foundry.toml found in this project.", "Foundry Project Not Found")

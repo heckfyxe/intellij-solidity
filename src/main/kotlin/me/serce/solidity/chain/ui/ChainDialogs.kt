@@ -26,6 +26,13 @@ import me.serce.solidity.chain.Deployment
 import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiInputException
 import me.serce.solidity.chain.abi.AbiText
+import me.serce.solidity.chain.abi.AbiFetchException
+import me.serce.solidity.chain.abi.FetchedAbi
+import me.serce.solidity.chain.Secrets
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.ui.Messages
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import com.intellij.openapi.editor.ex.util.EditorUtil
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
@@ -43,6 +50,8 @@ import javax.swing.JTextField
 import javax.swing.event.DocumentEvent
 
 private val URL_REGEX = Regex("^(https?|wss?)://.+")
+
+private val PRETTY = ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
 
 /** A network's URL as the UI shows it: secret ones (they may hold an API key) only up to the host. */
 fun displayUrl(n: Network): String = if (n.secret) JsonRpcClient.redact(n.url) + "/…" else n.url
@@ -262,7 +271,12 @@ class NetworksDialog(project: Project) : DialogWrapper(project) {
  * Attach a contract that is already on the chain: by a compiled contract of this project, or by an ABI alone
  * (pasted, opened from a file, or written as signatures), for contracts whose source you don't have.
  */
-class AttachDialog(private val project: Project, private val artifacts: List<Artifact>) : DialogWrapper(project) {
+class AttachDialog(
+  private val project: Project,
+  private val artifacts: List<Artifact>,
+  /** Looks up a verified ABI by address; null when the chain isn't connected. Runs off the EDT. */
+  private val fetch: ((address: String) -> FetchedAbi)? = null,
+) : DialogWrapper(project) {
   var artifact: Artifact? = artifacts.firstOrNull()
   var address: String = ""
   private lateinit var addressField: JTextField
@@ -304,6 +318,9 @@ class AttachDialog(private val project: Project, private val artifacts: List<Art
     }.resizableRow().visibleIf(fromAbi.selected)
     row {
       button("Open File…") { openFile() }
+      button("Fetch Verified ABI") { fetchAbi() }.enabled(fetch != null)
+        .comment(if (fetch == null) "Connect the chain to fetch ABIs" else "From Sourcify, and from Etherscan with an API key")
+      link("Etherscan API key…") { editEtherscanKey() }
     }.visibleIf(fromAbi.selected)
     row("Address:") {
       addressField = textField().bindText(::address).align(AlignX.FILL).focused().component
@@ -321,6 +338,39 @@ class AttachDialog(private val project: Project, private val artifacts: List<Art
     }
   }
 
+  private fun fetchAbi() {
+    val fetcher = fetch ?: return
+    val a = addressField.text.trim()
+    if (!isAddress(a)) {
+      setErrorText("Enter the contract's address first", addressField)
+      return
+    }
+    val result = try {
+      ProgressManager.getInstance().runProcessWithProgressSynchronously<FetchedAbi, AbiFetchException>(
+        { fetcher(AbiCodec.checksum(a)) }, "Fetching ABI", true, project)
+    } catch (e: AbiFetchException) {
+      setErrorText(e.message)
+      return
+    }
+    abiArea.text = PRETTY.writeValueAsString(PRETTY.readTree(result.json))
+    abiArea.caretPosition = 0
+    abiOrigin = result.source + (result.implementation?.let { ", proxy of $it" } ?: "")
+    result.name?.let { nameField.text = if (result.implementation != null) "$it (proxy)" else it }
+    setErrorText(null)
+  }
+
+  private fun editEtherscanKey() {
+    val key = Messages.showPasswordDialog(project,
+      "Etherscan API key, kept in the system keychain. One key works for every chain Etherscan supports. Leave empty to remove it.",
+      "Etherscan API Key", null) ?: return
+    Secrets.set(Secrets.ETHERSCAN_KEY, key.trim())
+  }
+
+  private fun isAddress(text: String): Boolean {
+    val a = text.trim().removePrefix("0x")
+    return a.length == 40 && a.all { Character.digit(it, 16) >= 0 }
+  }
+
   /** The parsed ABI when attaching by ABI; null with a validation error otherwise. */
   private fun parsedAbi(): Pair<AbiText.Parsed?, String?> = try {
     AbiText.parse(abiArea.text) to null
@@ -329,8 +379,7 @@ class AttachDialog(private val project: Project, private val artifacts: List<Art
   }
 
   override fun doValidate(): ValidationInfo? {
-    val a = addressField.text.trim().removePrefix("0x")
-    if (a.length != 40 || a.any { Character.digit(it, 16) < 0 }) return ValidationInfo("Not an address", addressField)
+    if (!isAddress(addressField.text)) return ValidationInfo("Not an address", addressField)
     if (fromCompiled.isSelected && artifact == null) return ValidationInfo("Pick a contract")
     if (fromAbi.isSelected) {
       val (_, error) = parsedAbi()

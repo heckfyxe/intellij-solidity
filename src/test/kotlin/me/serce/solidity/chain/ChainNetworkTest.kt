@@ -5,6 +5,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.SystemProperties
 import com.intellij.util.ui.UIUtil
 import me.serce.solidity.chain.abi.AbiText
+import me.serce.solidity.chain.abi.AbiFetcher
 import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import com.intellij.execution.process.CapturingProcessHandler
@@ -193,6 +194,33 @@ class ChainNetworkTest : BasePlatformTestCase() {
     assertEquals(again.record.error, TxStatus.SUCCESS, again.record.status)
     assertEquals(confirmations, prompts.confirmed.size) // a test network stops asking when told to
     service.stop(chain)
+  }
+
+  fun testFindsProxyImplementations() {
+    if (!File(bin, "anvil").canExecute()) return
+    val rpc = startNetwork("Proxy net")
+    val from = rpc.accounts().first()
+    val impl = "0x2222222222222222222222222222222222222222"
+    val proxy = "0x1111111111111111111111111111111111111111"
+    assertNull(AbiFetcher.proxyImplementation(rpc, proxy))
+    rpc.call("anvil_setStorageAt", proxy, AbiFetcher.IMPLEMENTATION_SLOT, "0x" + "0".repeat(24) + impl.removePrefix("0x"))
+    assertEquals(impl, AbiFetcher.proxyImplementation(rpc, proxy))
+    // a beacon proxy: the beacon's implementation() returns 42, read as an address
+    val hash = rpc.sendTransaction(from, null, "0x600a600c600039600a6000f3602a60005260206000f3".hexToBytes(), BigInteger.ZERO)
+    val beacon = rpc.waitForReceipt(hash)["contractAddress"].asText()
+    val beaconProxy = "0x3333333333333333333333333333333333333333"
+    rpc.call("anvil_setStorageAt", beaconProxy, AbiFetcher.BEACON_SLOT, "0x" + "0".repeat(24) + beacon.removePrefix("0x"))
+    assertEquals("0x000000000000000000000000000000000000002A", AbiFetcher.proxyImplementation(rpc, beaconProxy)!!.uppercase().replace("0X", "0x"))
+  }
+
+  fun testGeneratedInterfaceDeclaresStructs() {
+    if (!File(bin, "cast").canExecute()) return
+    val abi = AbiText.withStructNames(AbiText.parse("function place(tuple(address maker, uint96 amount)[] orders) returns (uint256)").json, "IBook")
+    val file = FileUtil.createTempFile("abi", ".json").apply { writeText(abi) }
+    val out = CapturingProcessHandler(GeneralCommandLine(File(bin, "cast").path, "interface", file.path, "-n", "IBook")).runProcess(60_000)
+    assertEquals(out.stderr, 0, out.exitCode)
+    assertTrue(out.stdout, out.stdout.contains("struct PlaceOrders"))
+    assertFalse(out.stderr, out.stderr.contains("Failed to format"))
   }
 
   fun testCastErrorMessage() {

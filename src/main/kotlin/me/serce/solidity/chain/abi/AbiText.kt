@@ -31,6 +31,37 @@ object AbiText {
     return parsed
   }
 
+  /**
+   * Names the structs of [abiJson] that have no `internalType` (ABIs written by hand or as signatures), so
+   * `cast interface` declares them instead of printing tuples Solidity can't parse.
+   */
+  fun withStructNames(abiJson: String, interfaceName: String): String {
+    val abi = mapper.readTree(abiJson) as? ArrayNode ?: return abiJson
+    val used = HashSet<String>()
+    fun unique(base: String): String {
+      var name = base
+      var i = 2
+      while (!used.add(name)) name = "$base${i++}"
+      return name
+    }
+    fun name(params: JsonNode?, owner: String, role: String) {
+      params?.forEachIndexed { i, p ->
+        val type = p["type"]?.asText() ?: return@forEachIndexed
+        if (!type.startsWith("tuple")) return@forEachIndexed
+        val paramName = p["name"]?.asText().orEmpty()
+        val struct = unique(owner + (paramName.ifEmpty { "$role$i" }).replaceFirstChar { it.uppercase() })
+        if (p["internalType"]?.asText().isNullOrEmpty()) (p as ObjectNode).put("internalType", "struct $interfaceName.$struct${type.removePrefix("tuple")}")
+        name(p["components"], struct, "Field")
+      }
+    }
+    for (entry in abi) {
+      val owner = entry["name"]?.asText().orEmpty().replaceFirstChar { it.uppercase() }
+      name(entry["inputs"], owner, "Arg")
+      name(entry["outputs"], owner, "Result")
+    }
+    return mapper.writeValueAsString(abi)
+  }
+
   private fun fromJson(text: String): Parsed {
     val node = try {
       mapper.readTree(text)

@@ -179,7 +179,11 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * Every network transaction is shown in `TxConfirmDialog` before signing (`WalletPrompts`, faked in tests); test
   networks may stop asking until restart (`ChainRuntime.skipConfirm`), mainnets always ask.
 * Contracts can be attached by ABI alone (`AbiText`: JSON ABIs, artifacts, Etherscan/Sourcify responses,
-  human-readable signatures and pasted Solidity interfaces); `Deployment.sourcePath` is then empty.
+  human-readable signatures and pasted Solidity interfaces); `Deployment.sourcePath` is then empty. `AbiFetcher`
+  looks up verified ABIs on Sourcify, then Etherscan v2 (key in the password safe or `ETHERSCAN_API_KEY`; error
+  messages must not echo it), and follows EIP-1967 implementation and beacon slots, merging the proxy's own entries.
+* Generate Solidity Interface runs `cast interface` on the ABI; tuples without `internalType` are given struct names
+  first (`AbiText.withStructNames`), since cast prints anonymous tuples that don't parse.
 
 ## Foundry Integration
 
