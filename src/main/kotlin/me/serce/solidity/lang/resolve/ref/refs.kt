@@ -2,6 +2,9 @@ package me.serce.solidity.lang.resolve.ref
 
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
+import com.intellij.psi.util.CachedValueProvider
+import com.intellij.psi.util.CachedValuesManager
+import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.psi.util.descendants
 import me.serce.solidity.lang.completion.SolCompleter
 import me.serce.solidity.lang.core.SolidityTokenTypes
@@ -19,7 +22,7 @@ import me.serce.solidity.lang.resolve.function.SolFunctionResolver
 import me.serce.solidity.lang.types.*
 
 class SolUserDefinedTypeNameReference(element: SolUserDefinedTypeName) : SolReferenceBase<SolUserDefinedTypeName>(element), SolReference {
-  override fun multiResolve(): Collection<PsiElement> {
+  override fun doMultiResolve(): Collection<PsiElement> {
     val parent = element.parent
     if (parent is SolNewExpressionElement) {
       return parent.reference.multiResolve()
@@ -41,7 +44,7 @@ class SolQualifierTypeNameReference(
     return TextRange(identifier.startOffsetInParent, identifier.startOffsetInParent + identifier.textLength)
   }
 
-  override fun multiResolve(): Collection<PsiElement> {
+  override fun doMultiResolve(): Collection<PsiElement> {
     return SolResolver.resolveTypeNameUsingImports(identifier)
   }
 
@@ -52,7 +55,7 @@ class SolQualifierTypeNameReference(
 }
 
 class SolVarLiteralReference(element: SolVarLiteral) : SolReferenceBase<SolVarLiteral>(element), SolReference {
-  override fun multiResolve() = SolResolver.resolveVarLiteralReference(element)
+  override fun doMultiResolve() = SolResolver.resolveVarLiteralReference(element)
 
   override fun getVariants() = SolCompleter.completeLiteral(element).toList().toTypedArray()
 }
@@ -61,14 +64,14 @@ class SolVarLiteralReference(element: SolVarLiteral) : SolReferenceBase<SolVarLi
 class SolYulPathReference(element: SolYulPathElement) : SolReferenceBase<SolYulPathElement>(element), SolReference {
   override fun calculateDefaultRangeInElement(): TextRange = element.referenceNameElement.parentRelativeRange
 
-  override fun multiResolve(): Collection<PsiElement> = SolYulResolver.resolveVariable(element)
+  override fun doMultiResolve(): Collection<PsiElement> = SolYulResolver.resolveVariable(element)
 }
 
 /** The name of a called Yul function; built-ins resolve to nothing (see [YulBuiltins]). */
 class SolYulFunctionCallReference(element: SolYulFunctionCallMixin) : SolReferenceBase<SolYulFunctionCallMixin>(element), SolReference {
   override fun calculateDefaultRangeInElement(): TextRange = element.referenceNameElement.parentRelativeRange
 
-  override fun multiResolve(): Collection<PsiElement> = SolYulResolver.resolveFunction(element)
+  override fun doMultiResolve(): Collection<PsiElement> = SolYulResolver.resolveFunction(element)
 }
 
 
@@ -79,7 +82,7 @@ class SolModifierReference(
 
   override fun calculateDefaultRangeInElement() = modifierElement.referenceNameElement.rangeRelativeTo(element)
 
-  override fun multiResolve(): List<SolNamedElement> {
+  override fun doMultiResolve(): Collection<PsiElement> {
     val contract = modifierElement.findContract() ?: return emptyList()
     val superNames = (contract.collectSupers.map { it.name } + contract.name).filterNotNullTo(hashSetOf())
     return SolResolver.resolveTypeNameUsingImports(modifierElement)
@@ -100,7 +103,7 @@ class SolMemberAccessReference(element: SolMemberAccessExpression) : SolReferenc
     return element.identifier?.parentRelativeRange ?: super.calculateDefaultRangeInElement()
   }
 
-  override fun multiResolve(): List<SolNamedElement> {
+  override fun doMultiResolve(): Collection<PsiElement> {
     val firstMemberElement = element.childOfType<SolPrimaryExpression>()
     val importAlias = firstMemberElement?.varLiteral?.let { varLiteral -> SolResolver.resolveAlias(varLiteral) }
     if (importAlias != null && SolResolver.isAliasOfFile(importAlias)) {
@@ -125,7 +128,7 @@ class SolNewExpressionReference(val element: SolNewExpression) : SolReferenceBas
     return element.referenceNameElement.parentRelativeRange
   }
 
-  override fun multiResolve(): Collection<PsiElement> {
+  override fun doMultiResolve(): Collection<PsiElement> {
     val types = SolResolver.resolveTypeNameUsingImports(element.referenceNameElement)
     return types
       .filterIsInstance<SolContractDefinition>()
@@ -147,7 +150,15 @@ class SolFunctionCallReference(element: SolFunctionCallExpression) : SolReferenc
     return element.referenceNameElement.parentRelativeRange
   }
 
-  fun resolveFunctionCall(): Collection<SolCallable> {
+  /**
+   * The callables this call may refer to, before checking the arguments. Inference, resolve and several inspections
+   * ask for it per call, so it is cached on the call.
+   */
+  fun resolveFunctionCall(): Collection<SolCallable> = CachedValuesManager.getCachedValue(element) {
+    CachedValueProvider.Result.create(computeFunctionCall(), PsiModificationTracker.MODIFICATION_COUNT)
+  }
+
+  private fun computeFunctionCall(): Collection<SolCallable> {
     if (element.parent is SolRevertStatement || isRequireErrorArgument()) {
       val errors = SolResolver.resolveTypeNameUsingImports(element).filterIsInstance<SolErrorDefinition>()
       if (errors.isNotEmpty()) {
@@ -193,6 +204,7 @@ class SolFunctionCallReference(element: SolFunctionCallExpression) : SolReferenc
   }
 
   private fun removeOverrides(callables: Collection<SolCallable>): Collection<SolCallable> {
+    if (callables.count { it is SolFunctionDefinition } < 2) return callables
     val overridden = callables.filterIsInstance<SolFunctionDefinition>()
       .flatMapTo(hashSetOf()) { SolFunctionResolver.collectOverridden(it) }
     return callables.filter { it !is SolFunctionDefinition || it !in overridden }
@@ -212,14 +224,18 @@ class SolFunctionCallReference(element: SolFunctionCallExpression) : SolReferenc
       })
   }
 
-  override fun multiResolve(): Collection<PsiElement> {
+  override fun doMultiResolve(): Collection<PsiElement> {
     return resolveFunctionCallAndFilter()
       .mapNotNull { it.resolveElement() }
   }
 
-  fun resolveFunctionCallAndFilter(): List<SolCallable> {
-    return resolveFunctionCall()
-      .filter { it.canBeApplied(element.functionCallArguments) }
+  /** The callables accepting the call's arguments; cached like [resolveFunctionCall]. */
+  fun resolveFunctionCallAndFilter(): List<SolCallable> = CachedValuesManager.getCachedValue(element) {
+    val arguments = element.functionCallArguments
+    CachedValueProvider.Result.create(
+      resolveFunctionCall().filter { it.canBeApplied(arguments) },
+      PsiModificationTracker.MODIFICATION_COUNT
+    )
   }
 }
 

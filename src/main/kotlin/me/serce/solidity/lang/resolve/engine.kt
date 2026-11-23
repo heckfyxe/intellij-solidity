@@ -537,7 +537,12 @@ object SolResolver {
     }
   }
 
-  fun resolveMemberAccess(element: SolMemberAccessExpression): List<SolMember> {
+  /** The members [element] may refer to; inference, resolve and inspections ask for it, so it is cached. */
+  fun resolveMemberAccess(element: SolMemberAccessExpression): List<SolMember> = CachedValuesManager.getCachedValue(element) {
+    CachedValueProvider.Result.create(computeMemberAccess(element), PsiModificationTracker.MODIFICATION_COUNT)
+  }
+
+  private fun computeMemberAccess(element: SolMemberAccessExpression): List<SolMember> {
     if (element.parent is SolFunctionCallExpression) {
       val functionCall = element.findParentOrNull<SolFunctionCallElement>()!!
       val resolved = (functionCall.reference as SolFunctionCallReference)

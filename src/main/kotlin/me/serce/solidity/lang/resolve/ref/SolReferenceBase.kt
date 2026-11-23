@@ -4,6 +4,7 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementResolveResult
 import com.intellij.psi.PsiPolyVariantReferenceBase
+import com.intellij.psi.ResolveResult
 import com.intellij.psi.impl.source.resolve.ResolveCache
 import me.serce.solidity.lang.core.SolidityTokenTypes.IDENTIFIER
 import me.serce.solidity.lang.psi.SolElement
@@ -16,12 +17,16 @@ abstract class SolReferenceBase<T : SolReferenceElement>(element: T) : PsiPolyVa
 
   override fun getVariants(): Array<out Any> = emptyArray()
 
-  final override fun multiResolve(incompleteCode: Boolean) = ResolveCache.getInstance(element.project)
+  final override fun multiResolve(incompleteCode: Boolean): Array<ResolveResult> = ResolveCache.getInstance(element.project)
     .resolveWithCaching(this, { r, _ ->
-      r.multiResolve().map(::PsiElementResolveResult).toTypedArray()
+      r.doMultiResolve().map(::PsiElementResolveResult).toTypedArray<ResolveResult>()
     }, true, false)
 
-  override fun multiResolve(): Collection<PsiElement> = singleResolve()?.let { listOf(it) } ?: emptyList()
+  /** The resolved elements, cached by [ResolveCache] like [multiResolve] with a flag. */
+  final override fun multiResolve(): Collection<PsiElement> = multiResolve(false).mapNotNull { it.element }
+
+  /** Computes what [multiResolve] returns; never call it directly, it bypasses the cache. */
+  protected open fun doMultiResolve(): Collection<PsiElement> = singleResolve()?.let { listOf(it) } ?: emptyList()
 
   open fun singleResolve(): PsiElement? = null
 
@@ -41,8 +46,9 @@ abstract class SolReferenceBase<T : SolReferenceElement>(element: T) : PsiPolyVa
     if (this === other) return true
     if (javaClass != other?.javaClass) return false
     other as SolReferenceBase<*>
-    return element == other.element
+    // ResolveCache keys on equality: an element can have several references (one per modifier invocation)
+    return element == other.element && rangeInElement == other.rangeInElement
   }
 
-  override fun hashCode() = element.hashCode()
+  override fun hashCode() = element.hashCode() * 31 + rangeInElement.hashCode()
 }
