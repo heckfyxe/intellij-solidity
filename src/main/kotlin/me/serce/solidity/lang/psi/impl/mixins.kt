@@ -485,7 +485,7 @@ abstract class SolMemberAccessElement(node: ASTNode) : SolNamedElementImpl(node)
   fun collectUsingForLibraryFunctions(): List<SolFunctionDefinition> {
     val type = expression.type.takeIf { it != SolUnknown } ?: return emptyList()
     val usingForElementFromImports =
-      RecursionManager.doPreventingRecursion(containingFile, true) {
+      RecursionManager.doPreventingRecursion(this, true) {
         SolResolver.collectUsingForDeclarationsInScope(this, type).filter {
           val usingType = it.type
           usingType == null || usingType == type
@@ -590,10 +590,14 @@ abstract class SolUsingForMixin(node: ASTNode) : SolElementImpl(node), SolUsingF
   override val usingElementList: List<SolCallableElement>
     get() = boundNames.mapNotNull { SolResolver.resolveUsingForElement(it) }
 
+  /** Resolved on every member access the declaration applies to, so it is cached. */
   override val memberBindingList: List<SolCallableElement>
-    get() = boundNames
-      .filter { PsiTreeUtil.skipWhitespacesAndCommentsForward(it).elementType != AS }
-      .mapNotNull { SolResolver.resolveUsingForElement(it) }
+    get() = CachedValuesManager.getCachedValue(this) {
+      val bindings = boundNames
+        .filter { PsiTreeUtil.skipWhitespacesAndCommentsForward(it).elementType != AS }
+        .mapNotNull { SolResolver.resolveUsingForElement(it) }
+      CachedValueProvider.Result.create(bindings, PsiModificationTracker.MODIFICATION_COUNT)
+    }
 
   override val isGlobal: Boolean
     get() = node.getChildren(null).any { it.psi !is SolTypeName && it.text == "global" }
