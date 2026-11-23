@@ -62,13 +62,13 @@ Declarations are always `VariableDefinition`s (`uint x = (a + b);`, `(uint a, ui
 
 Where a keyword token is a plain name, the parser remaps it to `Identifier` with an external rule
 (`SolidityParserUtil.keywordFunctionName` for `function receive()`), so the PSI and name accessors are the same as
-for any name. Inside assembly the lexer does it instead: `assembly` enters `ASSEMBLY_HEADER`, its `{` enters `YUL`
+for any name. The reverse, `oldDenomination`, lexes `szabo`/`finney` as identifiers and remaps them to unit tokens
+only right after a number literal. Inside assembly the lexer remaps instead: `assembly` enters `ASSEMBLY_HEADER`, its `{` enters `YUL`
 (brace depth in a field), where only Yul's keywords and the built-ins `return`/`address`/`byte` keep their tokens and
 every other word is `Identifier` (`let days := 1`), so highlighting agrees with the parser. Highlighting restarts
 only at tokens lexed in state 0, so fields needn't be encoded in the state; comments return to the state they started
 in. `.yul` files use `SolidityLexer(yul = true)`, which starts in `YUL_FILE` and reports it as state 0.
-`SolidityLexerTest` checks this and the restart. The reverse, `oldDenomination`, lexes `szabo`/`finney` as
-identifiers and remaps them to unit tokens only right after a number literal.
+`SolidityLexerTest` checks this and the restart.
 
 NatSpec tags (`NAT_SPEC_TAG`) are lexed inside comments only when the `@` follows whitespace, `*` or `/`
 (`/// @notice`, `///@notice`, ` *@dev`, a tag at the start of a block comment line), as solc accepts them; `a@b` stays
