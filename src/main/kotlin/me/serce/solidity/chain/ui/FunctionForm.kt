@@ -184,7 +184,7 @@ class FunctionForm(
     val from = fromCombo.selectedItem as? String
     if (from == null && needsSender) {
       return showResult {
-        showError(if (chain.isNetwork) "No account to send from. Add a wallet to ${chain.name} to send transactions." else "No account: is ${chain.name} running?")
+        showError(if (chain.isNetworkChain) "No account to send from. Add a wallet to ${chain.name} to send transactions." else "No account: is ${chain.name} running?")
       }
     }
     val args = try {
@@ -206,7 +206,7 @@ class FunctionForm(
     secondaryButton?.isEnabled = false
     showResult { showRunning() }
     // on a network, signing can wait minutes for a hardware or browser wallet: let the user give up
-    object : Task.Backgroundable(project, "$actionName ${title.substringBefore('(')}", chain.isNetwork) {
+    object : Task.Backgroundable(project, "$actionName ${title.substringBefore('(')}", chain.isNetworkChain) {
       private var outcome: ChainExecutor.Outcome? = null
       private var failure: Throwable? = null
       override fun run(indicator: ProgressIndicator) {

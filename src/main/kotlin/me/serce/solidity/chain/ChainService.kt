@@ -313,7 +313,7 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
       if (rt.status != ChainStatus.STARTING) return
       try {
         val chainId = rpc.chainId()
-        if (config.isNetwork) checkChainId(config, chainId)?.let { return fail(config, it) }
+        if (config.isNetworkChain) checkChainId(config, chainId)?.let { return fail(config, it) }
         rt.chainId = chainId
         rt.rpc = rpc
         if (config.isFork) clearForkedAccountCode(rt, rpc)
@@ -357,7 +357,7 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
 
   private fun loadChainInfo(config: ChainConfig, rt: ChainRuntime, rpc: JsonRpcClient) {
     // Public RPCs hold no accounts: on a network the wallets added to the chain are the accounts.
-    rt.accounts = if (config.isNetwork) config.wallets.map { it.address }.filter { it.isNotEmpty() }.distinct()
+    rt.accounts = if (config.isNetworkChain) config.wallets.map { it.address }.filter { it.isNotEmpty() }.distinct()
     else rpc.accounts().map { AbiCodec.checksum(it) }
     rt.balances = rt.accounts.associateWith { rpc.balance(it) }
     rt.blockNumber = rpc.blockNumber()

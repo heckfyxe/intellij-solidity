@@ -217,9 +217,9 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       append("<b>${ResultView.esc(chain.name)}</b> <span style='color:${ResultView.grey()}'>${ResultView.esc(chain.description)}</span><br>")
       append("status: ${rt.status.name.lowercase()}")
       if (service.isRunning(chain)) {
-        append(" · <code>${ResultView.esc(rt.rpc?.let { if (chain.isNetwork) it.displayUrl else it.url }.orEmpty())}</code> · chain id ${rt.chainId} · block ${rt.blockNumber}")
+        append(" · <code>${ResultView.esc(rt.rpc?.let { if (chain.isNetworkChain) it.displayUrl else it.url }.orEmpty())}</code> · chain id ${rt.chainId} · block ${rt.blockNumber}")
       }
-      if (chain.isNetwork) {
+      if (chain.isNetworkChain) {
         val known = KnownChains.info(rt.chainId ?: chain.expectedChainId.toLongOrNull())
         append("<br>")
         append(if (KnownChains.isMainnet(rt.chainId ?: chain.expectedChainId.toLongOrNull()))
@@ -506,7 +506,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
         service.updateChain(copy)
         if (service.isRunning(chain)) {
           // wallets apply at once; another network needs a new connection
-          if (copy.isNetwork && copy.network == chain.network) service.refresh(copy)
+          if (copy.isNetworkChain && copy.network == chain.network) service.refresh(copy)
           else Messages.showInfoMessage(project, "Restart ${copy.name} for the changes to take effect.", "Chain Updated")
         }
       }
@@ -554,7 +554,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     private fun url(): String? {
       val item = selected() ?: return null
       val chainId = service.runtime(item.config.id).chainId ?: item.config.expectedChainId.toLongOrNull()
-      if (!item.config.isNetwork) return null
+      if (!item.config.isNetworkChain) return null
       val address = when (item) {
         is ChainItem.Account -> item.address
         is ChainItem.Contract -> item.deployment.address

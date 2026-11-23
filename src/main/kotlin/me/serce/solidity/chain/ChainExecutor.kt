@@ -119,7 +119,7 @@ class ChainExecutor(
     record.args += "data: ${if (data.isEmpty()) "(empty)" else data.toHex()}"
     if (from == null && send) {
       record.status = TxStatus.FAILED
-      record.error = "No account to send from." + if (chain.isNetwork) " Add a wallet to ${chain.name} to send transactions." else ""
+      record.error = "No account to send from." + if (chain.isNetworkChain) " Add a wallet to ${chain.name} to send transactions." else ""
       return Outcome(record, null)
     }
     run(chain, record, abi, TraceTarget.Call(from, to, data, value)) { rpc ->
@@ -168,7 +168,7 @@ class ChainExecutor(
     chain: ChainConfig, rpc: JsonRpcClient, record: TxRecord, from: String, to: String?, data: ByteArray, value: BigInteger,
     action: String, toLabel: String? = null,
   ): String? {
-    if (!chain.isNetwork) return rpc.sendTransaction(from, to, data, value)
+    if (!chain.isNetworkChain) return rpc.sendTransaction(from, to, data, value)
     fun notSent(reason: String): String? {
       record.status = TxStatus.FAILED
       record.error = reason
@@ -227,7 +227,7 @@ class ChainExecutor(
       if (rpc.automine()) rpc.mine()
     }
     // a real network mines every few seconds, but a low fee or a busy network can take minutes
-    if (chain.isNetwork) {
+    if (chain.isNetworkChain) {
       return rpc.receiptWithin(hash, Duration.ofMinutes(5), pollEvery = Duration.ofSeconds(2))
         ?: throw RpcException("Transaction $hash was sent but not mined within 5 minutes. " +
           (KnownChains.txUrl(service.runtime(chain.id).chainId, hash)?.let { "Follow it at $it" } ?: "It may still be mined later."))

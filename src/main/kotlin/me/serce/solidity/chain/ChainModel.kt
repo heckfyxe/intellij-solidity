@@ -37,8 +37,11 @@ class ChainConfig {
   /** For [ChainKind.NETWORK]: accounts that sign transactions. */
   var wallets: MutableList<WalletConfig> = ArrayList()
 
+  // Not `isNetwork`: XmlSerializer takes `isNetwork()` for a getter of the `network` property and, depending on the
+  // order the JVM lists methods in, then doesn't save the String `network` (a network chain came back with no network
+  // after reopening the project). @Transient on it doesn't help: it can make the whole `network` property transient.
   val isFork get() = kind == ChainKind.ANVIL && forkUrl.isNotBlank()
-  val isNetwork get() = kind == ChainKind.NETWORK
+  val isNetworkChain get() = kind == ChainKind.NETWORK
 
   /** Identifies what anvil's saved state depends on: loading it on a different fork or chain id breaks the chain. */
   val stateKey: String get() = Integer.toHexString("${forkUrl.trim().trimEnd('/')}|${forkBlock.trim()}|${chainId.trim()}".hashCode())
