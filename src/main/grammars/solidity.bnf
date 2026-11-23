@@ -474,7 +474,8 @@ IfStatement ::= if '(' Expression ')' Statement ( else Statement )? {pin = 1}
 TryStatement ::= try Expression ReturnsList? Block CatchClause* {pin = 1}
 CatchClause ::= catch ( Identifier? ParameterList )? Block {pin = 1}
 WhileStatement ::= while '(' Expression ')' Statement {pin = 1}
-PlaceholderStatement ::= '_'
+// only `_;` (or `_` missing its `;`): elsewhere `_` is a name (`_ = 1;`)
+PlaceholderStatement ::= '_' &(';' | '}' | <<afterNewLine>>)
 private SimpleStatement ::= VariableDefinition | ExpressionStatement
 ForStatement ::= for '(' (SimpleStatement)? ';' (Expression)? ';' (ExpressionStatement)? ')' Statement {pin=1}
 InlineAssemblyStatement ::= assembly AssemblyDialect? AssemblyFlags? YulBlock {pin=1}
