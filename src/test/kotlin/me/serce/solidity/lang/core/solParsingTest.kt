@@ -44,6 +44,7 @@ class SolidityCompleteCustomParsingTest : SolidityParsingTestBase("fixtures/pars
   fun testDestructuring() = doTest(true, true)
   fun testDigits() = doTest(true, true)
   fun testEmit() = doTest(true, true)
+  fun testEmptyNamedArguments() = doTest(true, true)
   fun testEnums() = doTest(true, true)
   fun testEvent() = doTest(true, true)
   fun testError() = doTest(true, true)

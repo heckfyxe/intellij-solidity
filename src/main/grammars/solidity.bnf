@@ -559,7 +559,9 @@ FunctionCallExpression ::= Expression FunctionInvocation {
     mixin = "me.serce.solidity.lang.psi.impl.SolFunctionCallMixin"
 }
 
-FunctionInvocation ::= MapExpression? '(' FunctionCallArguments? ')'
+FunctionInvocation ::= MapExpression? '(' (EmptyNamedArguments | FunctionCallArguments)? ')'
+// `f({})`: no named arguments, for a function without parameters; shaped like `f()`
+private EmptyNamedArguments ::= '{' '}'
 FunctionCallArguments ::= MapExpression | Expression? NextCallArgument*
 private NextCallArgument ::= ',' Expression {pin=1}
 MapExpressionClause ::= Identifier ':' (Expression | MapExpression) {pin=2}
