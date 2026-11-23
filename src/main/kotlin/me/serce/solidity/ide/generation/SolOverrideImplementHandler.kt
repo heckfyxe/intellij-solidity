@@ -1,6 +1,5 @@
 package me.serce.solidity.ide.generation
 
-import com.intellij.application.options.CodeStyle
 import com.intellij.codeInsight.hint.HintManager
 import com.intellij.codeInsight.generation.ClassMember
 import com.intellij.codeInsight.generation.MemberChooserObject
@@ -20,9 +19,10 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.SmartPointerManager
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleTextAttributes
+import me.serce.solidity.ide.indentAt
+import me.serce.solidity.ide.indentUnit
 import me.serce.solidity.ide.inspections.fixes.AddVirtualFix
 import me.serce.solidity.ide.inspections.fixes.SolSpecifierEditor
-import me.serce.solidity.lang.SolidityFileType
 import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.psi.ContractType
 import me.serce.solidity.lang.psi.SolContractDefinition
@@ -131,8 +131,9 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
     psiDocumentManager.doPostponedOperationsAndUnblockDocument(document)
 
     // indent ourselves: with an external formatter (Foundry) IntelliJ's formatter is disabled for Solidity
-    val unit = indentUnit(project)
-    val baseIndent = lineIndent(document, contract.textRange.startOffset) + unit
+    val unit = indentUnit(contract.containingFile)
+    val contractIndent = indentAt(document, contract.textRange.startOffset)
+    val baseIndent = contractIndent + unit
     val (variables, functions) = members.partition {
       getterVariables && it is SolFunctionDefinition && !SolOverrideResolver.hasBody(it) && SolPublicGetter.canImplementAsVariable(it, contract)
     }
@@ -161,7 +162,7 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
       // only indentation before the offset (e.g. before the closing brace)
       document.deleteString(lineStart, offset)
       offset = lineStart
-      inserted = "$text\n" + lineIndent(document, contract.textRange.startOffset)
+      inserted = "$text\n$contractIndent"
     } else {
       inserted = "\n$text\n"
     }
@@ -189,16 +190,6 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
   private fun overrideText(contract: SolContractDefinition, bases: List<String>): String {
     val range = contract.containingFile.solidityVersionRange()
     return if (range != null && range.isBelow(SolPublicGetter.OVERRIDE_SINCE)) "" else SolSpecifierEditor.overrideText(bases)
-  }
-
-  private fun lineIndent(document: Document, offset: Int): String {
-    val start = document.getLineStartOffset(document.getLineNumber(offset))
-    return document.charsSequence.subSequence(start, offset).takeWhile { it == ' ' || it == '\t' }.toString()
-  }
-
-  private fun indentUnit(project: Project): String {
-    val options = CodeStyle.getProjectOrDefaultSettings(project).getIndentOptions(SolidityFileType)
-    return if (options.USE_TAB_CHARACTER) "\t" else " ".repeat(options.INDENT_SIZE)
   }
 
   /** At the caret when it is between members of [contract]; after the member under the caret; else before `}`. */

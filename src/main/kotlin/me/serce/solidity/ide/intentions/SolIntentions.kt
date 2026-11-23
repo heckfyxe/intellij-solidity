@@ -7,28 +7,13 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.elementType
+import me.serce.solidity.ide.indentAt
+import me.serce.solidity.ide.indentUnit
 import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.ide.hints.comments
 import me.serce.solidity.lang.psi.*
 
 private const val FAMILY = "Solidity"
-
-/** The indentation of the line [offset] is on. */
-internal fun indentAt(text: CharSequence, offset: Int): String {
-  var start = offset
-  while (start > 0 && text[start - 1] != '\n') start--
-  var end = start
-  while (end < text.length && (text[end] == ' ' || text[end] == '\t')) end++
-  return text.subSequence(start, end).toString()
-}
-
-/** One level of indentation, as used in the file (a tab, or the smallest space indent, 4 by default). */
-internal fun indentUnit(text: CharSequence): String {
-  val indents = text.lines().map { line -> line.takeWhile { it == ' ' || it == '\t' } }.filter { it.isNotEmpty() && it.isNotBlank() }
-  if (indents.any { it.startsWith("\t") }) return "\t"
-  val smallest = indents.minOfOrNull { it.length } ?: 4
-  return " ".repeat(smallest.coerceIn(2, 8))
-}
 
 /**
  * Adds a NatSpec comment above a contract, function, modifier, event or error: `@notice`, one `@param` per named
@@ -66,9 +51,8 @@ class AddNatSpecIntention : PsiElementBaseIntentionAction() {
   override fun invoke(project: Project, editor: Editor, element: PsiElement) {
     val owner = owner(element) ?: return
     val document = editor.document
-    val text = document.charsSequence
     val start = owner.textRange.startOffset
-    val indent = indentAt(text, start)
+    val indent = indentAt(document, start)
     val lines = mutableListOf("/// @notice ")
     if (owner is SolContractDefinition) lines.add(0, "/// @title ${owner.name ?: ""}")
     paramNames(owner).forEach { lines += "/// @param $it " }
@@ -142,9 +126,8 @@ class WrapInUncheckedIntention : PsiElementBaseIntentionAction() {
   override fun invoke(project: Project, editor: Editor, element: PsiElement) {
     val st = statement(element) ?: return
     val document = editor.document
-    val text = document.charsSequence
-    val indent = indentAt(text, st.textRange.startOffset)
-    val unit = indentUnit(text)
+    val indent = indentAt(document, st.textRange.startOffset)
+    val unit = indentUnit(st.containingFile)
     val body = st.text.lines().joinToString("\n") { line -> if (line.isBlank()) line else "$unit$line" }
     val replacement = "unchecked {\n$indent$body\n$indent}"
     val start = st.textRange.startOffset

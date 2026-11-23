@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.typing
 
+import me.serce.solidity.ide.indentAt
 import com.intellij.lang.SmartEnterProcessorWithFixers
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.editor.Document
@@ -650,16 +651,8 @@ internal class SolStatementAnalyzer(
 
   private fun lineOf(offset: Int) = document.getLineNumber(offset)
 
-  private fun indentOf(offset: Int): Int {
-    val chars = document.charsSequence
-    var i = document.getLineStartOffset(lineOf(offset))
-    var width = 0
-    while (i < chars.length && (chars[i] == ' ' || chars[i] == '\t')) {
-      width += if (chars[i] == '\t') 4 else 1
-      i++
-    }
-    return width
-  }
+  /** The width of the indentation of [offset]'s line, a tab counting as 4. */
+  private fun indentOf(offset: Int): Int = indentAt(document, offset).sumOf { if (it == '\t') 4 else 1 }
 
   companion object {
     private const val MAX_LINES = 50

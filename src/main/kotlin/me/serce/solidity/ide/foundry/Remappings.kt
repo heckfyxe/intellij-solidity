@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.foundry
 
+import com.intellij.util.DocumentUtil
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.intellij.codeInsight.completion.CompletionContributor
 import com.intellij.codeInsight.completion.CompletionParameters
@@ -62,8 +63,7 @@ class RemappingsCompletionContributor : CompletionContributor() {
     val root = RemappingsFile.root(file) ?: return
     val text = parameters.editor.document.charsSequence
     val offset = parameters.offset
-    var lineStart = offset
-    while (lineStart > 0 && text[lineStart - 1] != '\n') lineStart--
+    val lineStart = DocumentUtil.getLineStartOffset(offset, parameters.editor.document)
     val typed = text.subSequence(lineStart, offset).toString()
     val eq = typed.indexOf('=')
     if (eq < 0) {

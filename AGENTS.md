@@ -105,7 +105,8 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * Enter/`}` indentation comes from the formatting model (`SolFormattingBlock.getChildAttributes`), which only computes
   indents: `SolidityFormattingModelBuilder` returns a no-op model for `FormattingMode.REFORMAT` and blocks have no
   spacing. Code that edits PSI must therefore produce well-laid-out text itself (e.g. `layoutImports` after adding
-  imports); nothing reformats it afterwards.
+  imports); nothing reformats it afterwards. Indent inserted text with `ide/Indent.kt`: `indentAt` (a line's
+  indentation) and `indentUnit` (the unit the file already uses, else the code style's).
 * Tests run with the formatter set to Disabled (`SolLightPlatformCodeInsightFixtureTestCase.setUp`), so they don't
   depend on forge being installed; formatter tests select it explicitly.
 * Typing behaviour is covered by `SolAutoIdentationTest` (fixtures in `fixtures/auto_ident/`),

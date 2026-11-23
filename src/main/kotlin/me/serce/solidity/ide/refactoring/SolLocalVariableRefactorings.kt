@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.refactoring
 
+import me.serce.solidity.ide.indentAt
 import com.intellij.codeInsight.unwrap.ScopeHighlighter
 import com.intellij.lang.Language
 import com.intellij.lang.refactoring.InlineActionHandler
@@ -133,11 +134,8 @@ class SolIntroduceVariableHandler : RefactoringActionHandler {
       ?: return fail(project, editor, "Can't declare a variable of type ${inferExprType(expression)}")
     val statement = PsiTreeUtil.getParentOfType(expression, SolStatement::class.java)!!
     val document = editor.document
-    val text = document.charsSequence
     val name = uniqueName(suggestName(expression), statement)
-    var lineStart = statement.textRange.startOffset
-    while (lineStart > 0 && text[lineStart - 1] != '\n') lineStart--
-    val indent = text.subSequence(lineStart, statement.textRange.startOffset).toString()
+    val indent = indentAt(document, statement.textRange.startOffset)
     val declaration = "$type $name = ${expression.text};\n$indent"
     val exprRange = expression.textRange
     val insertAt = statement.textRange.startOffset

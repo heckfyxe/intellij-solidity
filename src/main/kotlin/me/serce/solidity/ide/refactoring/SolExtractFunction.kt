@@ -15,8 +15,8 @@ import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.RefactoringActionHandler
 import com.intellij.refactoring.util.CommonRefactoringUtil
-import me.serce.solidity.ide.intentions.indentAt
-import me.serce.solidity.ide.intentions.indentUnit
+import me.serce.solidity.ide.indentAt
+import me.serce.solidity.ide.indentUnit
 import me.serce.solidity.lang.psi.*
 
 private const val EXTRACT = "Extract Function"
@@ -211,9 +211,9 @@ class SolExtractFunctionHandler : RefactoringActionHandler {
     val text = document.charsSequence
     val first = plan.statements.first()
     val last = plan.statements.last()
-    val unit = indentUnit(text)
-    val callableIndent = indentAt(text, plan.callable.textRange.startOffset)
-    val statementIndent = indentAt(text, first.textRange.startOffset)
+    val unit = indentUnit(first.containingFile)
+    val callableIndent = indentAt(document, plan.callable.textRange.startOffset)
+    val statementIndent = indentAt(document, first.textRange.startOffset)
     val bodyIndent = callableIndent + unit + if (plan.unchecked) unit else ""
 
     // the statements, re-indented from where they were to the new body

@@ -11,6 +11,8 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
+import me.serce.solidity.ide.indentUnit
+import me.serce.solidity.ide.lineIndentOf
 import me.serce.solidity.lang.psi.*
 
 /** Every expression ending at the caret, innermost first: `a + b.not` offers `b` and `a + b`. */
@@ -33,13 +35,6 @@ private class SolExpressionSelector(condition: Condition<PsiElement> = Condition
 private fun startsStatement(element: PsiElement): Boolean {
   val statement = PsiTreeUtil.getParentOfType(element, SolStatement::class.java) ?: return false
   return statement.parent is SolBlock && statement.textRange.startOffset == element.textRange.startOffset
-}
-
-private fun indentOf(element: PsiElement): String {
-  val text = element.containingFile.viewProvider.document?.charsSequence ?: element.containingFile.text
-  var start = element.textRange.startOffset
-  while (start > 0 && text[start - 1] != '\n') start--
-  return text.subSequence(start, element.textRange.startOffset).takeWhile { it == ' ' || it == '\t' }.toString()
 }
 
 /** `!` binds tighter than any binary operator: those operands need parentheses. */
@@ -80,8 +75,8 @@ class SolPostfixTemplateProvider : PostfixTemplateProvider {
   private val all: Set<PostfixTemplate> by lazy {
     setOf(
       SolTemplate("if", "if (expr) {}", this, statement = true) { e ->
-        val indent = indentOf(e)
-        "if (\$expr\$) {\n$indent    \$END\$\n$indent}"
+        val indent = lineIndentOf(e)
+        "if (\$expr\$) {\n$indent${indentUnit(e.containingFile)}\$END\$\n$indent}"
       },
       SolTemplate("require", "require(expr, \"\");", this, statement = true) { "require(\$expr\$, \"\$END\$\");" },
       SolTemplate("return", "return expr;", this, statement = true) { "return \$expr\$;\$END\$" },

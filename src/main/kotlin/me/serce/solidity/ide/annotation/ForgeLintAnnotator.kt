@@ -1,5 +1,7 @@
 package me.serce.solidity.ide.annotation
 
+import com.intellij.util.DocumentUtil
+import me.serce.solidity.ide.indentAt
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.codeInsight.intention.IntentionAction
@@ -177,10 +179,8 @@ class SuppressForgeLintFix(private val code: String) : IntentionAction, LowPrior
   override fun invoke(project: Project, editor: Editor?, file: PsiFile?) {
     editor ?: return
     val document = editor.document
-    val line = document.getLineNumber(editor.caretModel.offset)
-    val lineStart = document.getLineStartOffset(line)
-    val lineText = document.charsSequence.subSequence(lineStart, document.getLineEndOffset(line))
-    val indent = lineText.takeWhile { it == ' ' || it == '\t' }
+    val lineStart = DocumentUtil.getLineStartOffset(editor.caretModel.offset, document)
+    val indent = indentAt(document, lineStart)
     document.insertString(lineStart, "$indent// forge-lint: disable-next-line($code)\n")
   }
 }

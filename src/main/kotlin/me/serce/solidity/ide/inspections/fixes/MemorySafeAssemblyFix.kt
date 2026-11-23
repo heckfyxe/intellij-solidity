@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.inspections.fixes
 
+import com.intellij.util.DocumentUtil
 import com.intellij.codeInspection.LocalQuickFixOnPsiElement
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.project.Project
@@ -58,6 +59,10 @@ class MemorySafeAssemblyFix(assembly: SolInlineAssemblyStatement) : LocalQuickFi
 
   private companion object {
     val TAG = Regex("""@solidity\s+memory-safe-assembly""")
+
+    /** Lines [first] to [last] with the line break after them. */
+    fun wholeLines(document: Document, first: Int, last: Int) =
+      TextRange(document.getLineStartOffset(first), minOf(document.getLineEndOffset(last) + 1, document.textLength))
   }
 
   /**
@@ -73,10 +78,8 @@ class MemorySafeAssemblyFix(assembly: SolInlineAssemblyStatement) : LocalQuickFi
     val tag = comments[tagIndex]
     val argument = comments.getOrNull(tagIndex + 1) ?: return null
     val line = document.getLineNumber(tag.textRange.startOffset)
-    val lineStart = document.getLineStartOffset(line)
-    val lineEnd = document.getLineEndOffset(line)
-    val lineText = document.getText(TextRange(lineStart, lineEnd)).trim()
-    val wholeLine = TextRange(lineStart, minOf(lineEnd + 1, document.textLength))
+    val lineText = document.getText(DocumentUtil.getLineTextRange(document, line)).trim()
+    val wholeLine = wholeLines(document, line, line)
     val onlyTag = Regex("""(///|/\*\*)\s*@solidity\s+memory-safe-assembly\s*(\*/)?""")
     if (onlyTag.matches(lineText) && (lineText.startsWith("///") || lineText.endsWith("*/"))) {
       return wholeLine
@@ -85,11 +88,7 @@ class MemorySafeAssemblyFix(assembly: SolInlineAssemblyStatement) : LocalQuickFi
       val blockText = document.getText(block)
       val rest = blockText.replace(TAG, "").replace("/**", "").replace("*/", "").replace("*", "")
       // a block comment holding nothing else: delete it with its lines
-      if (rest.isBlank()) {
-        val start = document.getLineStartOffset(document.getLineNumber(block.startOffset))
-        val endLine = document.getLineNumber(block.endOffset)
-        return TextRange(start, minOf(document.getLineEndOffset(endLine) + 1, document.textLength))
-      }
+      if (rest.isBlank()) return wholeLines(document, document.getLineNumber(block.startOffset), document.getLineNumber(block.endOffset))
       // ` * @solidity memory-safe-assembly` on its own line inside a longer block comment
       if (Regex("""\*?\s*@solidity\s+memory-safe-assembly""").matches(lineText)) return wholeLine
     }
