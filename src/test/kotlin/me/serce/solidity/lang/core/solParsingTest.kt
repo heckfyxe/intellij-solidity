@@ -73,6 +73,7 @@ class SolidityCompleteCustomParsingTest : SolidityParsingTestBase("fixtures/pars
   fun testTupleDeclarations() = doTest(true, true)
   fun testTypeExpression() = doTest(true, true)
   fun testUnchecked() = doTest(true, true)
+  fun testUnicodeStrings() = doTest(true, true)
   fun testUserDefinedValueTypes() = doTest(true, true)
   fun testUsing() = doTest(true, true)
   // The code below test is inlined as is rather than being placed in a .sol file
