@@ -188,7 +188,8 @@ class FunctionForm(
 
     runButton.isEnabled = false
     showResult { showRunning() }
-    object : Task.Backgroundable(project, "$actionName ${title.substringBefore('(')}", false) {
+    // on a network, signing can wait minutes for a hardware or browser wallet: let the user give up
+    object : Task.Backgroundable(project, "$actionName ${title.substringBefore('(')}", chain.isNetwork) {
       private var outcome: ChainExecutor.Outcome? = null
       private var failure: Throwable? = null
       override fun run(indicator: ProgressIndicator) {
