@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.run
 
+import com.intellij.openapi.util.JDOMExternalizerUtil
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.openapi.application.ApplicationManager
@@ -113,10 +114,11 @@ private fun <T> offEdt(title: String, body: () -> T): T =
   if (!ApplicationManager.getApplication().isDispatchThread) body()
   else ProgressManager.getInstance().runProcessWithProgressSynchronously<T, ExecutionException>(body, title, true, null)
 
-internal fun Element.value(name: String) = getChild(name)?.getAttributeValue(com.intellij.util.xmlb.Constants.VALUE) ?: ""
+/** A run configuration field, stored as a `<name value="..."/>` child. */
+internal fun Element.value(name: String) = JDOMExternalizerUtil.readCustomField(this, name) ?: ""
 internal fun Element.put(name: String, value: String) {
   removeChildren(name)
-  addContent(Element(name).setAttribute(com.intellij.util.xmlb.Constants.VALUE, value))
+  JDOMExternalizerUtil.writeCustomField(this, name, value)
 }
 
 /** The target fields of a run configuration editor. */

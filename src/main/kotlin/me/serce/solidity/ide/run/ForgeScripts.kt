@@ -150,31 +150,22 @@ class ForgeScriptRunConfiguration(project: Project, factory: ConfigurationFactor
     }
   }
 
+  /** Stored as `<name value="..."/>` children. */
+  private fun fields() = listOf(::scriptPath, ::contractName, ::signature, ::arguments, ::wallet, ::additionalOptions, ::workingDirectory)
+
   override fun readExternal(element: Element) {
     super.readExternal(element)
-    scriptPath = element.value("scriptPath")
-    contractName = element.value("contractName")
-    signature = element.value("signature")
-    arguments = element.value("arguments")
+    fields().forEach { it.set(element.value(it.name)) }
     target.read(element, "rpc", legacyUrl = element.value("rpcUrl"))
     broadcast = element.value("broadcast") == "true"
-    wallet = element.value("wallet")
-    additionalOptions = element.value("additionalOptions")
-    workingDirectory = element.value("workingDirectory")
   }
 
   override fun writeExternal(element: Element) {
     super.writeExternal(element)
-    element.put("scriptPath", scriptPath)
-    element.put("contractName", contractName)
-    element.put("signature", signature)
-    element.put("arguments", arguments)
+    fields().forEach { element.put(it.name, it.get()) }
     element.put("rpcUrl", target.url)
     target.write(element, "rpc")
     element.put("broadcast", broadcast.toString())
-    element.put("wallet", wallet)
-    element.put("additionalOptions", additionalOptions)
-    element.put("workingDirectory", workingDirectory)
   }
 }
 
