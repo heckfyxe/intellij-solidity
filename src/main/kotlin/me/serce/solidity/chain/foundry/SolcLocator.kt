@@ -6,6 +6,9 @@ import java.io.File
 
 /** Finds the solc binaries Foundry installed (via svm) and picks one for a file's pragma. */
 object SolcLocator {
+  /** A solc binary and its version, null when it can't be told (a configured path not named like svm's). */
+  data class Solc(val file: File, val version: Version?)
+
   data class Version(val major: Int, val minor: Int, val patch: Int) : Comparable<Version> {
     override fun compareTo(other: Version) = compareValuesBy(this, other, { it.major }, { it.minor }, { it.patch })
     override fun toString() = "$major.$minor.$patch"
@@ -56,17 +59,22 @@ object SolcLocator {
    * [configured] is foundry.toml's `solc` (a version or a path); otherwise the newest installed
    * version satisfying the file's `pragma solidity`.
    */
-  fun find(configured: String?, source: String): File? {
+  fun find(configured: String?, source: String): Solc? {
     if (configured != null) {
-      File(configured).takeIf { it.isAbsolute && it.canExecute() }?.let { return it }
-      Version.parse(configured)?.let { v -> return installed()[v] }
+      File(configured).takeIf { it.isAbsolute && it.canExecute() }?.let { return Solc(it, versionOf(it.path)) }
+      Version.parse(configured)?.let { v -> return installed()[v]?.let { Solc(it, v) } }
     }
     val versions = installed()
     val pragma = PRAGMA.find(source)?.groupValues?.get(1)
     val matching = versions.keys.filter { pragma == null || matches(pragma, it) }
-    return matching.maxOrNull()?.let { versions[it] }
+    return matching.maxOrNull()?.let { Solc(versions.getValue(it), it) }
   }
 
+  /** The version of an svm-installed binary, `.../0.8.24/solc-0.8.24`; null for other names. */
+  fun versionOf(solcPath: String): Version? =
+    SVM_BINARY.find(solcPath.substringAfterLast('/').substringAfterLast('\\'))?.groupValues?.get(1)?.let { Version.parse(it) }
+
+  private val SVM_BINARY = Regex("""solc-v?(\d+\.\d+\.\d+)""")
   private val PRAGMA = Regex("""pragma\s+solidity\s+([^;]+);""")
   private val COMPARATOR = Regex("""(\^|~|>=|<=|>|<|=)?\s*(\d+(?:\.\d+){0,2})""")
 

@@ -39,11 +39,6 @@ object SolcRequest {
     return EVM_VERSIONS.subList(0, index + 1).lastOrNull { solc >= it.second }?.first ?: evmVersion
   }
 
-  /** The version of an svm-installed binary, `.../0.8.24/solc-0.8.24`. */
-  fun versionOf(solcPath: String): Version? =
-    Regex("""solc-v?(\d+\.\d+\.\d+)""").find(solcPath.substringAfterLast('/').substringAfterLast('\\'))
-      ?.groupValues?.get(1)?.let { Version.parse(it) }
-
   /** An analysis-only request (empty output selection) for [relativePath] plus the other unsaved sources. */
   fun build(
     relativePath: String,

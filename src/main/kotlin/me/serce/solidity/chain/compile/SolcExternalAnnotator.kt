@@ -42,8 +42,7 @@ class SolcExternalAnnotator : ExternalAnnotator<SolcExternalAnnotator.Input, Lis
   override fun doAnnotate(input: Input): List<Problem> {
     return try {
       val config = input.foundry.config()
-      val solc = SolcLocator.find(config.solc, input.text) ?: return emptyList()
-      val solcVersion = SolcRequest.versionOf(solc.path)
+      val (solc, solcVersion) = SolcLocator.find(config.solc, input.text) ?: return emptyList()
       val root = input.foundry.root.toFile()
       val allowed = (listOf(root) + config.libs.map { File(root, it) }).joinToString(",") { it.path }
       val command = listOf(solc.path, "--standard-json", "--base-path", root.path, "--allow-paths", allowed)

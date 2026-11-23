@@ -2,6 +2,7 @@ package me.serce.solidity.chain.compile
 
 import junit.framework.TestCase
 import me.serce.solidity.chain.foundry.FoundryProject
+import me.serce.solidity.chain.foundry.SolcLocator
 import me.serce.solidity.chain.foundry.SolcLocator.Version
 
 class SolcRequestTest : TestCase() {
@@ -61,7 +62,7 @@ class SolcRequestTest : TestCase() {
   }
 
   fun testVersionOfSvmBinary() {
-    assertEquals(Version(0, 8, 24), SolcRequest.versionOf("/home/u/.svm/0.8.24/solc-0.8.24"))
-    assertNull(SolcRequest.versionOf("/usr/local/bin/solc"))
+    assertEquals(Version(0, 8, 24), SolcLocator.versionOf("/home/u/.svm/0.8.24/solc-0.8.24"))
+    assertNull(SolcLocator.versionOf("/usr/local/bin/solc"))
   }
 }
