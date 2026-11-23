@@ -23,6 +23,9 @@
     scientificNumber='regexp:((([0-9][_0-9]*)+|([0-9][_0-9]*)+\.[_0-9]*|([0-9][_0-9]*|[0-9])*\.[_0-9]+)[Ee][+-]?[_0-9]+)'
     hexNumber='regexp:(0[xX][_0-9a-fA-F]+)'
     numberUnit='regexp:(wei|szabo|finney|ether|seconds|minutes|hours|days|weeks|years)'
+    // remapped from identifiers by <<oldDenomination>>, never produced by the lexer
+    SZABO='szabo'
+    FINNEY='finney'
     intNumType='regexp:int(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?'
     uIntNumType='regexp:uint(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?'
     byteNumType='regexp:byte(1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32)?'
@@ -589,7 +592,8 @@ IndexAccessExpression ::= Expression '[' ( Expression? ':' Expression? | Express
 
 BooleanLiteral ::= booleanLiteral
 NumberLiteral ::= ( HexNumber | DecimalNumber | FixedNumber | ScientificNumber) NumberUnit?
-NumberUnit ::= wei | gwei | szabo | finney | ether
+// szabo and finney were removed in 0.7.0 and are identifiers now; <<oldDenomination>> still takes them after a number
+NumberUnit ::= wei | gwei | <<oldDenomination>> | ether
              | seconds | minutes | hours | days | weeks | years
 // https://github.com/ethereum/solidity/pull/832
 // A full hex string literal that consists of either one or several consecutive hex strings.

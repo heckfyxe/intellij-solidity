@@ -62,6 +62,24 @@ object SolidityParserUtil : GeneratedParserUtilBase() {
   }
 
   /**
+   * `szabo`/`finney` after a number literal: removed in Solidity 0.7.0, so they are lexed as identifiers (a variable
+   * may be called `szabo`), but code for older compilers still uses them as units. The token is remapped to
+   * `SZABO`/`FINNEY` so the unit keeps its PSI and highlighting.
+   */
+  @JvmStatic
+  fun oldDenomination(b: PsiBuilder, level: Int): Boolean {
+    if (b.tokenType != SolidityTokenTypes.IDENTIFIER) return false
+    val type = when (b.tokenText) {
+      "szabo" -> SolidityTokenTypes.SZABO
+      "finney" -> SolidityTokenTypes.FINNEY
+      else -> return false
+    }
+    b.remapCurrentToken(type)
+    b.advanceLexer()
+    return true
+  }
+
+  /**
    * The call after `emit`/`revert`: an expression that must be a function call. A rule reference to
    * `FunctionCallExpression` would accept any expression (Grammar-Kit parses the whole precedence level), so
    * `emit x;` parsed without an error; here a non-call keeps its PSI and gets solc's `'(' expected`.
