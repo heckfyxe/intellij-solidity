@@ -22,13 +22,41 @@ class JsonRpcClient(val url: String) {
   val displayUrl: String = redact(url)
 
   fun call(method: String, vararg params: Any?): JsonNode {
-    val body = mapper.createObjectNode().apply {
-      put("jsonrpc", "2.0")
-      put("id", ids.incrementAndGet())
-      put("method", method)
-      set<JsonNode>("params", mapper.valueToTree(params.toList()))
+    val json = post(request(method, params.toList())).takeIf { it.isObject } ?: throw RpcException("$displayUrl is not a JSON-RPC node")
+    return result(json)
+  }
+
+  /**
+   * Sends [calls] (method and params) as JSON-RPC batches, so many small reads cost one round trip instead of one each.
+   * Returns the results in the order of [calls] and throws the first error. Nodes that don't take batches get the
+   * calls one by one.
+   */
+  fun batch(calls: List<Pair<String, List<Any?>>>): List<JsonNode> = calls.chunked(MAX_BATCH).flatMap { chunk ->
+    if (chunk.size == 1) return@flatMap listOf(call(chunk[0].first, *chunk[0].second.toTypedArray()))
+    val requests = chunk.map { (method, params) -> request(method, params) }
+    val responses = post(mapper.createArrayNode().addAll(requests))
+    if (!responses.isArray || responses.size() != chunk.size) return@flatMap chunk.map { (method, params) -> call(method, *params.toTypedArray()) }
+    val byId = responses.associateBy { it["id"]?.asLong() }
+    requests.map { r -> result(byId[r["id"].asLong()] ?: throw RpcException("$displayUrl left out a batched answer")) }
+  }
+
+  private fun request(method: String, params: List<Any?>): JsonNode = mapper.createObjectNode().apply {
+    put("jsonrpc", "2.0")
+    put("id", ids.incrementAndGet())
+    put("method", method)
+    set<JsonNode>("params", mapper.valueToTree(params))
+  }
+
+  private fun result(json: JsonNode): JsonNode {
+    json["error"]?.takeIf { !it.isNull }?.let { err ->
+      val data = err["data"]?.let { d -> if (d.isTextual) d.asText() else d["data"]?.asText() }
+      throw RpcException(err["message"]?.asText() ?: err.toString(), err["code"]?.asInt(), data)
     }
-    // Every failure surfaces as RpcException, so callers (connect, refresh, transactions) handle one type.
+    return json["result"] ?: JsonNodeFactory.instance.nullNode()
+  }
+
+  /** POSTs [body] and returns the parsed answer. Every failure surfaces as RpcException, so callers handle one type. */
+  private fun post(body: JsonNode): JsonNode {
     val builder = try {
       HttpRequest.newBuilder(URI.create(httpUrl(url)))
     } catch (e: IllegalArgumentException) {
@@ -49,16 +77,11 @@ class JsonRpcClient(val url: String) {
       throw RpcException("Request to $displayUrl failed: ${e.message?.replace(url, displayUrl)}")
     }
     if (response.statusCode() !in 200..299) throw RpcException("HTTP ${response.statusCode()} from $displayUrl")
-    val json = try {
-      mapper.readTree(response.body()).takeIf { it.isObject } ?: throw RpcException("$displayUrl is not a JSON-RPC node")
+    return try {
+      mapper.readTree(response.body())
     } catch (e: java.io.IOException) {
       throw RpcException("$displayUrl is not a JSON-RPC node")
     }
-    json["error"]?.takeIf { !it.isNull }?.let { err ->
-      val data = err["data"]?.let { d -> if (d.isTextual) d.asText() else d["data"]?.asText() }
-      throw RpcException(err["message"]?.asText() ?: err.toString(), err["code"]?.asInt(), data)
-    }
-    return json["result"] ?: JsonNodeFactory.instance.nullNode()
   }
 
   // ---- typed helpers ----
@@ -106,6 +129,8 @@ class JsonRpcClient(val url: String) {
     ).filterValues { it != null }.mapValues { it.value!! }
 
     private val mapper = ObjectMapper()
+    /** Public RPCs cap batches; some at 10 calls. */
+    private const val MAX_BATCH = 10
     /** One client for all chains: each HttpClient owns a selector thread. */
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
 

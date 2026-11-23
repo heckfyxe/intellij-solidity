@@ -55,6 +55,10 @@ class ChainIntegrationTest : BasePlatformTestCase() {
       assertFalse(rt.rpc!!.url.endsWith(":${squatter.localPort}"))
       assertEquals(31337L, rt.chainId)
       assertEquals(10, rt.accounts.size)
+      // balances and the block number come back in one batched request
+      assertEquals(rt.accounts.toSet(), rt.balances.keys)
+      assertTrue(rt.balances.values.all { it.signum() > 0 })
+      assertNotNull(rt.blockNumber)
       service.stop(chain)
       rt.process?.waitFor(10_000)
     }

@@ -116,14 +116,16 @@ class ChainExecutor(
       return Outcome(record, null)
     }
     run(chain, record, abi, TraceTarget.Call(from, to, data, value)) { rpc ->
+      val returned = rpc.ethCall(from, to, data, value)
       // Calling an address without code "succeeds" and returns nothing, e.g. after the chain it was deployed on restarted.
-      if (requireCode && rpc.code(to).isEmpty()) {
+      // Only an empty answer can mean that, so other calls skip asking for the code.
+      if (requireCode && returned.isEmpty() && rpc.code(to).isEmpty()) {
         record.status = TxStatus.FAILED
         record.error = "There is no contract at $to on ${chain.name}. " +
           "It may have been deployed to a chain that has since restarted; deploy it again."
         return@run
       }
-      record.results += results(rpc.ethCall(from, to, data, value))
+      record.results += results(returned)
       if (send) {
         val hash = send(chain, rpc, record, from!!, to, data, value, action, toLabel) ?: return@run
         applyReceipt(rpc, record, awaitReceipt(chain, rpc, hash), abi)

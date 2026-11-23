@@ -31,9 +31,11 @@ import com.intellij.openapi.util.ShutDownTracker
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.messages.Topic
 import me.serce.solidity.chain.abi.AbiCodec
+import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import me.serce.solidity.chain.rpc.RpcException
+import me.serce.solidity.chain.rpc.hexToBigInt
 import java.math.BigInteger
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -389,9 +391,15 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     // Public RPCs hold no accounts: on a network the wallets added to the chain are the accounts.
     rt.accounts = if (config.isNetworkChain) config.wallets.map { it.address }.filter { it.isNotEmpty() }.distinct()
     else rpc.accounts().map { AbiCodec.checksum(it) }
-    rt.balances = rt.accounts.associateWith { rpc.balance(it) }
-    rt.blockNumber = rpc.blockNumber()
-    rt.missing = deployments(config.id).filter { rpc.code(it.address).isEmpty() }.map { it.id }.toSet()
+    val accounts = rt.accounts
+    val deployments = deployments(config.id)
+    val results = rpc.batch(listOf("eth_blockNumber" to emptyList<Any?>()) +
+      accounts.map { "eth_getBalance" to listOf(it, "latest") } +
+      deployments.map { "eth_getCode" to listOf(it.address, "latest") })
+    rt.blockNumber = results[0].asText().hexToBigInt().toLong()
+    rt.balances = accounts.zip(results.subList(1, 1 + accounts.size)) { a, r -> a to r.asText().hexToBigInt() }.toMap()
+    rt.missing = deployments.zip(results.subList(1 + accounts.size, results.size)).filter { (_, code) -> code.asText().hexToBytes().isEmpty() }
+      .map { it.first.id }.toSet()
   }
 
   private fun onStopped(config: ChainConfig, exitCode: Int?, output: List<String> = emptyList()) {
