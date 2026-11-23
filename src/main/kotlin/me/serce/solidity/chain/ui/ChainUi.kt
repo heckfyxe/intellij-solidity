@@ -53,7 +53,7 @@ object ChainUi {
    * Saves open editors, runs `forge build` in the background, reports to the Build tool window, then calls [onSuccess]
    * on the EDT. Call on the EDT. forge reads files from disk, so without the save it would build the last saved code.
    */
-  fun buildThen(project: Project, foundry: FoundryProject, onSuccess: (List<Artifact>) -> Unit) {
+  fun buildThen(project: Project, foundry: FoundryProject, onFailure: () -> Unit = {}, onSuccess: (List<Artifact>) -> Unit) {
     FileDocumentManager.getInstance().saveAllDocuments()
     object : Task.Backgroundable(project, "Building with forge", true) {
       private var result: BuildResult? = null
@@ -71,7 +71,7 @@ object ChainUi {
       }
 
       override fun onSuccess() {
-        if (result?.success == true) onSuccess(artifacts)
+        if (result?.success == true) onSuccess(artifacts) else onFailure()
       }
     }.queue()
   }
@@ -111,7 +111,7 @@ object ChainUi {
     return FunctionForm(
       project, chain, "Deploy ${artifact.name} to ${chain.name}", ctor?.inputs.orEmpty(),
       payable = ctor?.mutability == Mutability.PAYABLE, actionName = "Deploy",
-      action = { args, from, value -> executor.deploy(chain, artifact, args, from, value) },
+      action = { args, from, value -> executor.deploy(chain, artifact, args, from!!, value) },
     ).apply { whenDone { outcome -> outcome.deployment?.let { notifyDeployed(project, chain, it) } } }
   }
 
@@ -135,6 +135,7 @@ object ChainUi {
       project, chain, title, fn.inputs,
       payable = fn.mutability == Mutability.PAYABLE,
       actionName = if (fn.mutability.isReadOnly) "Call" else "Transact",
+      needsSender = !fn.mutability.isReadOnly,
       action = { args, from, value -> executor.invoke(chain, deployment, fn, args, from, value) },
     )
   }

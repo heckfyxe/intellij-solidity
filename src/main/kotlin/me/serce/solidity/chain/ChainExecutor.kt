@@ -37,7 +37,7 @@ class ChainExecutor(
     val data = artifact.bytecode.hexToBytes() + AbiCodec.encode(ctor?.inputs.orEmpty().map { it.type }, args)
     var deployment: Deployment? = null
     run(chain, record, artifact.abi, TraceTarget.Call(from, null, data, value)) { rpc ->
-      val hash = rpc.sendTransaction(from, null, data, value)
+      val hash = send(chain, rpc, record, from, null, data, value) ?: return@run
       val receipt = awaitReceipt(chain, rpc, hash)
       applyReceipt(rpc, record, receipt, artifact.abi)
       if (record.status == TxStatus.SUCCESS) {
@@ -59,11 +59,17 @@ class ChainExecutor(
     return Outcome(record, deployment)
   }
 
-  fun invoke(chain: ChainConfig, target: Deployment, fn: AbiEntry.Function, args: List<Any>, from: String, value: BigInteger): Outcome {
+  /** [from] may be null for read-only calls on a network without wallets. */
+  fun invoke(chain: ChainConfig, target: Deployment, fn: AbiEntry.Function, args: List<Any>, from: String?, value: BigInteger): Outcome {
     val abi = target.abi()
     val kind = if (fn.mutability.isReadOnly) TxKind.CALL else TxKind.TRANSACT
-    val record = record(chain, kind, target.name, target.sourcePath, fn.signature, from, target.address, value)
+    val record = record(chain, kind, target.name, target.sourcePath, fn.signature, from.orEmpty(), target.address, value)
     record.args += formatArgs(fn.inputs, args)
+    if (from == null && kind == TxKind.TRANSACT) {
+      record.status = TxStatus.FAILED
+      record.error = "No account to send from. Add a wallet to ${chain.name} to send transactions."
+      return Outcome(record, null)
+    }
     val data = AbiCodec.encodeCall(fn.selector, fn.inputs.map { it.type }, args)
     run(chain, record, abi, TraceTarget.Call(from, target.address, data, value)) { rpc ->
       // Calling an address without code "succeeds" and returns nothing, e.g. after the chain it was deployed on restarted.
@@ -77,7 +83,7 @@ class ChainExecutor(
       val returned = rpc.ethCall(from, target.address, data, value)
       record.results += formatOutputs(fn.outputs, returned)
       if (kind == TxKind.TRANSACT) {
-        val hash = rpc.sendTransaction(from, target.address, data, value)
+        val hash = send(chain, rpc, record, from!!, target.address, data, value) ?: return@run
         applyReceipt(rpc, record, awaitReceipt(chain, rpc, hash), abi)
       }
     }
@@ -109,6 +115,17 @@ class ChainExecutor(
   }
 
   /**
+   * Sends a transaction and returns its hash; null when it was not sent (the user cancelled, or signing failed), with
+   * [record] saying why. Local nodes sign with the accounts they unlock; networks sign with the chain's wallets.
+   */
+  private fun send(chain: ChainConfig, rpc: JsonRpcClient, record: TxRecord, from: String, to: String?, data: ByteArray, value: BigInteger): String? {
+    if (!chain.isNetwork) return rpc.sendTransaction(from, to, data, value)
+    record.status = TxStatus.FAILED
+    record.error = "Sending transactions on ${chain.name} needs a wallet."
+    return null
+  }
+
+  /**
    * anvil mines each transaction as it arrives unless told otherwise, so one still pending a moment later means mining
    * failed, which anvil only logs. Mining once by hand returns that error instead of leaving the transaction stuck.
    */
@@ -116,6 +133,12 @@ class ChainExecutor(
     if (chain.kind == ChainKind.ANVIL) {
       rpc.receiptWithin(hash, Duration.ofSeconds(2))?.let { return it }
       if (rpc.automine()) rpc.mine()
+    }
+    // a real network mines every few seconds, but a low fee or a busy network can take minutes
+    if (chain.isNetwork) {
+      return rpc.receiptWithin(hash, Duration.ofMinutes(5), pollEvery = Duration.ofSeconds(2))
+        ?: throw RpcException("Transaction $hash was sent but not mined within 5 minutes. " +
+          (KnownChains.txUrl(service.runtime(chain.id).chainId, hash)?.let { "Follow it at $it" } ?: "It may still be mined later."))
     }
     return rpc.waitForReceipt(hash)
   }

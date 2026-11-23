@@ -114,6 +114,8 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
   fun allDeployments(): List<Deployment> = deploymentsSnapshot
   fun history(): List<TxRecord> = state.history.toList()
 
+  fun wallet(chain: ChainConfig, address: String): WalletConfig? = chain.wallets.firstOrNull { it.address.equals(address, ignoreCase = true) }
+
   fun selectedAccount(chainId: String): String? =
     state.selectedAccount[chainId]?.takeIf { it in runtime(chainId).accounts } ?: runtime(chainId).accounts.firstOrNull()
 
@@ -186,6 +188,14 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     fireChanged()
     if (config.kind == ChainKind.EXTERNAL) {
       ApplicationManager.getApplication().executeOnPooledThread { connect(config, JsonRpcClient(config.url), attempts = 1) }
+      return
+    }
+    if (config.kind == ChainKind.NETWORK) {
+      ApplicationManager.getApplication().executeOnPooledThread {
+        val url = Networks.getInstance().find(config.network)?.url?.takeIf { it.isNotBlank() }
+          ?: return@executeOnPooledThread fail(config, "There is no network named \"${config.network}\" any more. Edit the chain to pick one.")
+        connect(config, JsonRpcClient(url), attempts = 1)
+      }
       return
     }
     try {
@@ -300,7 +310,9 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     repeat(attempts) {
       if (rt.status != ChainStatus.STARTING) return
       try {
-        rt.chainId = rpc.chainId()
+        val chainId = rpc.chainId()
+        if (config.isNetwork) checkChainId(config, chainId)?.let { return fail(config, it) }
+        rt.chainId = chainId
         rt.rpc = rpc
         if (config.isFork) clearForkedAccountCode(rt, rpc)
         loadChainInfo(config, rt, rpc)
@@ -314,6 +326,18 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     }
     fail(config, lastError?.message ?: "Chain did not start")
     if (config.kind == ChainKind.ANVIL) stop(config)
+  }
+
+  /** Null when [actual] is the chain [config] was set up for; remembers it on the first connect. */
+  private fun checkChainId(config: ChainConfig, actual: Long): String? {
+    val expected = config.expectedChainId.trim().toLongOrNull()
+    if (expected == null) {
+      mutate { config.expectedChainId = actual.toString() }
+      return null
+    }
+    if (expected == actual) return null
+    return "${config.network} now reports chain id $actual, but ${config.name} was set up for chain id $expected " +
+      "(${KnownChains.info(expected)?.name ?: "unknown network"}). Check the network's URL, or edit the chain to accept the new id."
   }
 
   /**
@@ -330,7 +354,9 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
   }
 
   private fun loadChainInfo(config: ChainConfig, rt: ChainRuntime, rpc: JsonRpcClient) {
-    rt.accounts = rpc.accounts().map { AbiCodec.checksum(it) }
+    // Public RPCs hold no accounts: on a network the wallets added to the chain are the accounts.
+    rt.accounts = if (config.isNetwork) config.wallets.map { it.address }.filter { it.isNotEmpty() }.distinct()
+    else rpc.accounts().map { AbiCodec.checksum(it) }
     rt.balances = rt.accounts.associateWith { rpc.balance(it) }
     rt.blockNumber = rpc.blockNumber()
     rt.missing = deployments(config.id).filter { rpc.code(it.address).isEmpty() }.map { it.id }.toSet()

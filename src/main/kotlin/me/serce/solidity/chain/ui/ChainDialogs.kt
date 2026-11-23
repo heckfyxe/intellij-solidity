@@ -22,13 +22,29 @@ import me.serce.solidity.chain.ChainConfig
 import me.serce.solidity.chain.ChainKind
 import me.serce.solidity.chain.Network
 import me.serce.solidity.chain.Networks
+import me.serce.solidity.chain.Deployment
 import me.serce.solidity.chain.abi.AbiCodec
+import me.serce.solidity.chain.abi.AbiInputException
+import me.serce.solidity.chain.abi.AbiText
+import com.intellij.openapi.editor.ex.util.EditorUtil
+import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
+import com.intellij.ui.components.JBRadioButton
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTextArea
+import com.intellij.ui.components.JBTextField
+import com.intellij.ui.dsl.builder.Align
+import com.intellij.ui.layout.selected
 import me.serce.solidity.chain.foundry.Artifact
+import me.serce.solidity.chain.rpc.JsonRpcClient
 import javax.swing.JComponent
 import javax.swing.JTextField
 import javax.swing.event.DocumentEvent
 
 private val URL_REGEX = Regex("^(https?|wss?)://.+")
+
+/** A network's URL as the UI shows it: secret ones (they may hold an API key) only up to the host. */
+fun displayUrl(n: Network): String = if (n.secret) JsonRpcClient.redact(n.url) + "/…" else n.url
 
 /**
  * Add or edit a chain. A local chain is an anvil started by the IDE, optionally forking one of the
@@ -40,6 +56,9 @@ class ChainDialog(private val project: Project, private val config: ChainConfig,
   private lateinit var forkBlockField: JTextField
   private val forkModel = CollectionComboBoxModel<Network?>()
   private val forkCombo = ComboBox(forkModel)
+  private val networkModel = CollectionComboBoxModel<Network>()
+  private val networkCombo = ComboBox(networkModel)
+  private lateinit var expectedChainIdField: JTextField
   private var nameEditedByUser = !isNew
   private var settingName = false
 
@@ -47,13 +66,16 @@ class ChainDialog(private val project: Project, private val config: ChainConfig,
     title = when {
       !isNew -> "Edit ${config.name}"
       config.kind == ChainKind.EXTERNAL -> "Connect to Node"
+      config.kind == ChainKind.NETWORK -> "Connect to Network"
       else -> "Add Local Chain"
     }
     forkCombo.renderer = SimpleListCellRenderer.create("") { n ->
-      if (n == null) "None: start an empty chain" else "${n.name}   ${n.url}"
+      if (n == null) "None: start an empty chain" else "${n.name}   ${displayUrl(n)}"
     }
+    networkCombo.renderer = SimpleListCellRenderer.create("") { n -> n?.let { "${it.name}   ${displayUrl(it)}" } ?: "" }
     reloadNetworks(selectUrl = config.forkUrl)
     forkCombo.addActionListener { onForkChanged() }
+    networkCombo.addActionListener { onNetworkChanged() }
     init()
   }
 
@@ -67,6 +89,17 @@ class ChainDialog(private val project: Project, private val config: ChainConfig,
     }
     forkModel.replaceAll(listOf<Network?>(null) + networks)
     forkModel.selectedItem = networks.firstOrNull { it != null && Network.sameUrl(it.url, selectUrl) }
+    val selectedNetwork = (networkCombo.selectedItem as Network?)?.name ?: config.network
+    networkModel.replaceAll(Networks.getInstance().list)
+    networkModel.selectedItem = networkModel.items.firstOrNull { it.name == selectedNetwork } ?: networkModel.items.firstOrNull()
+  }
+
+  private fun onNetworkChanged() {
+    if (!nameEditedByUser && ::nameField.isInitialized) {
+      settingName = true
+      nameField.text = (networkCombo.selectedItem as Network?)?.name ?: "Network"
+      settingName = false
+    }
   }
 
   private fun onForkChanged() {
@@ -91,6 +124,22 @@ class ChainDialog(private val project: Project, private val config: ChainConfig,
       row("URL:") {
         urlField = textField().bindText(config::url).align(AlignX.FILL)
           .comment("For example an anvil you started in a terminal: http://127.0.0.1:8545").component
+      }
+      return@panel
+    }
+    if (config.kind == ChainKind.NETWORK) {
+      row("Network:") {
+        cell(networkCombo).align(AlignX.FILL).resizableColumn()
+        button("Edit Networks…") {
+          if (NetworksDialog(project).showAndGet()) reloadNetworks(config.forkUrl)
+        }
+      }.rowComment("Add your own RPC (Alchemy, Infura, …) with Edit Networks. URLs other than the built-in public ones are kept in the system keychain.")
+      collapsibleGroup("Advanced") {
+        row("Chain id:") {
+          expectedChainIdField = textField().bindText(config::expectedChainId).columns(12)
+            .comment("Filled when first connected. The chain refuses to connect when the network reports another id; clear it to accept a new one.")
+            .component
+        }
       }
       return@panel
     }
@@ -123,11 +172,29 @@ class ChainDialog(private val project: Project, private val config: ChainConfig,
 
   override fun doOKAction() {
     super.doOKAction()
+    if (config.kind == ChainKind.NETWORK) {
+      val network = networkCombo.selectedItem as Network?
+      if (network != null && network.name != config.network) {
+        // another network: pin the chain id it reports on the next connect, unless the user typed one
+        if (config.expectedChainId == initialExpectedChainId) config.expectedChainId = ""
+        config.network = network.name
+      }
+      return
+    }
     config.forkUrl = selectedFork?.url ?: ""
     if (config.forkUrl.isEmpty()) config.forkBlock = ""
   }
 
+  private val initialExpectedChainId = config.expectedChainId
+
   override fun doValidate(): ValidationInfo? {
+    if (config.kind == ChainKind.NETWORK) {
+      if (networkCombo.selectedItem == null) return ValidationInfo("Pick a network", networkCombo)
+      if (::expectedChainIdField.isInitialized && expectedChainIdField.text.isNotBlank() && expectedChainIdField.text.trim().toLongOrNull() == null) {
+        return ValidationInfo("Enter a number", expectedChainIdField)
+      }
+      return null
+    }
     if (config.kind == ChainKind.EXTERNAL && ::urlField.isInitialized && !urlField.text.trim().matches(URL_REGEX)) {
       return ValidationInfo("Enter an http:// or ws:// URL", urlField)
     }
@@ -184,34 +251,103 @@ class NetworksDialog(project: Project) : DialogWrapper(project) {
 }
 
 /** Attach a contract that is already on the chain, using the ABI of one of the project's contracts. */
-class AttachDialog(project: Project, private val artifacts: List<Artifact>) : DialogWrapper(project) {
+/**
+ * Attach a contract that is already on the chain: by a compiled contract of this project, or by an ABI alone
+ * (pasted, opened from a file, or written as signatures), for contracts whose source you don't have.
+ */
+class AttachDialog(private val project: Project, private val artifacts: List<Artifact>) : DialogWrapper(project) {
   var artifact: Artifact? = artifacts.firstOrNull()
   var address: String = ""
   private lateinit var addressField: JTextField
+  private val fromAbi = JBRadioButton("ABI", artifacts.isEmpty())
+  private val fromCompiled = JBRadioButton("Compiled contract", artifacts.isNotEmpty())
+  private val nameField = JBTextField()
+  private val abiArea = JBTextArea(12, 60)
+  /** Where [abiArea]'s text came from, when not typed: a file name. */
+  private var abiOrigin = "pasted"
 
   init {
     title = "Attach Contract at Address"
+    fromCompiled.isEnabled = artifacts.isNotEmpty()
+    abiArea.font = EditorUtil.getEditorFont()
+    abiArea.emptyText.text = "[{\"type\":\"function\", …}]  or  function balanceOf(address) view returns (uint256)"
     init()
   }
 
   override fun createCenterPanel(): JComponent = panel {
+    buttonsGroup {
+      row("Interface:") {
+        cell(fromCompiled)
+        cell(fromAbi)
+      }.rowComment(if (artifacts.isEmpty()) "No compiled contracts in this project: attach by ABI" else "")
+    }
     row("Contract:") {
       comboBox(artifacts, SimpleListCellRenderer.create("") { "${it.name}  (${it.sourcePath})" })
         .applyToComponent { selectedItem = artifact; addActionListener { artifact = selectedItem as Artifact? } }
         .align(AlignX.FILL)
         .comment("Interfaces work too, for example AggregatorV3Interface for a Chainlink feed")
-    }
+    }.visibleIf(fromCompiled.selected)
+    row("Name:") {
+      cell(nameField).align(AlignX.FILL).comment("Shown in the Chains tree; taken from the ABI when it says")
+    }.visibleIf(fromAbi.selected)
+    row {
+      cell(JBScrollPane(abiArea)).align(Align.FILL)
+        .comment("A JSON ABI, a Forge or Hardhat artifact, an Etherscan or Sourcify response, or signatures one per line " +
+          "(a Solidity interface works too). Structs are written as tuple(type a, type b).")
+    }.resizableRow().visibleIf(fromAbi.selected)
+    row {
+      button("Open File…") { openFile() }
+    }.visibleIf(fromAbi.selected)
     row("Address:") {
       addressField = textField().bindText(::address).align(AlignX.FILL).focused().component
     }
   }
 
+  private fun openFile() {
+    val descriptor = FileChooserDescriptorFactory.createSingleFileDescriptor().withTitle("Open ABI")
+    val file = FileChooser.chooseFile(descriptor, project, null) ?: return
+    abiArea.text = String(file.contentsToByteArray(), file.charset)
+    abiArea.caretPosition = 0
+    abiOrigin = file.name
+    if (nameField.text.isBlank()) runCatching { AbiText.parse(abiArea.text).name }.getOrNull().let { name ->
+      nameField.text = name ?: file.nameWithoutExtension.removeSuffix(".abi")
+    }
+  }
+
+  /** The parsed ABI when attaching by ABI; null with a validation error otherwise. */
+  private fun parsedAbi(): Pair<AbiText.Parsed?, String?> = try {
+    AbiText.parse(abiArea.text) to null
+  } catch (e: AbiInputException) {
+    null to e.message
+  }
+
   override fun doValidate(): ValidationInfo? {
     val a = addressField.text.trim().removePrefix("0x")
     if (a.length != 40 || a.any { Character.digit(it, 16) < 0 }) return ValidationInfo("Not an address", addressField)
-    if (artifact == null) return ValidationInfo("Pick a contract")
+    if (fromCompiled.isSelected && artifact == null) return ValidationInfo("Pick a contract")
+    if (fromAbi.isSelected) {
+      val (_, error) = parsedAbi()
+      if (error != null) return ValidationInfo(error, abiArea)
+    }
     return null
   }
 
   val checksummedAddress get() = AbiCodec.checksum(address.trim())
+
+  /** Call after OK: the contract to add to [chainId]. */
+  fun deployment(chainId: String): Deployment = Deployment().also { d ->
+    d.chainId = chainId
+    d.address = checksummedAddress
+    val compiled = artifact
+    if (fromCompiled.isSelected && compiled != null) {
+      d.name = compiled.name
+      d.sourcePath = compiled.sourcePath
+      d.abiJson = compiled.abiJson
+    } else {
+      val parsed = parsedAbi().first!!
+      d.name = nameField.text.trim().ifEmpty { parsed.name ?: "Contract" }
+      d.abiJson = parsed.json
+      d.abiSource = abiOrigin
+    }
+  }
 }

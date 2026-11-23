@@ -160,6 +160,18 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   failing pc to source with forge artifacts' source maps (`CompiledSources`). anvil returns no `structLogs` for mined
   transactions unless started with `--steps-tracing`, so those are replayed with `debug_traceCall` on the parent block.
 
+## Networks and Wallets
+
+* `ChainKind.NETWORK` chains connect to an entry of `Networks` by name. Their URL is resolved at connect time because
+  URLs other than the built-in public RPCs are kept in the password safe (`Secrets`), never in settings files; RPC
+  errors and the UI show `JsonRpcClient.displayUrl` (no path or query, where API keys live). The first connect pins
+  `expectedChainId`; a different id later refuses to connect.
+* On a network `eth_accounts` is not used: the chain's `WalletConfig`s are its accounts, and read-only calls run
+  without a sender. `KnownChains` says which chain ids are mainnets (unknown ids count as mainnets) and where their
+  explorers are.
+* Contracts can be attached by ABI alone (`AbiText`: JSON ABIs, artifacts, Etherscan/Sourcify responses,
+  human-readable signatures and pasted Solidity interfaces); `Deployment.sourcePath` is then empty.
+
 ## Foundry Integration
 
 * `FoundryProject.config()` reads `forge config --json` (`FoundryProject.parseConfig`). The live compile

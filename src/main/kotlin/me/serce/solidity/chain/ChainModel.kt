@@ -5,7 +5,11 @@ import me.serce.solidity.chain.abi.ContractAbi
 import me.serce.solidity.chain.debug.FailedFrame
 import java.util.UUID
 
-enum class ChainKind { ANVIL, EXTERNAL }
+/**
+ * [ANVIL]: a local chain we start. [EXTERNAL]: a node you run, whose accounts it unlocks (e.g. anvil in a terminal).
+ * [NETWORK]: a real network such as Sepolia or Ethereum Mainnet; transactions are signed by [WalletConfig]s.
+ */
+enum class ChainKind { ANVIL, EXTERNAL, NETWORK }
 
 /** A saved chain setup. Mutable bean so the platform can serialize it to workspace.xml. */
 class ChainConfig {
@@ -23,8 +27,18 @@ class ChainConfig {
   var persistent: Boolean = true
   /** For [ChainKind.EXTERNAL]. */
   var url: String = "http://127.0.0.1:8545"
+  /** For [ChainKind.NETWORK]: the name of an entry in [Networks]; its URL may hold an API key, so it is kept there. */
+  var network: String = ""
+  /**
+   * For [ChainKind.NETWORK]: the chain id the RPC reported when first connected. A different id later (the network's
+   * URL was edited to point elsewhere) refuses to connect, so nothing is signed for a chain the user didn't pick.
+   */
+  var expectedChainId: String = ""
+  /** For [ChainKind.NETWORK]: accounts that sign transactions. */
+  var wallets: MutableList<WalletConfig> = ArrayList()
 
   val isFork get() = kind == ChainKind.ANVIL && forkUrl.isNotBlank()
+  val isNetwork get() = kind == ChainKind.NETWORK
 
   /** Identifies what anvil's saved state depends on: loading it on a different fork or chain id breaks the chain. */
   val stateKey: String get() = Integer.toHexString("${forkUrl.trim().trimEnd('/')}|${forkBlock.trim()}|${chainId.trim()}".hashCode())
@@ -32,15 +46,43 @@ class ChainConfig {
   fun copy(): ChainConfig = ChainConfig().also {
     it.id = id; it.name = name; it.kind = kind; it.forkUrl = forkUrl; it.forkBlock = forkBlock; it.chainId = chainId
     it.port = port; it.accounts = accounts; it.balanceEth = balanceEth; it.persistent = persistent; it.url = url
+    it.network = network; it.expectedChainId = expectedChainId; it.wallets = wallets.mapTo(ArrayList()) { w -> w.copy() }
   }
 
   val description: String
     get() = when {
       kind == ChainKind.EXTERNAL -> url
+      kind == ChainKind.NETWORK -> network
       isFork -> "fork of ${Networks.getInstance().nameOf(forkUrl) ?: forkUrl.removePrefix("https://").removePrefix("http://").substringBefore('/')}" +
         (if (forkBlock.isNotBlank()) " @ block $forkBlock" else "")
       else -> "anvil"
     }
+}
+
+enum class WalletKind(val title: String) {
+  KEYSTORE("Foundry keystore"), LEDGER("Ledger"), TREZOR("Trezor"), BROWSER("Browser wallet");
+}
+
+/**
+ * An account that signs transactions on a [ChainKind.NETWORK] chain. Signing is done by `cast`; the plugin keeps no
+ * key material, only where the key is (a keystore file, a hardware wallet's derivation index) and its address.
+ */
+class WalletConfig {
+  var kind: WalletKind = WalletKind.KEYSTORE
+  var address: String = ""
+  /** For [WalletKind.KEYSTORE]: the keystore file. */
+  var keystorePath: String = ""
+  /** For [WalletKind.LEDGER] and [WalletKind.TREZOR]: the account index on the device's default derivation path. */
+  var index: Int = 0
+
+  val label: String
+    get() = when (kind) {
+      WalletKind.KEYSTORE -> "keystore ${java.io.File(keystorePath).name}"
+      WalletKind.LEDGER, WalletKind.TREZOR -> "${kind.title} #$index"
+      WalletKind.BROWSER -> kind.title
+    }
+
+  fun copy(): WalletConfig = WalletConfig().also { it.kind = kind; it.address = address; it.keystorePath = keystorePath; it.index = index }
 }
 
 /** A contract instance on a chain, deployed by us or attached by address. */
@@ -52,6 +94,8 @@ class Deployment {
   var sourcePath: String = ""
   var address: String = ""
   var abiJson: String = "[]"
+  /** Where the ABI came from when there is no source, e.g. "pasted", "Sourcify", "Etherscan"; empty for compiled contracts. */
+  var abiSource: String = ""
 
   @Transient
   private var parsedAbi: ContractAbi? = null

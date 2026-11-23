@@ -18,6 +18,8 @@ class RpcException(message: String, val code: Int? = null, val data: String? = n
 /** Minimal Ethereum JSON-RPC client over HTTP. */
 class JsonRpcClient(val url: String) {
   private val ids = AtomicLong()
+  /** [url] without its path and query, which often hold an API key (Infura, Alchemy): for messages and the UI. */
+  val displayUrl: String = redact(url)
 
   fun call(method: String, vararg params: Any?): JsonNode {
     val body = mapper.createObjectNode().apply {
@@ -30,7 +32,7 @@ class JsonRpcClient(val url: String) {
     val builder = try {
       HttpRequest.newBuilder(URI.create(httpUrl(url)))
     } catch (e: IllegalArgumentException) {
-      throw RpcException("Invalid URL: $url")
+      throw RpcException("Invalid URL: $displayUrl")
     }
     val request = builder
       .timeout(Duration.ofSeconds(60))
@@ -40,17 +42,17 @@ class JsonRpcClient(val url: String) {
     val response = try {
       http.send(request, HttpResponse.BodyHandlers.ofString())
     } catch (e: java.net.ConnectException) {
-      throw RpcException("Cannot connect to $url")
+      throw RpcException("Cannot connect to $displayUrl")
     } catch (e: java.io.IOException) {
-      throw RpcException("Request to $url failed: ${e.message ?: e.javaClass.simpleName}")
+      throw RpcException("Request to $displayUrl failed: ${e.message?.replace(url, displayUrl) ?: e.javaClass.simpleName}")
     } catch (e: IllegalArgumentException) {
-      throw RpcException("Request to $url failed: ${e.message}")
+      throw RpcException("Request to $displayUrl failed: ${e.message?.replace(url, displayUrl)}")
     }
-    if (response.statusCode() !in 200..299) throw RpcException("HTTP ${response.statusCode()} from $url")
+    if (response.statusCode() !in 200..299) throw RpcException("HTTP ${response.statusCode()} from $displayUrl")
     val json = try {
-      mapper.readTree(response.body()).takeIf { it.isObject } ?: throw RpcException("$url is not a JSON-RPC node")
+      mapper.readTree(response.body()).takeIf { it.isObject } ?: throw RpcException("$displayUrl is not a JSON-RPC node")
     } catch (e: java.io.IOException) {
-      throw RpcException("$url is not a JSON-RPC node")
+      throw RpcException("$displayUrl is not a JSON-RPC node")
     }
     json["error"]?.takeIf { !it.isNull }?.let { err ->
       val data = err["data"]?.let { d -> if (d.isTextual) d.asText() else d["data"]?.asText() }
@@ -73,6 +75,12 @@ class JsonRpcClient(val url: String) {
   fun sendTransaction(from: String, to: String?, data: ByteArray, value: BigInteger): String =
     call("eth_sendTransaction", tx(from, to, data, value)).asText()
 
+  fun sendRawTransaction(raw: String): String = call("eth_sendRawTransaction", raw).asText()
+  fun estimateGas(from: String?, to: String?, data: ByteArray, value: BigInteger): BigInteger =
+    call("eth_estimateGas", tx(from, to, data, value)).asText().hexToBigInt()
+  fun gasPrice(): BigInteger = call("eth_gasPrice").asText().hexToBigInt()
+  fun storageAt(address: String, slot: String): ByteArray = call("eth_getStorageAt", address, slot, "latest").asText().hexToBytes()
+
   fun automine(): Boolean = call("anvil_getAutomine").asBoolean(false)
   fun mine() { call("evm_mine") }
 
@@ -81,13 +89,13 @@ class JsonRpcClient(val url: String) {
     receiptWithin(hash, timeout) ?: throw RpcException("No receipt for $hash after ${timeout.seconds}s (is mining paused?)")
 
   /** The receipt, or null when [hash] is still not mined after [timeout]. */
-  fun receiptWithin(hash: String, timeout: Duration): JsonNode? {
+  fun receiptWithin(hash: String, timeout: Duration, pollEvery: Duration = Duration.ofMillis(200)): JsonNode? {
     val deadline = System.nanoTime() + timeout.toNanos()
     while (true) {
       val r = call("eth_getTransactionReceipt", hash)
       if (!r.isNull) return r
       if (System.nanoTime() > deadline) return null
-      Thread.sleep(200)
+      Thread.sleep(pollEvery.toMillis())
     }
   }
 
@@ -100,6 +108,12 @@ class JsonRpcClient(val url: String) {
     private val mapper = ObjectMapper()
     /** One client for all chains: each HttpClient owns a selector thread. */
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
+
+    fun redact(url: String): String = runCatching {
+      val u = URI.create(url)
+      if (u.scheme == null || u.host == null) null
+      else "${u.scheme}://${u.host}${if (u.port >= 0) ":${u.port}" else ""}"
+    }.getOrNull() ?: "the RPC URL"
 
     /** anvil serves HTTP and WebSocket on the same port; we talk HTTP. */
     fun httpUrl(url: String): String = when {

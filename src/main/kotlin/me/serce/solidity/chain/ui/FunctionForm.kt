@@ -40,8 +40,10 @@ class FunctionForm(
   private val params: List<AbiParam>,
   private val payable: Boolean,
   private val actionName: String,
-  /** Runs off the EDT. */
-  private val action: (args: List<Any>, from: String, value: BigInteger) -> ChainExecutor.Outcome,
+  /** False for read-only calls, which run without an account too (a network chain without wallets). */
+  private val needsSender: Boolean = true,
+  /** Runs off the EDT; [from] is null only when [needsSender] is false and there is no account. */
+  private val action: (args: List<Any>, from: String?, value: BigInteger) -> ChainExecutor.Outcome,
 ) {
   private val service = ChainService.getInstance(project)
   private val inputs = ArrayList<Pair<AbiParam, () -> String>>()
@@ -164,7 +166,11 @@ class FunctionForm(
   fun submit() {
     if (!runButton.isEnabled) return
     val from = fromCombo.selectedItem as? String
-      ?: return showResult { showError("No account: is ${chain.name} running?") }
+    if (from == null && needsSender) {
+      return showResult {
+        showError(if (chain.isNetwork) "No account to send from. Add a wallet to ${chain.name} to send transactions." else "No account: is ${chain.name} running?")
+      }
+    }
     val args = try {
       inputs.map { (p, text) ->
         try {

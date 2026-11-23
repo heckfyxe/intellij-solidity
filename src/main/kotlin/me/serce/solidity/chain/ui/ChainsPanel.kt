@@ -32,6 +32,8 @@ import me.serce.solidity.chain.ChainListener
 import me.serce.solidity.chain.ChainService
 import me.serce.solidity.chain.ChainStatus
 import me.serce.solidity.chain.Deployment
+import me.serce.solidity.chain.KnownChains
+import com.intellij.ide.BrowserUtil
 import me.serce.solidity.chain.abi.AbiEntry
 import me.serce.solidity.chain.abi.AbiValueFormatter
 import me.serce.solidity.chain.abi.Mutability
@@ -79,6 +81,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     tree.cellRenderer = Renderer()
     tree.emptyText.text = "No chains yet"
     tree.emptyText.appendLine("Add a local chain", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { addChain(ChainKind.ANVIL) }
+    tree.emptyText.appendLine("Connect to a network (Sepolia, Mainnet, …)", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { addChain(ChainKind.NETWORK) }
     tree.emptyText.appendLine("Connect to a node by URL", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { addChain(ChainKind.EXTERNAL) }
     tree.addTreeSelectionListener { if (!rebuilding) showDetails() }
     tree.addTreeExpansionListener(object : TreeExpansionListener {
@@ -113,7 +116,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     setToolbar(toolbar.component)
     PopupHandler.installPopupMenu(tree, DefaultActionGroup(
       StartAction(), StopAction(), Separator(), DeployAction(), AttachAction(), Separator(),
-      CopyAddressAction(), RefreshAction(), EditAction(), RemoveAction(),
+      CopyAddressAction(), OpenInExplorerAction(), RefreshAction(), EditAction(), RemoveAction(),
     ), "SolidityChainsPopup")
 
     project.messageBus.connect(this).subscribe(ChainListener.TOPIC, ChainListener { rebuild() })
@@ -199,7 +202,15 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       append("<b>${ResultView.esc(chain.name)}</b> <span style='color:${ResultView.grey()}'>${ResultView.esc(chain.description)}</span><br>")
       append("status: ${rt.status.name.lowercase()}")
       if (service.isRunning(chain)) {
-        append(" · <code>${ResultView.esc(rt.rpc?.url.orEmpty())}</code> · chain id ${rt.chainId} · block ${rt.blockNumber}")
+        append(" · <code>${ResultView.esc(rt.rpc?.let { if (chain.isNetwork) it.displayUrl else it.url }.orEmpty())}</code> · chain id ${rt.chainId} · block ${rt.blockNumber}")
+      }
+      if (chain.isNetwork) {
+        val known = KnownChains.info(rt.chainId ?: chain.expectedChainId.toLongOrNull())
+        append("<br>")
+        append(if (KnownChains.isMainnet(rt.chainId ?: chain.expectedChainId.toLongOrNull()))
+          "<span style='color:${ResultView.red()}'>real network: transactions spend real funds</span>" else "test network")
+        if (known != null) append(" · ${ResultView.esc(known.name)}")
+        if (chain.wallets.isEmpty()) append("<br>No wallets: calls only. Edit the chain to add a wallet for transactions.")
       }
       if (chain.kind == ChainKind.ANVIL) append("<br>${if (chain.persistent) "state is kept between runs" else "temporary: cleared when stopped"}")
       rt.error?.let { append("<br><span style='color:${ResultView.red()}'>${ResultView.esc(it)}</span>") }
@@ -223,10 +234,11 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
   private fun contractDetails(item: ChainItem.Contract): JComponent {
     val d = item.deployment
     val missing = d.id in service.runtime(item.config.id).missing
-    val html = "<b>${ResultView.esc(d.name)}</b>" + (if (d.sourcePath.isNotEmpty()) " <span style='color:${ResultView.grey()}'>${ResultView.esc(d.sourcePath)}</span>" else "") +
+    val origin = d.sourcePath.ifEmpty { d.abiSource.takeIf { it.isNotEmpty() }?.let { "ABI: $it" }.orEmpty() }
+    val html = "<b>${ResultView.esc(d.name)}</b>" + (if (origin.isNotEmpty()) " <span style='color:${ResultView.grey()}'>${ResultView.esc(origin)}</span>" else "") +
       "<br><code>${d.address}</code>" +
       (if (missing) "<br><span style='color:${ResultView.red()}'>No code at this address any more (the chain was reset)</span>" else "") +
-      "<br><br>Pick a function on the left to call it, or double-click to open its source."
+      "<br><br>Pick a function on the left to call it" + (if (d.sourcePath.isNotEmpty()) ", or double-click to open its source." else ".")
     return message(ResultView.html(html))
   }
 
@@ -237,7 +249,12 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
   private fun addChain(kind: ChainKind) {
     val config = ChainConfig().apply {
       this.kind = kind
-      name = if (kind == ChainKind.EXTERNAL) "Running node" else "Local chain"
+      name = when (kind) {
+        ChainKind.EXTERNAL -> "Running node"
+        ChainKind.NETWORK -> "Sepolia"
+        ChainKind.ANVIL -> "Local chain"
+      }
+      if (kind == ChainKind.NETWORK) network = "Sepolia"
       port = 8545 + service.chains.size
     }
     if (ChainDialog(project, config, isNew = true).showAndGet()) {
@@ -315,6 +332,9 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       add(object : ChainAction("Local Chain…", null) {
         override fun actionPerformed(e: AnActionEvent) = addChain(ChainKind.ANVIL)
       })
+      add(object : ChainAction("Connect to Network…", null) {
+        override fun actionPerformed(e: AnActionEvent) = addChain(ChainKind.NETWORK)
+      })
       add(object : ChainAction("Connect to Node by URL…", null) {
         override fun actionPerformed(e: AnActionEvent) = addChain(ChainKind.EXTERNAL)
       })
@@ -334,7 +354,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       val chain = selectedChain()
       val status = chain?.let { service.runtime(it.id).status }
       e.presentation.isEnabled = status == ChainStatus.STOPPED || status == ChainStatus.FAILED
-      e.presentation.text = if (chain?.kind == ChainKind.EXTERNAL) "Connect" else "Start"
+      e.presentation.text = if (chain?.kind == ChainKind.ANVIL) "Start" else "Connect"
     }
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -389,23 +409,20 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
 
     override fun actionPerformed(e: AnActionEvent) {
       val chain = selectedChain() ?: return
-      val foundry = FoundryProject.find(project) ?: return noFoundry()
-      ChainUi.buildThen(project, foundry) { artifacts ->
-        val withAbi = artifacts.filter { runCatching { it.abi.functions.isNotEmpty() }.getOrDefault(false) }
-        val dialog = AttachDialog(project, withAbi)
-        if (!dialog.showAndGet()) return@buildThen
-        val artifact = dialog.artifact ?: return@buildThen
-        val d = Deployment().apply {
-          chainId = chain.id
-          name = artifact.name
-          sourcePath = artifact.sourcePath
-          address = dialog.checksummedAddress
-          abiJson = artifact.abiJson
-        }
-        service.addDeployment(d)
-        service.refresh(chain)
-        selectKey("contract:${d.id}")
+      // without a Foundry project (or a project that doesn't build) contracts are attached by ABI
+      val foundry = FoundryProject.find(project) ?: return attach(chain, emptyList())
+      ChainUi.buildThen(project, foundry, onFailure = { attach(chain, emptyList()) }) { artifacts ->
+        attach(chain, artifacts.filter { runCatching { it.abi.functions.isNotEmpty() }.getOrDefault(false) })
       }
+    }
+
+    private fun attach(chain: ChainConfig, artifacts: List<me.serce.solidity.chain.foundry.Artifact>) {
+      val dialog = AttachDialog(project, artifacts)
+      if (!dialog.showAndGet()) return
+      val d = dialog.deployment(chain.id)
+      service.addDeployment(d)
+      service.refresh(chain)
+      selectKey("contract:${d.id}")
     }
   }
 
@@ -477,6 +494,29 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
 
     override fun actionPerformed(e: AnActionEvent) {
       address()?.let { CopyPasteManagerEx.getInstance().setContents(StringSelection(it)) }
+    }
+  }
+
+  private inner class OpenInExplorerAction : ChainAction("Open in Block Explorer", AllIcons.General.Web) {
+    private fun url(): String? {
+      val item = selected() ?: return null
+      val chainId = service.runtime(item.config.id).chainId ?: item.config.expectedChainId.toLongOrNull()
+      if (!item.config.isNetwork) return null
+      val address = when (item) {
+        is ChainItem.Account -> item.address
+        is ChainItem.Contract -> item.deployment.address
+        is ChainItem.Function -> item.deployment.address
+        else -> return null
+      }
+      return KnownChains.addressUrl(chainId, address)
+    }
+
+    override fun update(e: AnActionEvent) {
+      e.presentation.isEnabledAndVisible = url() != null
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+      url()?.let { BrowserUtil.browse(it) }
     }
   }
 

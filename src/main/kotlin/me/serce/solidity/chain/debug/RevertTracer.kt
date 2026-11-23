@@ -10,7 +10,7 @@ import java.math.BigInteger
 
 /** What failed: a call simulated against the latest block, or a transaction that was mined and reverted. */
 sealed class TraceTarget {
-  class Call(val from: String, val to: String?, val data: ByteArray, val value: BigInteger) : TraceTarget()
+  class Call(val from: String?, val to: String?, val data: ByteArray, val value: BigInteger) : TraceTarget()
   class Mined(val hash: String) : TraceTarget()
 }
 
