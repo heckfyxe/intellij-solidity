@@ -216,4 +216,5 @@ class SolidityRecoveryParsingTest : SolidityParsingTestBase("fixtures/parser/rec
   fun testStateVariableModifiersAfterName() = doTest(true)
   fun testListErrors() = doTest(true)
   fun testRevertEmitErrors() = doTest(true)
+  fun testTryWithoutCatch() = doTest(true)
 }

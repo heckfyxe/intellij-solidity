@@ -474,7 +474,7 @@ ReturnTupleStatement ::= return SeqExpression ';'
 
 private ExpressionStatement ::= Expression
 IfStatement ::= if '(' Expression ')' Statement ( else Statement )? {pin = 1}
-TryStatement ::= try Expression ReturnsList? Block CatchClause* {pin = 1}
+TryStatement ::= try Expression ReturnsList? Block CatchClause+ {pin = 1}
 CatchClause ::= catch ( Identifier? ParameterList )? Block {pin = 1}
 WhileStatement ::= while '(' Expression ')' Statement {pin = 1}
 // only `_;` (or `_` missing its `;`): elsewhere `_` is a name (`_ = 1;`)
