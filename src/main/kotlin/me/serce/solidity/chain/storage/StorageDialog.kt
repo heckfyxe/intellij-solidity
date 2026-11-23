@@ -117,19 +117,25 @@ class StorageDialog(
     return StorageReader { slot -> rpc.storageAt(address, slot.toHex32()).toWord() }
   }
 
-  /** Runs [read] off the EDT and shows what it returns, or its error, with [show] on the EDT. */
-  private fun background(read: () -> String, show: (String) -> Unit) {
+  /** Runs [compute] off the EDT, then [show]s its result on the EDT unless the dialog was closed meanwhile. */
+  private fun <T> background(compute: () -> T, show: (T) -> Unit) {
+    val modality = ModalityState.stateForComponent(contentPane)
     ApplicationManager.getApplication().executeOnPooledThread {
-      val text = try {
-        read()
-      } catch (e: RpcException) {
-        "error: ${e.message}"
-      } catch (e: AbiInputException) {
-        "error: ${e.message}"
-      }
-      ApplicationManager.getApplication().invokeLater({ show(text) }, ModalityState.any())
+      val result = compute()
+      ApplicationManager.getApplication().invokeLater({ if (!isDisposed) show(result) }, modality)
     }
   }
+
+  /** [background] for a text that is replaced by its error when reading fails. */
+  private fun backgroundText(read: () -> String, show: (String) -> Unit) = background({
+    try {
+      read()
+    } catch (e: RpcException) {
+      "error: ${e.message}"
+    } catch (e: AbiInputException) {
+      "error: ${e.message}"
+    }
+  }, show)
 
   private fun problem(): String? = when {
     service.runtime(chain.id).rpc == null -> "${chain.name} is not connected"
@@ -148,7 +154,7 @@ class StorageDialog(
     val reader = reader() ?: return
     val types = typesField.text
     slotResult.text = "reading…"
-    background({
+    backgroundText({
       if (types.isBlank()) describeWord(reader.word(slot))
       else "<html>" + StorageLayout.decodePacked(types, slot, reader).joinToString("<br>") { StringUtil.escapeXmlEntities(it) } + "</html>"
     }) { slotResult.text = it }
@@ -158,16 +164,13 @@ class StorageDialog(
     val d = deployment?.takeIf { it.sourcePath.isNotEmpty() } ?: return
     val foundry = FoundryProject.find(project) ?: run { layoutStatus.text = "No Foundry project"; return }
     layoutStatus.text = "Reading the layout with forge inspect…"
-    ApplicationManager.getApplication().executeOnPooledThread {
-      val result = runCatching { StorageLayout.parse(foundry.storageLayout(d.sourcePath, d.name)) }
-      ApplicationManager.getApplication().invokeLater({
-        result.onSuccess {
-          layout = it
-          model.items = it.rows().map { r -> Line(r) }
-          layoutStatus.text = if (it.variables.isEmpty()) "${d.name} has no state variables" else "${it.variables.size} state variables"
-          readAll()
-        }.onFailure { layoutStatus.text = "No layout: ${it.message}" }
-      }, ModalityState.any())
+    background({ runCatching { StorageLayout.parse(foundry.storageLayout(d.sourcePath, d.name)) } }) { result ->
+      result.onSuccess {
+        layout = it
+        model.items = it.rows().map { r -> Line(r) }
+        layoutStatus.text = if (it.variables.isEmpty()) "${d.name} has no state variables" else "${it.variables.size} state variables"
+        readAll()
+      }.onFailure { layoutStatus.text = "No layout: ${it.message}" }
     }
   }
 
@@ -176,18 +179,17 @@ class StorageDialog(
     problem()?.let { layoutStatus.text = it; return }
     val reader = reader() ?: return
     val lines = model.items
-    ApplicationManager.getApplication().executeOnPooledThread {
-      val values = lines.map { line ->
+    background({
+      lines.map { line ->
         try {
           layout.read(line.row, reader)
         } catch (e: RpcException) {
           "error: ${e.message}"
         }
       }
-      ApplicationManager.getApplication().invokeLater({
-        lines.zip(values).forEach { (line, value) -> line.value = value }
-        model.fireTableDataChanged()
-      }, ModalityState.any())
+    }) { values ->
+      lines.zip(values).forEach { (line, value) -> line.value = value }
+      model.fireTableDataChanged()
     }
   }
 
@@ -214,7 +216,7 @@ class StorageDialog(
     val reader = reader() ?: return
     val path = keyField.text
     keyResult.text = "reading…"
-    background({
+    backgroundText({
       val shown = StorageLayout.parsePath(path).joinToString("")
       val loc = layout.access(row, path, reader)
       val at = "slot ${loc.slot.slotLabel()}" + if (loc.offset > 0) " +${loc.offset}" else ""
