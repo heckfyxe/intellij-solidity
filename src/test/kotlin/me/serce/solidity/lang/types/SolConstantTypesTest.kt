@@ -70,6 +70,17 @@ class SolConstantTypesTest : SolTestBase() {
     "-2 * 3 + 10" to "int_const 4",
   )
 
+  // `**` is right associative: `2**3**2` is `2**(3**2)`
+  fun testExponentIsRightAssociative() = checkTypes("""
+      contract C {
+        function f() public {
+          2**3**2;
+        }
+      }
+    """,
+    "2**3**2" to "int_const 512",
+  )
+
   fun testLongConstantsAbbreviated() = checkTypes("""
       contract C {
         function f() public {
