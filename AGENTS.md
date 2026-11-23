@@ -185,6 +185,14 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * Generate Solidity Interface runs `cast interface` on the ABI; tuples without `internalType` are given struct names
   first (`AbiText.withStructNames`), since cast prints anonymous tuples that don't parse.
 
+## Contract Storage
+
+* Read Storage (`storage/StorageDialog`) reads any slot with `eth_getStorageAt`, and for contracts compiled in the
+  project decodes every state variable from `forge inspect <path>:<name> storageLayout --json` (`StorageLayout`):
+  packed values sit at `offset` bytes from the word's right end, strings are short (length*2 in the last byte) or long
+  (data at `keccak(slot)`), mapping entries are at `keccak(key . slot)` with value-type keys padded to a word and
+  string/bytes keys unpadded.
+
 ## Foundry Integration
 
 * `FoundryProject.config()` reads `forge config --json` (`FoundryProject.parseConfig`). The live compile

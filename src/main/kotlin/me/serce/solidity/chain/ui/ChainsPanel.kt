@@ -36,6 +36,7 @@ import me.serce.solidity.chain.KnownChains
 import me.serce.solidity.chain.Secrets
 import me.serce.solidity.chain.abi.AbiFetcher
 import me.serce.solidity.chain.abi.AbiText
+import me.serce.solidity.chain.storage.StorageDialog
 import me.serce.solidity.chain.wallet.CastWallet
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
@@ -121,7 +122,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
 
     val toolbarGroup = DefaultActionGroup(
       AddChainGroup(), StartAction(), StopAction(), Separator(),
-      DeployAction(), AttachAction(), LowLevelCallAction(), BuildAction(), Separator(),
+      DeployAction(), AttachAction(), LowLevelCallAction(), ReadStorageAction(), BuildAction(), Separator(),
       RefreshAction(), EditAction(), RemoveAction(), Separator(),
       CompileWhileEditingAction(),
     )
@@ -129,7 +130,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     toolbar.targetComponent = this
     setToolbar(toolbar.component)
     PopupHandler.installPopupMenu(tree, DefaultActionGroup(
-      StartAction(), StopAction(), Separator(), DeployAction(), AttachAction(), LowLevelCallAction(), Separator(),
+      StartAction(), StopAction(), Separator(), DeployAction(), AttachAction(), LowLevelCallAction(), ReadStorageAction(), Separator(),
       CopyAddressAction(), OpenInExplorerAction(), GenerateInterfaceAction(), Separator(), RefreshAction(), EditAction(), RemoveAction(),
     ), "SolidityChainsPopup")
 
@@ -457,6 +458,22 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
         else -> null
       }
       ChainUi.showFormPopup(project, ChainUi.lowLevelForm(project, chain, target), null)
+    }
+  }
+
+  private inner class ReadStorageAction : ChainAction("Read Storage…", AllIcons.Nodes.DataTables) {
+    override fun update(e: AnActionEvent) {
+      e.presentation.isEnabled = selectedChain()?.let(service::isRunning) == true
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+      val chain = selectedChain() ?: return
+      val deployment = when (val item = selected()) {
+        is ChainItem.Contract -> item.deployment
+        is ChainItem.Function -> item.deployment
+        else -> null
+      }
+      StorageDialog(project, chain, deployment, deployment?.address).show()
     }
   }
 

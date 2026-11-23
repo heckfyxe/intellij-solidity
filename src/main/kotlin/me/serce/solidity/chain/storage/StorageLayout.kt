@@ -1,0 +1,180 @@
+package me.serce.solidity.chain.storage
+
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import me.serce.solidity.chain.abi.AbiCodec
+import me.serce.solidity.chain.abi.AbiInputException
+import me.serce.solidity.chain.abi.AbiType
+import me.serce.solidity.chain.abi.AbiValueParser
+import me.serce.solidity.chain.abi.Keccak
+import me.serce.solidity.chain.abi.toHex
+import java.math.BigInteger
+
+/** Reads one 32-byte storage word of the contract being inspected. */
+fun interface StorageReader {
+  fun word(slot: BigInteger): ByteArray
+}
+
+/**
+ * A contract's storage layout as solc reports it (`forge inspect C storageLayout --json`), and how to read its
+ * variables from raw slots: packed value types, short and long strings, dynamic arrays and mapping entries by key.
+ */
+class StorageLayout(val variables: List<Variable>, private val types: Map<String, Type>) {
+
+  class Type(
+    val id: String,
+    val label: String,
+    val encoding: String,
+    val size: Int,
+    val key: String?,
+    val value: String?,
+    val base: String?,
+    val members: List<Variable>,
+  )
+
+  /** A state variable or struct member; [slot] is absolute for state variables and relative for members. */
+  class Variable(val label: String, val slot: BigInteger, val offset: Int, val type: String)
+
+  /** One line of the layout view: struct members are flattened as `p.a`, with absolute slots. */
+  class Row(val name: String, val slot: BigInteger, val offset: Int, val type: Type)
+
+  fun type(id: String): Type = types[id] ?: Type(id, id, "inplace", 32, null, null, null, emptyList())
+
+  fun rows(): List<Row> = buildList { variables.forEach { addRows(it.label, it.slot, it, this) } }
+
+  private fun addRows(name: String, slot: BigInteger, v: Variable, out: MutableList<Row>) {
+    val t = type(v.type)
+    if (t.members.isNotEmpty() && t.encoding == "inplace") {
+      t.members.forEach { m -> addRows("$name.${m.label}", slot + m.slot, m, out) }
+    } else {
+      out += Row(name, slot, v.offset, t)
+    }
+  }
+
+  /** What [row] holds, read through [reader]. */
+  fun read(row: Row, reader: StorageReader): String = read(row.slot, row.offset, row.type, reader)
+
+  private fun read(slot: BigInteger, offset: Int, t: Type, reader: StorageReader): String = when (t.encoding) {
+    "mapping" -> "mapping: look up a key"
+    "dynamic_array" -> {
+      val length = BigInteger(1, reader.word(slot))
+      "length $length" + if (length.signum() > 0) ", elements from slot ${elementsSlot(slot).slotLabel()}" else ""
+    }
+    "bytes" -> readBytes(slot, t, reader)
+    else -> if (t.size <= 32 && t.members.isEmpty()) decodeValue(extract(reader.word(slot), offset, t.size), t.label)
+    else "${(t.size + 31) / 32} slots from ${slot.slotLabel()}"
+  }
+
+  /** The slot of `mapping[key]` for the mapping at [row], or of the key's struct/array start. */
+  fun mappingSlot(row: Row, keyText: String): BigInteger {
+    val keyType = type(row.type.key ?: throw AbiInputException("Not a mapping"))
+    val abi = abiType(keyType.label)
+    val key = AbiValueParser.parse(abi, keyText)
+    // string and bytes keys are hashed as they are; value types padded to a word, bytesN left-aligned
+    val keyBytes = when (abi) {
+      AbiType.Str -> (key as String).toByteArray(Charsets.UTF_8)
+      AbiType.Bytes -> key as ByteArray
+      is AbiType.FixedBytes -> (key as ByteArray).copyOf(32)
+      else -> AbiCodec.encode(listOf(abi), listOf(key))
+    }
+    return BigInteger(1, Keccak.hash(keyBytes + row.slot.toWord()))
+  }
+
+  /** The value stored at `mapping[key]`, decoded by the mapping's value type (nested mappings give their slot). */
+  fun readMapping(row: Row, keyText: String, reader: StorageReader): String {
+    val slot = mappingSlot(row, keyText)
+    val valueType = type(row.type.value ?: return slot.toHex32())
+    return if (valueType.encoding == "mapping") "mapping at slot ${slot.slotLabel()}" else read(slot, 0, valueType, reader)
+  }
+
+  private fun readBytes(slot: BigInteger, t: Type, reader: StorageReader): String {
+    val word = reader.word(slot)
+    val isString = t.label.startsWith("string")
+    if (word[31].toInt() and 1 == 0) { // short: data in place, length * 2 in the lowest byte
+      val length = (word[31].toInt() and 0xff) / 2
+      return show(word.copyOf(length), isString)
+    }
+    val length = (BigInteger(1, word) - BigInteger.ONE).shiftRight(1).toInt()
+    val shown = minOf(length, MAX_BYTES)
+    val start = elementsSlot(slot)
+    val data = (0 until (shown + 31) / 32).fold(ByteArray(0)) { acc, i -> acc + reader.word(start + BigInteger.valueOf(i.toLong())) }.copyOf(shown)
+    return show(data, isString) + if (length > shown) "… ($length bytes)" else ""
+  }
+
+  private fun show(data: ByteArray, isString: Boolean) =
+    if (isString) "\"" + String(data, Charsets.UTF_8).replace("\"", "\\\"") + "\"" else data.toHex()
+
+  companion object {
+    private const val MAX_BYTES = 256
+    private val mapper = ObjectMapper()
+
+    fun parse(json: String): StorageLayout {
+      val node = mapper.readTree(json)
+      val types = node["types"]?.fields()?.asSequence()?.associate { (id, t) ->
+        id to Type(
+          id = id,
+          label = t["label"]?.asText() ?: id,
+          encoding = t["encoding"]?.asText() ?: "inplace",
+          size = t["numberOfBytes"]?.asText()?.toIntOrNull() ?: 32,
+          key = t["key"]?.asText(),
+          value = t["value"]?.asText(),
+          base = t["base"]?.asText(),
+          members = variables(t["members"]),
+        )
+      }.orEmpty()
+      return StorageLayout(variables(node["storage"]), types)
+    }
+
+    private fun variables(n: JsonNode?): List<Variable> = n?.map {
+      Variable(it["label"].asText(), BigInteger(it["slot"].asText()), it["offset"]?.asInt() ?: 0, it["type"].asText())
+    }.orEmpty()
+
+    /** Where a dynamic array's elements and a long string's data start: `keccak256(slot)`. */
+    fun elementsSlot(slot: BigInteger): BigInteger = BigInteger(1, Keccak.hash(slot.toWord()))
+
+    /** The [size] bytes at [offset] counted from the word's low-order (right) end, where solc packs variables. */
+    fun extract(word: ByteArray, offset: Int, size: Int): ByteArray = word.copyOfRange(32 - offset - size, 32 - offset)
+
+    /** Decodes a packed value type by its solc label: `uint8`, `int24`, `bool`, `address`, `contract C`, `enum E`, `bytes4`. */
+    fun decodeValue(bytes: ByteArray, label: String): String {
+      val unsigned = BigInteger(1, bytes)
+      return when {
+        label == "bool" -> (unsigned.signum() != 0).toString()
+        label == "address" || label == "address payable" || label.startsWith("contract ") || label.startsWith("interface ") ->
+          AbiCodec.checksum(bytes.copyOfRange(maxOf(0, bytes.size - 20), bytes.size).toHex())
+        label.startsWith("int") -> BigInteger(bytes).toString() // two's complement of the packed width
+        label.startsWith("bytes") -> bytes.toHex()
+        label.startsWith("enum ") -> "$unsigned"
+        else -> unsigned.toString()
+      }
+    }
+
+    /** Parses a slot typed by the user: decimal or 0x-hex. */
+    fun parseSlot(text: String): BigInteger {
+      val t = text.trim().replace("_", "")
+      val n = try {
+        if (t.startsWith("0x", ignoreCase = true)) BigInteger(t.substring(2), 16) else BigInteger(t)
+      } catch (e: NumberFormatException) {
+        throw AbiInputException("Enter a slot number, decimal or 0x hex")
+      }
+      if (n.signum() < 0 || n.bitLength() > 256) throw AbiInputException("A slot is between 0 and 2²⁵⁶ - 1")
+      return n
+    }
+
+    private fun abiType(label: String): AbiType = when {
+      label.startsWith("contract ") || label.startsWith("interface ") || label == "address payable" -> AbiType.Address
+      label.startsWith("enum ") -> AbiType.UInt(8)
+      else -> AbiType.parse(label).takeIf { it !is AbiType.Unsupported } ?: throw AbiInputException("Can't encode a $label key")
+    }
+  }
+}
+
+fun BigInteger.toWord(): ByteArray {
+  val raw = toByteArray().let { if (it.size > 32) it.copyOfRange(it.size - 32, it.size) else it }
+  return ByteArray(32 - raw.size) + raw
+}
+
+fun BigInteger.toHex32(): String = toWord().toHex()
+
+/** Small slots in decimal, as layouts list them; hashed ones in hex. */
+fun BigInteger.slotLabel(): String = if (bitLength() <= 32) toString() else toHex32()

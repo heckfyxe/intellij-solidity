@@ -1,0 +1,108 @@
+package me.serce.solidity.chain.storage
+
+import com.intellij.execution.configurations.GeneralCommandLine
+import com.intellij.openapi.util.io.FileUtil
+import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.util.SystemProperties
+import me.serce.solidity.chain.abi.AbiCodec
+import me.serce.solidity.chain.abi.hexToBytes
+import me.serce.solidity.chain.foundry.FoundryProject
+import me.serce.solidity.chain.rpc.JsonRpcClient
+import java.io.File
+import java.math.BigInteger
+import java.net.ServerSocket
+
+/** Decodes a real contract's storage against anvil. Skipped without Foundry. */
+class StorageLayoutTest : BasePlatformTestCase() {
+  private val bin = File(SystemProperties.getUserHome(), ".foundry/bin")
+  private var anvil: Process? = null
+
+  override fun tearDown() {
+    try {
+      anvil?.destroy()
+    } finally {
+      super.tearDown()
+    }
+  }
+
+  fun testParseSlotAndDescribeWord() {
+    assertEquals(BigInteger.valueOf(5), StorageLayout.parseSlot(" 5 "))
+    assertEquals(BigInteger.valueOf(255), StorageLayout.parseSlot("0xff"))
+    assertThrows { StorageLayout.parseSlot("-1") }
+    assertThrows { StorageLayout.parseSlot("abc") }
+    val word = ("0x000000000000000000000000" + "5aaeb6053f3e94c9b9a09f33669435e7ef1beaed").hexToBytes()
+    assertTrue(StorageDialog.describeWord(word), StorageDialog.describeWord(word).contains("address 0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"))
+    assertEquals("-1", StorageLayout.decodeValue(byteArrayOf(-1), "int8"))
+    assertEquals("255", StorageLayout.decodeValue(byteArrayOf(-1), "uint8"))
+  }
+
+  private fun assertThrows(body: () -> Unit) {
+    try {
+      body()
+      fail("no exception")
+    } catch (e: Exception) {
+    }
+  }
+
+  fun testDecodesStateVariablesAndMappings() {
+    if (!File(bin, "anvil").canExecute() || !File(bin, "forge").canExecute()) return
+    val root = FileUtil.createTempDirectory("storage", null)
+    File(root, "foundry.toml").writeText("[profile.default]\nsrc = \"src\"\nout = \"out\"\nlibs = []\n")
+    File(root, "src").mkdirs()
+    File(root, "src/S.sol").writeText(
+      """
+      // SPDX-License-Identifier: MIT
+      pragma solidity ^0.8.20;
+      contract S {
+          enum E { A, B }
+          struct P { uint128 a; address b; }
+          int8 small = -3;
+          bool flag = true;
+          address owner = address(0xdEaD);
+          uint256 big = 42;
+          mapping(address => uint256) bal;
+          uint256[] arr;
+          string name = "hi";
+          string long = "a string that is longer than thirty-one bytes";
+          P p;
+          E e = E.B;
+          mapping(string => mapping(uint256 => bool)) nested;
+          constructor() {
+              bal[address(0xBEEF)] = 5;
+              arr.push(1); arr.push(2);
+              p = P(7, address(0xCAFE));
+              nested["k"][3] = true;
+          }
+      }
+      """.trimIndent()
+    )
+    val foundry = FoundryProject(root.toPath(), File(bin, "forge").path)
+    assertTrue(foundry.build().success)
+    val artifact = foundry.artifacts().single { it.name == "S" }
+    val layout = StorageLayout.parse(foundry.storageLayout("src/S.sol", "S"))
+
+    val port = ServerSocket(0).use { it.localPort }
+    anvil = GeneralCommandLine(File(bin, "anvil").path, "--port", port.toString()).createProcess()
+    val rpc = JsonRpcClient("http://127.0.0.1:$port")
+    for (i in 1..50) if (runCatching { rpc.chainId() }.isSuccess) break else Thread.sleep(200)
+    val hash = rpc.sendTransaction(rpc.accounts().first(), null, artifact.bytecode.hexToBytes(), BigInteger.ZERO)
+    val address = AbiCodec.checksum(rpc.waitForReceipt(hash)["contractAddress"].asText())
+    val reader = StorageReader { slot -> rpc.storageAt(address, slot.toHex32()) }
+
+    val rows = layout.rows().associateBy { it.name }
+    fun value(name: String) = layout.read(rows.getValue(name), reader)
+    assertEquals("-3", value("small"))
+    assertEquals("true", value("flag"))
+    assertEquals(AbiCodec.checksum("0x000000000000000000000000000000000000dead"), value("owner"))
+    assertEquals("42", value("big"))
+    assertTrue(value("arr"), value("arr").startsWith("length 2"))
+    assertEquals("\"hi\"", value("name"))
+    assertEquals("\"a string that is longer than thirty-one bytes\"", value("long"))
+    assertEquals("7", value("p.a"))
+    assertEquals(AbiCodec.checksum("0x000000000000000000000000000000000000cafe"), value("p.b"))
+    assertEquals("1", value("e"))
+    assertEquals("5", layout.readMapping(rows.getValue("bal"), "0x000000000000000000000000000000000000BEEF", reader))
+    assertEquals("0", layout.readMapping(rows.getValue("bal"), "0x0000000000000000000000000000000000000001", reader))
+    assertTrue(layout.readMapping(rows.getValue("nested"), "k", reader).startsWith("mapping at slot 0x"))
+  }
+}
