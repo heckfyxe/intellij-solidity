@@ -42,14 +42,21 @@ class FunctionForm(
   private val actionName: String,
   /** False for read-only calls, which run without an account too (a network chain without wallets). */
   private val needsSender: Boolean = true,
+  /** Text for the parameter fields, by position; missing ones start empty. */
+  private val initialValues: List<String> = emptyList(),
+  /** A second button next to the run button, e.g. "Send" beside "Call" for low-level calls. */
+  private val secondary: Action? = null,
   /** Runs off the EDT; [from] is null only when [needsSender] is false and there is no account. */
   private val action: (args: List<Any>, from: String?, value: BigInteger) -> ChainExecutor.Outcome,
 ) {
+  class Action(val name: String, val needsSender: Boolean, val run: (args: List<Any>, from: String?, value: BigInteger) -> ChainExecutor.Outcome)
+
   private val service = ChainService.getInstance(project)
   private val inputs = ArrayList<Pair<AbiParam, () -> String>>()
   private val fromCombo = ComboBox<String>()
   private val valueField = JBTextField("0")
   private val runButton = JButton(actionName)
+  private val secondaryButton = secondary?.let { JButton(it.name) }
   private val result = ResultView(project)
   val component: JComponent
   /** Called after the result area changed size, so a popup can resize to fit. */
@@ -78,12 +85,16 @@ class FunctionForm(
     if (payable) form.addLabeledComponent("Value:", withHint(valueField, AbiType.UInt(256), unitsHint = true))
     params.forEachIndexed { i, p ->
       val label = "${p.name.ifEmpty { "arg$i" }} ${p.displayType}"
-      val editor = editorFor(p.type)
+      val editor = editorFor(p.type, initialValues.getOrNull(i).orEmpty())
       inputs += p to editor.second
       form.addLabeledComponent(label, editor.first)
     }
     runButton.addActionListener { submit() }
-    form.addComponent(JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply { add(runButton) })
+    secondaryButton?.addActionListener { secondary?.let { submit(it.name, it.needsSender, it.run) } }
+    form.addComponent(JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+      add(runButton)
+      secondaryButton?.let { add(it) }
+    })
     form.addComponent(result.component)
     component = JPanel(BorderLayout()).apply {
       border = JBUI.Borders.empty(8)
@@ -93,13 +104,13 @@ class FunctionForm(
 
   val preferredFocus: JComponent? get() = component.components.firstOrNull() as? JComponent
 
-  private fun editorFor(type: AbiType): Pair<JComponent, () -> String> = when (type) {
+  private fun editorFor(type: AbiType, initial: String): Pair<JComponent, () -> String> = when (type) {
     AbiType.Address -> {
       val combo = ComboBox<String>().apply { isEditable = true }
       val rt = service.runtime(chain.id)
       rt.accounts.forEach { combo.addItem(it) }
       service.deployments(chain.id).forEach { combo.addItem(it.address) }
-      combo.selectedItem = ""
+      combo.selectedItem = initial
       combo.renderer = SimpleListCellRenderer.create("") { a ->
         val d = service.deployments(chain.id).firstOrNull { it.address == a }
         if (d != null) "${d.name}  ${ChainExecutor.short(a)}" else "account ${ChainExecutor.short(a)}"
@@ -111,7 +122,7 @@ class FunctionForm(
       combo to { combo.selectedItem as String }
     }
     else -> {
-      val field = JBTextField()
+      val field = JBTextField(initial)
       field.emptyText.text = placeholder(type)
       field.addActionListener { submit() }
       withHint(field, type, unitsHint = type is AbiType.UInt || type is AbiType.Int) to { field.text }
@@ -163,7 +174,12 @@ class FunctionForm(
     onResize()
   }
 
-  fun submit() {
+  fun submit() = submit(actionName, needsSender, action)
+
+  private fun submit(
+    actionName: String, needsSender: Boolean,
+    action: (args: List<Any>, from: String?, value: BigInteger) -> ChainExecutor.Outcome,
+  ) {
     if (!runButton.isEnabled) return
     val from = fromCombo.selectedItem as? String
     if (from == null && needsSender) {
@@ -187,6 +203,7 @@ class FunctionForm(
     } else BigInteger.ZERO
 
     runButton.isEnabled = false
+    secondaryButton?.isEnabled = false
     showResult { showRunning() }
     // on a network, signing can wait minutes for a hardware or browser wallet: let the user give up
     object : Task.Backgroundable(project, "$actionName ${title.substringBefore('(')}", chain.isNetwork) {
@@ -202,6 +219,7 @@ class FunctionForm(
 
       override fun onFinished() {
         runButton.isEnabled = true
+        secondaryButton?.isEnabled = true
         outcome?.let {
           showResult { show(it.record) }
           doneListeners.forEach { l -> l(it) }

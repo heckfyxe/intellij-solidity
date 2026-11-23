@@ -5,6 +5,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.SystemProperties
 import com.intellij.util.ui.UIUtil
 import me.serce.solidity.chain.abi.AbiText
+import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiFetcher
 import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.rpc.JsonRpcClient
@@ -221,6 +222,36 @@ class ChainNetworkTest : BasePlatformTestCase() {
     assertEquals(out.stderr, 0, out.exitCode)
     assertTrue(out.stdout, out.stdout.contains("struct PlaceOrders"))
     assertFalse(out.stderr, out.stderr.contains("Failed to format"))
+  }
+
+  fun testLowLevelCallsAndTransfers() {
+    if (!File(bin, "anvil").canExecute()) return
+    val rpc = startNetwork("Low-level net")
+    val accounts = rpc.accounts()
+    val hash = rpc.sendTransaction(accounts[0], null, "0x600a600c600039600a6000f3602a60005260206000f3".hexToBytes(), BigInteger.ZERO)
+    val answer = AbiCodec.checksum(rpc.waitForReceipt(hash)["contractAddress"].asText())
+    val service = ChainService.getInstance(project)
+    // a node that unlocks its accounts, so sending needs no wallet
+    val chain = ChainConfig().apply { kind = ChainKind.EXTERNAL; url = rpc.url; name = "node" }
+    service.addChain(chain)
+    service.start(chain)
+    val rt = service.runtime(chain.id)
+    assertEquals(rt.error, ChainStatus.RUNNING, waitFor(rt, 30))
+    val executor = ChainExecutor(service)
+
+    val call = executor.lowLevel(chain, answer, "0xdeadbeef".hexToBytes(), null, BigInteger.ZERO, send = false)
+    assertEquals(call.record.error, TxStatus.SUCCESS, call.record.status)
+    assertEquals("call 0xdeadbeef", call.record.function)
+    assertEquals("returned: 0x" + "0".repeat(62) + "2a", call.record.results.single())
+
+    val to = AbiCodec.checksum(accounts[1])
+    val before = rpc.balance(to)
+    val transfer = executor.lowLevel(chain, to, ByteArray(0), rt.accounts.first(), BigInteger.TEN, send = true)
+    assertEquals(transfer.record.error, TxStatus.SUCCESS, transfer.record.status)
+    assertEquals("send ETH", transfer.record.function)
+    assertEquals(before + BigInteger.TEN, rpc.balance(to))
+    assertEquals(TxStatus.FAILED, executor.lowLevel(chain, to, ByteArray(0), null, BigInteger.ONE, send = true).record.status)
+    service.stop(chain)
   }
 
   fun testCastErrorMessage() {

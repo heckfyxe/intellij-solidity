@@ -101,6 +101,43 @@ class ChainExecutor(
     return Outcome(record, null)
   }
 
+  /**
+   * Calls [to] with raw [data] (empty for a plain ETH transfer), with no ABI to encode it. [send] false only simulates it
+   * with `eth_call`; true also sends it. A known contract's ABI names the function and decodes reverts and events.
+   */
+  fun lowLevel(chain: ChainConfig, to: String, data: ByteArray, from: String?, value: BigInteger, send: Boolean): Outcome {
+    val known = service.deployments(chain.id).firstOrNull { it.address.equals(to, ignoreCase = true) }
+    val abi = known?.let { runCatching { it.abi() }.getOrNull() } ?: ContractAbi(emptyList())
+    val fn = if (data.size >= 4) abi.functions.firstOrNull { it.selector.contentEquals(data.copyOf(4)) } else null
+    val label = when {
+      data.isEmpty() -> "send ETH"
+      fn != null -> "call ${fn.signature}"
+      else -> "call ${data.copyOf(minOf(4, data.size)).toHex()}"
+    }
+    val kind = if (send) TxKind.TRANSACT else TxKind.CALL
+    val record = record(chain, kind, known?.name ?: short(to), known?.sourcePath.orEmpty(), label, from.orEmpty(), to, value)
+    record.args += "data: ${if (data.isEmpty()) "(empty)" else data.toHex()}"
+    if (from == null && send) {
+      record.status = TxStatus.FAILED
+      record.error = "No account to send from." + if (chain.isNetwork) " Add a wallet to ${chain.name} to send transactions." else ""
+      return Outcome(record, null)
+    }
+    run(chain, record, abi, TraceTarget.Call(from, to, data, value)) { rpc ->
+      // simulate first, as for ABI calls: the return data and a revert reason before anything is signed
+      val returned = rpc.ethCall(from, to, data, value)
+      record.results += if (fn != null && fn.outputs.isNotEmpty()) runCatching { formatOutputs(fn.outputs, returned) }.getOrDefault(emptyList())
+      else emptyList()
+      record.results += "returned: ${if (returned.isEmpty()) "(nothing)" else returned.toHex()}"
+      if (send) {
+        val hash = send(chain, rpc, record, from!!, to, data, value, label, known?.let { "${it.name} $to" } ?: to) ?: return@run
+        applyReceipt(rpc, record, awaitReceipt(chain, rpc, hash), abi)
+      }
+    }
+    service.addRecord(record)
+    if (send) service.refresh(chain)
+    return Outcome(record, null)
+  }
+
   private fun run(chain: ChainConfig, record: TxRecord, abi: ContractAbi, target: TraceTarget, body: (JsonRpcClient) -> Unit) {
     val rpc = service.runtime(chain.id).rpc
     if (rpc == null) {

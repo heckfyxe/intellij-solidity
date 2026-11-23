@@ -37,6 +37,9 @@ import me.serce.solidity.chain.Deployment
 import me.serce.solidity.chain.LinePositions
 import me.serce.solidity.chain.TxStatus
 import me.serce.solidity.chain.abi.AbiEntry
+import me.serce.solidity.chain.abi.AbiParam
+import me.serce.solidity.chain.abi.AbiType
+import java.math.BigInteger
 import me.serce.solidity.chain.abi.Mutability
 import me.serce.solidity.chain.chainNotification
 import me.serce.solidity.chain.foundry.Artifact
@@ -137,6 +140,21 @@ object ChainUi {
       actionName = if (fn.mutability.isReadOnly) "Call" else "Transact",
       needsSender = !fn.mutability.isReadOnly,
       action = { args, from, value -> executor.invoke(chain, deployment, fn, args, from, value) },
+    )
+  }
+
+  /** Raw calldata and ETH to any address, without an ABI: "Call" simulates, "Send" sends a transaction. */
+  fun lowLevelForm(project: Project, chain: ChainConfig, target: String?): FunctionForm {
+    val executor = ChainExecutor(ChainService.getInstance(project))
+    val params = listOf(AbiParam("to", AbiType.Address), AbiParam("data", AbiType.Bytes))
+    fun run(send: Boolean) = { args: List<Any>, from: String?, value: BigInteger ->
+      executor.lowLevel(chain, args[0] as String, args[1] as ByteArray, from, value, send)
+    }
+    return FunctionForm(
+      project, chain, "Low-level call on ${chain.name}", params, payable = true, actionName = "Call", needsSender = false,
+      initialValues = listOf(target.orEmpty()),
+      secondary = FunctionForm.Action("Send", needsSender = true, run = run(send = true)),
+      action = run(send = false),
     )
   }
 

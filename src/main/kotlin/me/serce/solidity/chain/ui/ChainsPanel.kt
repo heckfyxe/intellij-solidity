@@ -121,7 +121,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
 
     val toolbarGroup = DefaultActionGroup(
       AddChainGroup(), StartAction(), StopAction(), Separator(),
-      DeployAction(), AttachAction(), BuildAction(), Separator(),
+      DeployAction(), AttachAction(), LowLevelCallAction(), BuildAction(), Separator(),
       RefreshAction(), EditAction(), RemoveAction(), Separator(),
       CompileWhileEditingAction(),
     )
@@ -129,7 +129,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     toolbar.targetComponent = this
     setToolbar(toolbar.component)
     PopupHandler.installPopupMenu(tree, DefaultActionGroup(
-      StartAction(), StopAction(), Separator(), DeployAction(), AttachAction(), Separator(),
+      StartAction(), StopAction(), Separator(), DeployAction(), AttachAction(), LowLevelCallAction(), Separator(),
       CopyAddressAction(), OpenInExplorerAction(), GenerateInterfaceAction(), Separator(), RefreshAction(), EditAction(), RemoveAction(),
     ), "SolidityChainsPopup")
 
@@ -440,6 +440,23 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       service.addDeployment(d)
       service.refresh(chain)
       selectKey("contract:${d.id}")
+    }
+  }
+
+  private inner class LowLevelCallAction : ChainAction("Low-level Call…", AllIcons.Nodes.Function) {
+    override fun update(e: AnActionEvent) {
+      e.presentation.isEnabled = selectedChain()?.let(service::isRunning) == true
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+      val chain = selectedChain() ?: return
+      val target = when (val item = selected()) {
+        is ChainItem.Contract -> item.deployment.address
+        is ChainItem.Function -> item.deployment.address
+        is ChainItem.Account -> item.address
+        else -> null
+      }
+      ChainUi.showFormPopup(project, ChainUi.lowLevelForm(project, chain, target), null)
     }
   }
 
