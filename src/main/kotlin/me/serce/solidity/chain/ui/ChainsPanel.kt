@@ -26,7 +26,6 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.StatusText
 import com.intellij.util.ui.tree.TreeUtil
 import me.serce.solidity.chain.ChainConfig
-import me.serce.solidity.chain.ChainExecutor
 import me.serce.solidity.chain.ChainKind
 import me.serce.solidity.chain.ChainListener
 import me.serce.solidity.chain.ChainService
@@ -313,14 +312,14 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
         is ChainItem.Account -> {
           icon = AllIcons.General.User
           val isSender = service.selectedAccount(item.config.id) == item.address
-          append(ChainExecutor.short(item.address), if (isSender) SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES)
+          append(AbiValueFormatter.short(item.address), if (isSender) SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES)
           service.runtime(item.config.id).balances[item.address]?.let { append("  ${AbiValueFormatter.ether(it)}", SimpleTextAttributes.GRAYED_ATTRIBUTES) }
         }
         is ChainItem.Contract -> {
           val missing = item.deployment.id in service.runtime(item.config.id).missing
           icon = AllIcons.Nodes.Class
           append(item.deployment.name, if (missing) SimpleTextAttributes.ERROR_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES)
-          append("  ${ChainExecutor.short(item.deployment.address)}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+          append("  ${AbiValueFormatter.short(item.deployment.address)}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
         is ChainItem.Function -> {
           val fn = item.fn

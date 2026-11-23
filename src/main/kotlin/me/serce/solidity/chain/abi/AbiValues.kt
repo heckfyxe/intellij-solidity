@@ -149,6 +149,30 @@ object AbiValueFormatter {
     return "$prefix${rounded.toPlainString()} × 10${exp.toString().map { SUPERSCRIPT[it] }.joinToString("")}"
   }
 
+  /** `name: value` per argument, `argN` for unnamed ones. */
+  fun formatArgs(params: List<AbiParam>, values: List<Any>): List<String> =
+    params.zip(values).mapIndexed { i, (p, v) -> "${p.name.ifEmpty { "arg$i" }}: ${formatValue(v)}" }
+
+  /** Decodes return [data] into one `name: type value` line per output. */
+  fun formatOutputs(params: List<AbiParam>, data: ByteArray): List<String> {
+    if (params.isEmpty()) return emptyList()
+    val values = AbiCodec.decode(params.map { it.type }, data)
+    return params.zip(values).mapIndexed { i, (p, v) ->
+      val label = p.name.ifEmpty { if (params.size > 1) "[$i]" else "" }
+      (if (label.isEmpty()) "" else "$label: ") + "${p.displayType} ${formatValue(v)}"
+    }
+  }
+
+  /** [format], plus the [readable] form of large integers. */
+  fun formatValue(v: Any): String {
+    val base = format(v)
+    val readable = (v as? BigInteger)?.let { readable(it) }
+    return if (readable != null) "$base ($readable)" else base
+  }
+
+  /** `0x1234…abcd` */
+  fun short(address: String) = if (address.length > 12) "${address.take(6)}…${address.takeLast(4)}" else address
+
   /** Formats wei as `1.5 ETH`. */
   fun ether(wei: BigInteger, decimals: Int = 6): String {
     val eth = BigDecimal(wei).movePointLeft(18).stripTrailingZeros()

@@ -18,7 +18,6 @@ import com.intellij.util.text.DateFormatUtil
 import com.intellij.util.ui.ColumnInfo
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.ListTableModel
-import me.serce.solidity.chain.ChainExecutor
 import me.serce.solidity.chain.ChainListener
 import me.serce.solidity.chain.ChainService
 import me.serce.solidity.chain.TxKind
@@ -50,7 +49,7 @@ class HistoryPanel(private val project: Project) : SimpleToolWindowPanel(true, t
       val summary = if (r.error.isNotEmpty()) r.error else r.results.firstOrNull().orEmpty()
       if (summary.isNotEmpty()) append("  $summary", SimpleTextAttributes.GRAYED_ATTRIBUTES)
     },
-    column("From", 100) { r -> append(ChainExecutor.short(r.from)) },
+    column("From", 100) { r -> append(AbiValueFormatter.short(r.from)) },
     column("Value", 90) { r ->
       val v = r.valueWei.toBigIntegerOrNull() ?: BigInteger.ZERO
       if (v.signum() > 0) append(AbiValueFormatter.ether(v))

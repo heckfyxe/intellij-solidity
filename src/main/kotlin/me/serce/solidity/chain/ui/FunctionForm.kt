@@ -74,7 +74,7 @@ class FunctionForm(
     fromCombo.selectedItem = service.selectedAccount(chain.id)
     fromCombo.renderer = SimpleListCellRenderer.create("") { a ->
       val balance = rt.balances[a]?.let { "   ${AbiValueFormatter.ether(it, decimals = 4)}" } ?: ""
-      "${ChainExecutor.short(a)}$balance"
+      "${AbiValueFormatter.short(a)}$balance"
     }
     fromCombo.setMinimumAndPreferredWidth(JBUI.scale(300))
     fromCombo.addActionListener { (fromCombo.selectedItem as? String)?.let { service.selectAccount(chain.id, it) } }
@@ -113,7 +113,7 @@ class FunctionForm(
       combo.selectedItem = initial
       combo.renderer = SimpleListCellRenderer.create("") { a ->
         val d = service.deployments(chain.id).firstOrNull { it.address == a }
-        if (d != null) "${d.name}  ${ChainExecutor.short(a)}" else "account ${ChainExecutor.short(a)}"
+        if (d != null) "${d.name}  ${AbiValueFormatter.short(a)}" else "account ${AbiValueFormatter.short(a)}"
       }
       combo to { (combo.editor.item as? String).orEmpty() }
     }

@@ -10,10 +10,10 @@ import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.ui.Messages
 import com.intellij.psi.PsiElement
 import com.intellij.ui.awt.RelativePoint
-import me.serce.solidity.chain.ChainExecutor
 import me.serce.solidity.chain.ChainService
 import me.serce.solidity.chain.Deployment
 import me.serce.solidity.chain.abi.AbiEntry
+import me.serce.solidity.chain.abi.AbiValueFormatter
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.lang.psi.ContractType
 import me.serce.solidity.lang.psi.SolContractDefinition
@@ -93,7 +93,7 @@ class ChainLineMarkerProvider : LineMarkerProvider {
     val targets = service.allDeployments().filter { it.name == contract && it.sourcePath == sourcePath }
       .filter { d -> service.chain(d.chainId)?.let(service::isRunning) == true }
     if (targets.isEmpty()) return ChainUi.noRunningChain(project, "$contract is deployed only on chains that are stopped. Start one in the Solidity Chains tool window.")
-    ChainUi.choose("Call $function on", targets, { d -> "${service.chain(d.chainId)?.name}  ${ChainExecutor.short(d.address)}" }, where, project) { d: Deployment ->
+    ChainUi.choose("Call $function on", targets, { d -> "${service.chain(d.chainId)?.name}  ${AbiValueFormatter.short(d.address)}" }, where, project) { d: Deployment ->
       val fn: AbiEntry.Function = d.abi().functions.firstOrNull { it.name == function && it.inputs.size == arity }
         ?: d.abi().functions.firstOrNull { it.name == function }
         ?: run {

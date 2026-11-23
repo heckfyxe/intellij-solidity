@@ -3,7 +3,6 @@ package me.serce.solidity.chain
 import com.fasterxml.jackson.databind.JsonNode
 import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiEntry
-import me.serce.solidity.chain.abi.AbiParam
 import me.serce.solidity.chain.abi.AbiType
 import me.serce.solidity.chain.abi.AbiValueFormatter
 import me.serce.solidity.chain.abi.ContractAbi
@@ -42,7 +41,7 @@ class ChainExecutor(
   fun deploy(chain: ChainConfig, artifact: Artifact, args: List<Any>, from: String, value: BigInteger): Outcome {
     val ctor = artifact.abi.constructor
     val record = record(chain, TxKind.DEPLOY, artifact.name, artifact.sourcePath, AbiEntry.signature("constructor", ctor?.inputs.orEmpty()), from, "", value)
-    record.args += formatArgs(ctor?.inputs.orEmpty(), args)
+    record.args += AbiValueFormatter.formatArgs(ctor?.inputs.orEmpty(), args)
     val data = artifact.bytecode.hexToBytes() + AbiCodec.encode(ctor?.inputs.orEmpty().map { it.type }, args)
     var deployment: Deployment? = null
     run(chain, record, artifact.abi, TraceTarget.Call(from, null, data, value)) { rpc ->
@@ -73,7 +72,7 @@ class ChainExecutor(
     val abi = target.abi()
     val kind = if (fn.mutability.isReadOnly) TxKind.CALL else TxKind.TRANSACT
     val record = record(chain, kind, target.name, target.sourcePath, fn.signature, from.orEmpty(), target.address, value)
-    record.args += formatArgs(fn.inputs, args)
+    record.args += AbiValueFormatter.formatArgs(fn.inputs, args)
     if (from == null && kind == TxKind.TRANSACT) {
       record.status = TxStatus.FAILED
       record.error = "No account to send from. Add a wallet to ${chain.name} to send transactions."
@@ -90,7 +89,7 @@ class ChainExecutor(
       }
       // Simulate first: gives the return value of state-changing functions and the revert reason before sending.
       val returned = rpc.ethCall(from, target.address, data, value)
-      record.results += formatOutputs(fn.outputs, returned)
+      record.results += AbiValueFormatter.formatOutputs(fn.outputs, returned)
       if (kind == TxKind.TRANSACT) {
         val hash = send(chain, rpc, record, from!!, target.address, data, value, fn.signature, "${target.name} ${target.address}") ?: return@run
         applyReceipt(rpc, record, awaitReceipt(chain, rpc, hash), abi)
@@ -115,7 +114,7 @@ class ChainExecutor(
       else -> "call ${data.copyOf(minOf(4, data.size)).toHex()}"
     }
     val kind = if (send) TxKind.TRANSACT else TxKind.CALL
-    val record = record(chain, kind, known?.name ?: short(to), known?.sourcePath.orEmpty(), label, from.orEmpty(), to, value)
+    val record = record(chain, kind, known?.name ?: AbiValueFormatter.short(to), known?.sourcePath.orEmpty(), label, from.orEmpty(), to, value)
     record.args += "data: ${if (data.isEmpty()) "(empty)" else data.toHex()}"
     if (from == null && send) {
       record.status = TxStatus.FAILED
@@ -125,7 +124,7 @@ class ChainExecutor(
     run(chain, record, abi, TraceTarget.Call(from, to, data, value)) { rpc ->
       // simulate first, as for ABI calls: the return data and a revert reason before anything is signed
       val returned = rpc.ethCall(from, to, data, value)
-      record.results += if (fn != null && fn.outputs.isNotEmpty()) runCatching { formatOutputs(fn.outputs, returned) }.getOrDefault(emptyList())
+      record.results += if (fn != null && fn.outputs.isNotEmpty()) runCatching { AbiValueFormatter.formatOutputs(fn.outputs, returned) }.getOrDefault(emptyList())
       else emptyList()
       record.results += "returned: ${if (returned.isEmpty()) "(nothing)" else returned.toHex()}"
       if (send) {
@@ -310,7 +309,7 @@ class ChainExecutor(
     val emitterAbi = known.firstOrNull { it.address.equals(address, ignoreCase = true) }?.abi()
     val candidates = listOfNotNull(emitterAbi, abi).flatMap { it.events }
     val event = candidates.firstOrNull { !it.anonymous && topics.firstOrNull() == it.topic.toHex() }
-      ?: return "log from ${short(address)} topics=${topics.joinToString()} data=${data.toHex()}"
+      ?: return "log from ${AbiValueFormatter.short(address)} topics=${topics.joinToString()} data=${data.toHex()}"
     return try {
       val plain = event.inputs.filter { !it.indexed }
       val plainValues = AbiCodec.decode(plain.map { it.type }, data).iterator()
@@ -347,25 +346,5 @@ class ChainExecutor(
   companion object {
     /** How RPCs (geth, reth, erigon, public endpoints, anvil itself) say they no longer have a block's state. */
     private val STALE_STATE = listOf("historical state", "missing trie node", "header not found", "pruned", "BlockOutOfRange", "not available")
-
-    fun formatArgs(params: List<AbiParam>, values: List<Any>): List<String> =
-      params.zip(values).mapIndexed { i, (p, v) -> "${p.name.ifEmpty { "arg$i" }}: ${formatValue(v)}" }
-
-    fun formatOutputs(params: List<AbiParam>, data: ByteArray): List<String> {
-      if (params.isEmpty()) return emptyList()
-      val values = AbiCodec.decode(params.map { it.type }, data)
-      return params.zip(values).mapIndexed { i, (p, v) ->
-        val label = p.name.ifEmpty { if (params.size > 1) "[$i]" else "" }
-        (if (label.isEmpty()) "" else "$label: ") + "${p.displayType} ${formatValue(v)}"
-      }
-    }
-
-    fun formatValue(v: Any): String {
-      val base = AbiValueFormatter.format(v)
-      val readable = (v as? BigInteger)?.let { AbiValueFormatter.readable(it) }
-      return if (readable != null) "$base ($readable)" else base
-    }
-
-    fun short(address: String) = if (address.length > 12) "${address.take(6)}…${address.takeLast(4)}" else address
   }
 }
