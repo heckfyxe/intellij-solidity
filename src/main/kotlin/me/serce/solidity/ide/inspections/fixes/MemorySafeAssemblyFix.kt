@@ -16,6 +16,21 @@ import me.serce.solidity.lang.psi.SolInlineAssemblyStatement
 import me.serce.solidity.lang.psi.SolStatement
 import me.serce.solidity.lang.psi.SolStringLiteral
 
+private fun SolInlineAssemblyStatement.docComments() = (parent as? SolStatement ?: this).comments()
+
+/**
+ * The deprecated `@solidity memory-safe-assembly` comment of [assembly]: its `@solidity` tag and the comment text after
+ * it, or null when it has none.
+ */
+fun memorySafeAssemblyComment(assembly: SolInlineAssemblyStatement): Pair<PsiElement, PsiElement>? {
+  val comments = assembly.docComments()
+  val i = comments.indices.firstOrNull { i ->
+    comments[i].elementType == SolidityTokenTypes.NAT_SPEC_TAG && comments[i].text == "@solidity" &&
+      comments.getOrNull(i + 1)?.text?.trim()?.startsWith("memory-safe-assembly") == true
+  } ?: return null
+  return comments[i] to comments[i + 1]
+}
+
 /**
  * Replaces the deprecated `/// @solidity memory-safe-assembly` comment of an assembly block with the
  * `assembly ("memory-safe")` flag.
@@ -71,12 +86,7 @@ class MemorySafeAssemblyFix(assembly: SolInlineAssemblyStatement) : LocalQuickFi
    * tag and its argument.
    */
   private fun commentRange(assembly: SolInlineAssemblyStatement, document: Document): TextRange? {
-    val comments = (assembly.parent as? SolStatement ?: assembly).comments().sortedBy { it.textRange.startOffset }
-    val tagIndex = comments.indices.firstOrNull { i ->
-      comments[i].elementType == SolidityTokenTypes.NAT_SPEC_TAG && comments[i].text == "@solidity"
-    } ?: return null
-    val tag = comments[tagIndex]
-    val argument = comments.getOrNull(tagIndex + 1) ?: return null
+    val (tag, argument) = memorySafeAssemblyComment(assembly) ?: return null
     val line = document.getLineNumber(tag.textRange.startOffset)
     val lineText = document.getText(DocumentUtil.getLineTextRange(document, line)).trim()
     val wholeLine = wholeLines(document, line, line)
@@ -84,7 +94,7 @@ class MemorySafeAssemblyFix(assembly: SolInlineAssemblyStatement) : LocalQuickFi
     if (onlyTag.matches(lineText) && (lineText.startsWith("///") || lineText.endsWith("*/"))) {
       return wholeLine
     }
-    blockComment(comments, tag, document)?.let { block ->
+    blockComment(assembly.docComments(), tag, document)?.let { block ->
       val blockText = document.getText(block)
       val rest = blockText.replace(TAG, "").replace("/**", "").replace("*/", "").replace("*", "")
       // a block comment holding nothing else: delete it with its lines

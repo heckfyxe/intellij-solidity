@@ -52,7 +52,7 @@ class NatSpecParameterInspection : LocalInspectionTool() {
     holder: ProblemsHolder,
     stateVariable: Boolean = false
   ) {
-    val comments = declaration.comments().sortedBy { it.textRange.startOffset }
+    val comments = declaration.comments()
     if (comments.isEmpty()) return
     val names = parameterNames.orEmpty().filterNotNull().toSet()
     val documented = mutableSetOf<String>()

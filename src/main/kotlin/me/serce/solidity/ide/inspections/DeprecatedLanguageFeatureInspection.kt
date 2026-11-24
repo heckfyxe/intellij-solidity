@@ -7,11 +7,9 @@ import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.util.PsiTreeUtil
-import com.intellij.psi.util.elementType
-import me.serce.solidity.ide.hints.comments
 import me.serce.solidity.ide.inspections.fixes.MemorySafeAssemblyFix
+import me.serce.solidity.ide.inspections.fixes.memorySafeAssemblyComment
 import me.serce.solidity.ide.inspections.fixes.ReplaceTextFix
-import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.core.solidityVersionRange
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.types.SolAddress
@@ -83,12 +81,8 @@ class DeprecatedLanguageFeatureInspection : LocalInspectionTool() {
 
       override fun visitInlineAssemblyStatement(o: SolInlineAssemblyStatement) {
         if (!since0831) return
-        val comments = (o.parent as? SolStatement ?: o).comments().sortedBy { it.textRange.startOffset }
-        val tagIndex = comments.indices.firstOrNull { i ->
-          comments[i].elementType == SolidityTokenTypes.NAT_SPEC_TAG && comments[i].text == "@solidity" &&
-            comments.getOrNull(i + 1)?.text?.trim()?.startsWith("memory-safe-assembly") == true
-        } ?: return
-        report(comments[tagIndex], "The '@solidity memory-safe-assembly' comment is deprecated since Solidity 0.8.31, use 'assembly (\"memory-safe\")'",
+        val (tag, _) = memorySafeAssemblyComment(o) ?: return
+        report(tag, "The '@solidity memory-safe-assembly' comment is deprecated since Solidity 0.8.31, use 'assembly (\"memory-safe\")'",
           MemorySafeAssemblyFix(o))
       }
 

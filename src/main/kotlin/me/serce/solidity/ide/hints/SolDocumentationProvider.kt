@@ -34,6 +34,7 @@ fun PsiElement.hasNoValidationTag() = comments().any { it.isNatSpecTag(NO_VALIDA
 
 private fun PsiElement.isNatSpecTag(tag: String) = elementType == SolidityTokenTypes.NAT_SPEC_TAG && text == tag
 
+/** The documentation comments of this declaration (`///` lines and the last `/** */` block before it), in source order. */
 fun PsiElement.comments(): List<PsiElement> {
   return CachedValuesManager.getCachedValue(this) {
     val builtin = isBuiltin()
@@ -47,7 +48,7 @@ fun PsiElement.comments(): List<PsiElement> {
     } ?: emptyList()
     else {
       collectBlockComments(nonSolElements)
-    }).filterIsInstance<PsiComment>()
+    }).filterIsInstance<PsiComment>().sortedBy { it.startOffset }
     CachedValueProvider.Result.create(res, if (builtin) ModificationTracker.NEVER_CHANGED else this.parent)
   }
 }
@@ -97,18 +98,17 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
     if (!builder.appendDefinition(element)) {
       return null
     }
-    // comments() and the collected ones run backwards from the declaration
     val own: List<PsiElement> = element.comments()
     val inherited: List<PsiElement> = if (own.isEmpty() || own.any { it.isInheritDoc() }) {
       when (element) {
-        is SolParameterDef -> collectParameterComments(element) + collectInheritanceComments(element)
+        is SolParameterDef -> collectInheritanceComments(element) + collectParameterComments(element)
         is SolFunctionDefinition -> collectInheritanceComments(element)
         is SolStateVariableDeclaration -> collectInheritanceComments(element)
         else -> emptyList()
       }
     } else emptyList()
     if (own.isNotEmpty() || inherited.isNotEmpty()) {
-      val natSpec = NatSpecDoc.parse(own.reversed()) + NatSpecDoc.parse(inherited.reversed())
+      val natSpec = NatSpecDoc.parse(own) + NatSpecDoc.parse(inherited)
       val html = if (element is SolParameterDef) natSpec.parameterHtml(element.project, element.identifier?.text) else natSpec.toHtml(element.project)
       builder.append(html ?: "")
     }
@@ -175,9 +175,9 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
     val singleReturn = returnParam && natIndexes.count { it.value.text == "@return" } == 1
     val paramName = element.identifier?.text ?: if (!singleReturn) return emptyList() else ""
 
-    val natParam = natIndexes.find { it.value.text == natName && (singleReturn || comments.getOrNull(it.index - 1)?.text?.trimStart()?.startsWith(paramName) ?: false) } ?: return emptyList()
-    val nextNatParam = natIndexes.getOrNull(natIndexes.indexOf(natParam) - 1)?.index?.let { it + 1 } ?: 0
-    return comments.slice(nextNatParam..natParam.index)
+    val natParam = natIndexes.find { it.value.text == natName && (singleReturn || comments.getOrNull(it.index + 1)?.text?.trimStart()?.startsWith(paramName) ?: false) } ?: return emptyList()
+    val nextNatParam = natIndexes.getOrNull(natIndexes.indexOf(natParam) + 1)?.index ?: comments.size
+    return comments.subList(natParam.index, nextNatParam)
   }
 
   private fun StringBuilder.appendDefinition(element: PsiElement) : Boolean {
