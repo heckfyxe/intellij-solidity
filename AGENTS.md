@@ -172,6 +172,11 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   the import graph with a visited set because imports can be circular) and what a contract declares and inherits
   (`contractDeclarations`). Tests fail on `CachingPreventedException`, so cached values must not depend on other
   files' cached values through a cycle.
+* There is one visibility model: a file's names (`fileVisibility`) include imports under their local names
+  (`import {A as B}` makes A visible as B only, `import "x" as X` makes only `X` visible, a `SolImportAlias`).
+  Type names and qualified names (`resolveTypeNameUsingImports`: `L.S`, `X.C.E`, `revert L.E()`) look the first
+  name up there and each following one among the members of the previous one. Base contracts (`is B`) are looked up
+  in the file scope, since the contract's own scope depends on its bases.
 
 ## Quick Documentation
 

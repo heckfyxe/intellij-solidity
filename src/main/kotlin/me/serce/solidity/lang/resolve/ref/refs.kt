@@ -104,9 +104,7 @@ class SolMemberAccessReference(element: SolMemberAccessExpression) : SolReferenc
   }
 
   override fun doMultiResolve(): Collection<PsiElement> {
-    val firstMemberElement = element.childOfType<SolPrimaryExpression>()
-    val importAlias = firstMemberElement?.varLiteral?.let { varLiteral -> SolResolver.resolveAlias(varLiteral) }
-    if (importAlias != null && SolResolver.isAliasOfFile(importAlias)) {
+    if (SolResolver.isQualifiedByFileAlias(element)) {
       return when (element.parent is SolFunctionCallExpression) {
         true -> (element.parent.reference as SolFunctionCallReference).resolveFunctionCallAndFilter()
           .mapNotNull { it.resolveElement() }
