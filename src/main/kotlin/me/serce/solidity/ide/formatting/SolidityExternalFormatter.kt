@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.formatting
 
+import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessAdapter
 import com.intellij.execution.process.OSProcessHandler
@@ -12,6 +13,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.psi.PsiFile
+import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.resolveForgeExecutable
 import me.serce.solidity.settings.ConfigurationMode
@@ -22,7 +24,6 @@ import java.nio.charset.StandardCharsets
 import java.io.File
 import java.nio.file.Paths
 import java.util.*
-import java.util.concurrent.ExecutionException
 
 class SolidityExternalFormatter : AsyncDocumentFormattingService() {
 
@@ -32,44 +33,46 @@ class SolidityExternalFormatter : AsyncDocumentFormattingService() {
     val settings = SoliditySettings.getInstance(project)
 
     val psiFile: PsiFile = request.context.containingFile
-    val foundryExePath = forgeExecutable(settings)
+    // forge fmt reads the [fmt] section of the foundry.toml it finds from its working directory
+    val workDir = psiFile.virtualFile?.let { FoundryProject.rootOf(it) }?.path ?: project.guessProjectDir()?.canonicalPath
+    val cmd = generateCmd(forgeExecutable(settings), workDir, settings)
+    val text = request.documentText
 
-    return try {
-      // forge fmt reads the [fmt] section of the foundry.toml it finds from its working directory
-      val workDir = foundryRoot(psiFile) ?: project.guessProjectDir()?.canonicalPath
-      val cmd = generateCmd(foundryExePath, workDir, settings)
-      val handler = OSProcessHandler(cmd)
-      handler.processInput.use { outputStream ->
-        outputStream.write(psiFile.text.toByteArray())
-        outputStream.flush()
-      }
-      object : FormattingTask {
-        override fun run() {
-          val adapter = object : CapturingProcessAdapter() {
-            override fun processTerminated(event: ProcessEvent) {
-              val exitCode = event.exitCode
-              if (exitCode == 0) {
-                request.onTextReady(output.stdout)
-              } else {
-                val onlyErrors = removeWarning(output.stderr).ifBlank { "Formatting failed with exit code $exitCode" }
-                request.onError("Solidity", onlyErrors)
-              }
+    // started in run(), which the platform calls off the EDT
+    return object : FormattingTask {
+      @Volatile
+      private var handler: OSProcessHandler? = null
+
+      override fun run() {
+        val handler = try {
+          OSProcessHandler(cmd).also { this.handler = it }
+        } catch (e: ExecutionException) {
+          request.onError("Solidity", e.message ?: "Unknown error")
+          return
+        }
+        val adapter = object : CapturingProcessAdapter() {
+          override fun processTerminated(event: ProcessEvent) {
+            val exitCode = event.exitCode
+            if (exitCode == 0) {
+              request.onTextReady(output.stdout)
+            } else {
+              val onlyErrors = removeWarning(output.stderr).ifBlank { "Formatting failed with exit code $exitCode" }
+              request.onError("Solidity", onlyErrors)
             }
           }
-          handler.addProcessListener(adapter)
-          handler.startNotify()
         }
-
-        override fun cancel(): Boolean {
-          handler.destroyProcess()
-          return true
-        }
-
-        override fun isRunUnderProgress(): Boolean = true
+        handler.addProcessListener(adapter)
+        handler.startNotify()
+        // after startNotify, so forge's output is read while the input is written
+        handler.processInput.use { it.write(text.toByteArray(StandardCharsets.UTF_8)) }
       }
-    } catch (e: ExecutionException) {
-      request.onError("Solidity", e.message ?: "Unknown error")
-      null
+
+      override fun cancel(): Boolean {
+        handler?.destroyProcess()
+        return true
+      }
+
+      override fun isRunUnderProgress(): Boolean = true
     }
   }
 
@@ -131,14 +134,21 @@ class SolidityExternalFormatter : AsyncDocumentFormattingService() {
     val settings = SoliditySettings.getInstance(project)
     return when (settings.formatterType) {
       FormatterType.DISABLED -> false
-      else -> settings.formatterConfigurationMode == ConfigurationMode.MANUAL || File(forgeExecutable(settings)).canExecute()
+      else -> settings.formatterConfigurationMode == ConfigurationMode.MANUAL || canExecute(forgeExecutable(settings))
     }
+  }
+
+  /** The platform asks on every Reformat Code and Actions on Save check: stat forge at most every few seconds. */
+  @Volatile
+  private var executableCheck = Triple("", 0L, false)
+
+  private fun canExecute(path: String): Boolean {
+    val (checkedPath, checkedAt, result) = executableCheck
+    val now = System.currentTimeMillis()
+    if (checkedPath == path && now - checkedAt < 5_000) return result
+    return File(path).canExecute().also { executableCheck = Triple(path, now, it) }
   }
 
   private fun forgeExecutable(settings: SoliditySettings): String =
     resolveForgeExecutable(settings.formatterFoundryExecutablePath, settings.formatterConfigurationMode, SystemInfo.isWindows)
-
-  /** The closest folder above the file that has a foundry.toml. */
-  private fun foundryRoot(file: PsiFile): String? =
-    generateSequence(file.virtualFile?.parent) { it.parent }.firstOrNull { it.findChild("foundry.toml") != null }?.path
 }
