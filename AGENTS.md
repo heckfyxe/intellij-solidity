@@ -155,6 +155,9 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   otherwise a plain `import "path";`. Completion of contracts/events always adds named imports. The path goes through
   the first remapping whose target holds the file (`SolImportConfigService.remappedImportPath`, remappings onto
   themselves like `src/=src/` ignored), otherwise it is relative (`./`, `../`).
+* New › Smart Contract (`SolCreateFileAction`) also creates Forge tests and scripts with forge's naming: `Counter`,
+  `CounterTest` or `Counter.t.sol` all give `Counter.t.sol` with `contract CounterTest is Test` (`.s.sol`/`Script` for
+  scripts); the contract name is the `CONTRACT_NAME` template property.
 
 ## Types
 

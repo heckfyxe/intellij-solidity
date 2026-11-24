@@ -210,6 +210,8 @@
 
         <internalFileTemplate name="Solidity Contract"/>
         <internalFileTemplate name="Solidity Library"/>
+        <internalFileTemplate name="Forge Test"/>
+        <internalFileTemplate name="Forge Script"/>
 
         <stubIndex implementation="me.serce.solidity.lang.stubs.SolNamedElementIndex"/>
         <stubIndex implementation="me.serce.solidity.lang.stubs.SolGotoClassIndex"/>
