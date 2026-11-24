@@ -1,19 +1,17 @@
 package me.serce.solidity.ide
 
+import com.intellij.psi.PsiNamedElement
 import com.intellij.ide.hierarchy.CallHierarchyBrowserBase
 import com.intellij.ide.hierarchy.HierarchyBrowser
-import com.intellij.ide.hierarchy.HierarchyBrowserManager
 import com.intellij.ide.hierarchy.HierarchyNodeDescriptor
 import com.intellij.ide.hierarchy.HierarchyProvider
 import com.intellij.ide.hierarchy.HierarchyTreeStructure
 import com.intellij.ide.util.treeView.NodeDescriptor
 import com.intellij.openapi.actionSystem.ActionPlaces
-import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ui.util.CompositeAppearance
-import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
@@ -107,19 +105,14 @@ object SolCallables {
 }
 
 class SolCallHierarchyProvider : HierarchyProvider {
-  override fun getTarget(dataContext: DataContext): PsiElement? {
-    val project = CommonDataKeys.PROJECT.getData(dataContext) ?: return null
-    val editor = CommonDataKeys.EDITOR.getData(dataContext)
-    if (editor != null) {
-      val file = PsiDocumentManager.getInstance(project).getPsiFile(editor.document) ?: return null
-      val at = file.findElementAt(editor.caretModel.offset) ?: return null
+  override fun getTarget(dataContext: DataContext): PsiElement? = hierarchyTarget(dataContext, { editor, file ->
+    file.findElementAt(editor.caretModel.offset)?.let { at ->
       // a call at the caret: its callee, otherwise the enclosing function
       val call = PsiTreeUtil.getParentOfType(at, SolFunctionCallExpression::class.java, SolModifierInvocation::class.java)
-      val referenced = call?.reference?.resolve()?.takeIf { SolCallables.isCallable(it) }
-      return referenced ?: PsiTreeUtil.getParentOfType(at, false, SolFunctionDefinition::class.java, SolModifierDefinition::class.java)
+      call?.reference?.resolve()?.takeIf { SolCallables.isCallable(it) }
+        ?: PsiTreeUtil.getParentOfType(at, false, SolFunctionDefinition::class.java, SolModifierDefinition::class.java)
     }
-    return CommonDataKeys.PSI_ELEMENT.getData(dataContext)?.takeIf { SolCallables.isCallable(it) }
-  }
+  }, { it.takeIf { SolCallables.isCallable(it) } })
 
   override fun createHierarchyBrowser(target: PsiElement): HierarchyBrowser = SolCallHierarchyBrowser(target.project, target)
 
@@ -148,22 +141,16 @@ class SolCallHierarchyBrowser(project: Project, method: PsiElement) : CallHierar
     else -> null
   }
 
-  override fun getComparator(): Comparator<NodeDescriptor<*>> {
-    val state = HierarchyBrowserManager.getInstance(myProject).state
-    return if (state != null && state.SORT_ALPHABETICALLY) compareBy(String.CASE_INSENSITIVE_ORDER) { it.toString() }
-    else Comparator { _, _ -> 0 }
-  }
+  override fun getComparator(): Comparator<NodeDescriptor<*>> = hierarchyComparator(myProject)
 }
 
 class SolCallHierarchyTreeStructure(project: Project, element: PsiElement, private val callers: Boolean) :
   HierarchyTreeStructure(project, SolCallHierarchyNodeDescriptor(project, null, element, true, 0)) {
   override fun buildChildren(descriptor: HierarchyNodeDescriptor): Array<Any> {
     val element = descriptor.psiElement ?: return ArrayUtilRt.EMPTY_OBJECT_ARRAY
-    // a caller that isn't a function (a state variable initializer, a contract) has no callers of its own
+    // a caller that isn't a function (a state variable initializer, a contract) has no callers of its own;
+    // callees are functions and modifiers only
     if (callers && !SolCallables.isCallable(element)) return ArrayUtilRt.EMPTY_OBJECT_ARRAY
-    if (!callers && element !is SolFunctionDefinition && element !is SolModifierDefinition && element !is SolConstructorDefinition) {
-      return ArrayUtilRt.EMPTY_OBJECT_ARRAY
-    }
     // stop at recursion: a node whose element is already on the path
     var parent = descriptor.parentDescriptor as? HierarchyNodeDescriptor
     while (parent != null) {
@@ -182,24 +169,16 @@ class SolCallHierarchyNodeDescriptor(
   element: PsiElement,
   isBase: Boolean,
   private val usageCount: Int,
-) : HierarchyNodeDescriptor(project, parent, element, isBase) {
-  override fun update(): Boolean {
-    var changes = super.update()
-    val element = psiElement ?: return invalidElement()
-    if (changes && myIsBase) icon = getBaseMarkerIcon(icon)
-    val old = myHighlightedText
-    myHighlightedText = CompositeAppearance()
-    myHighlightedText.ending.addText(presentableName(element))
+) : SolHierarchyNodeDescriptor(project, parent, element, isBase) {
+  override fun present(element: PsiElement, text: CompositeAppearance.DequeEnd) {
+    text.addText(presentableName(element))
     val contract = PsiTreeUtil.getParentOfType(element, SolContractDefinition::class.java)
     if (contract != null && contract != element) {
-      myHighlightedText.ending.addText("  ${contract.name}", SimpleTextAttributes.GRAY_ATTRIBUTES.toTextAttributes())
+      text.addText("  ${contract.name}", SimpleTextAttributes.GRAY_ATTRIBUTES.toTextAttributes())
     }
     if (usageCount > 1) {
-      myHighlightedText.ending.addText("  ($usageCount usages)", SimpleTextAttributes.GRAY_ATTRIBUTES.toTextAttributes())
+      text.addText("  ($usageCount usages)", SimpleTextAttributes.GRAY_ATTRIBUTES.toTextAttributes())
     }
-    myName = myHighlightedText.text
-    if (myHighlightedText != old) changes = true
-    return changes
   }
 
   companion object {
@@ -208,9 +187,7 @@ class SolCallHierarchyNodeDescriptor(
         element.parameters.joinToString(", ", "(", ")") { it.typeName.text }
       is SolModifierDefinition -> "modifier ${element.name}"
       is SolConstructorDefinition -> "constructor"
-      is SolStateVariableDeclaration -> element.name ?: "?"
-      is SolContractDefinition -> element.name ?: "?"
-      else -> element.text.take(40)
+      else -> (element as? PsiNamedElement)?.name ?: "?"
     }
   }
 }
