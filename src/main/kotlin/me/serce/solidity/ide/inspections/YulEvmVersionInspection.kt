@@ -15,7 +15,6 @@ import me.serce.solidity.lang.psi.SolYulFunctionCall
 import me.serce.solidity.lang.resolve.EvmVersion
 import me.serce.solidity.lang.resolve.YulBuiltins
 import org.jetbrains.annotations.TestOnly
-import java.nio.file.Path
 
 /**
  * Yul built-ins that the EVM version of the project doesn't have, e.g. `tstore` before Cancun. The EVM version is
@@ -49,9 +48,8 @@ class YulEvmVersionInspection : LocalInspectionTool() {
       if (ApplicationManager.getApplication().isUnitTestMode) return null
       val vFile = file.originalFile.virtualFile ?: return null
       if (vFile.fileSystem !is LocalFileSystem) return null
-      val root = FoundryProject.rootOf(vFile) ?: return null
       val project = file.project
-      val foundry = FoundryProject(Path.of(root.path), FoundryProject.forgePath(project))
+      val foundry = FoundryProject.find(project, vFile) ?: return null
       // inspections run under a read action: read the config in the background, then highlight again
       val cached = foundry.cachedConfig() ?: run {
         foundry.loadConfigInBackground {
