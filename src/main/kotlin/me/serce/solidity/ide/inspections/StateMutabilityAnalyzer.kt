@@ -107,19 +107,13 @@ object StateMutabilityAnalyzer {
     }
 
     private fun visitNew(element: SolNewExpression) {
-      val userType = when (val typeName = element.typeName) {
-        is SolUserDefinedLocationTypeName -> typeName.userDefinedTypeName
-        is SolUserDefinedTypeName -> typeName
-        else -> null
-      } ?: return
-      val resolved = SolResolver.resolveTypeNameUsingImports(userType)
-      when {
-        resolved.isEmpty() -> incomplete = true
-        resolved.all { it is SolContractDefinition } -> {
+      when (newTarget(element)) {
+        NewTarget.MEMORY -> Unit
+        NewTarget.CONTRACT -> {
           val call = element.parent as? SolFunctionCallExpression
           effects += MutabilityEffect(call ?: element, MutabilityLevel.NONPAYABLE)
         }
-        resolved.any { it is SolContractDefinition } -> incomplete = true
+        NewTarget.UNKNOWN -> incomplete = true
       }
     }
 
@@ -151,14 +145,12 @@ object StateMutabilityAnalyzer {
     }
 
     private fun callableLevel(callable: SolCallable): MutabilityLevel? {
-      return when (val element = callable.resolveElement()) {
-        // elementary type conversions and builtins like `bytes.concat` or `wrap`/`unwrap`
-        null -> MutabilityLevel.PURE
-        is SolFunctionDefinition -> if (element.isBuiltin()) builtinLevel(element) else functionLevel(element)
-        is SolStateVariableDeclaration -> if (element.isBuiltin()) null else MutabilityLevel.VIEW
-        is SolContractDefinition, is SolStructDefinition, is SolEventDefinition, is SolErrorDefinition,
-        is SolUserDefinedValueTypeDefinition -> MutabilityLevel.PURE
-        else -> null
+      return when (val kind = calleeKind(callable)) {
+        CalleeKind.Conversion, CalleeKind.TypeName -> MutabilityLevel.PURE
+        is CalleeKind.Builtin -> builtinLevel(kind.owner, kind.name)
+        is CalleeKind.Function -> functionLevel(kind.function)
+        is CalleeKind.StateVariable -> if (kind.variable.isBuiltin()) null else MutabilityLevel.VIEW
+        CalleeKind.Unknown -> null
       }
     }
 
@@ -173,9 +165,7 @@ object StateMutabilityAnalyzer {
       }
     }
 
-    private fun builtinLevel(function: SolFunctionDefinition): MutabilityLevel? {
-      val owner = function.contract?.name?.let { deInternalise(it) } ?: return null
-      val name = function.name ?: return null
+    private fun builtinLevel(owner: String, name: String): MutabilityLevel? {
       return when (owner) {
         "Global" -> when (name) {
           "selfdestruct", "suicide" -> MutabilityLevel.NONPAYABLE

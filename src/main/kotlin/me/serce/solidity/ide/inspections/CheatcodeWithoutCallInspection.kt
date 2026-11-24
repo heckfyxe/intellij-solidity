@@ -10,10 +10,8 @@ import com.intellij.psi.util.parentOfType
 import me.serce.solidity.ide.run.hasForgeTests
 import me.serce.solidity.ide.run.isForgeTestFile
 import me.serce.solidity.lang.psi.*
-import me.serce.solidity.lang.resolve.SolResolver
 import me.serce.solidity.lang.resolve.function.SolOverrideResolver
 import me.serce.solidity.lang.resolve.ref.SolFunctionCallReference
-import me.serce.solidity.lang.types.deInternalise
 import me.serce.solidity.lang.types.isBuiltin
 
 /**
@@ -106,16 +104,10 @@ private class CallAnalysis {
     return result
   }
 
-  /** `new C()` deploys a contract; `new uint256[](n)` and `new bytes(n)` only allocate memory. */
-  private fun classifyNew(element: SolNewExpression): Calls {
-    val userType = when (val typeName = element.typeName) {
-      is SolUserDefinedLocationTypeName -> typeName.userDefinedTypeName
-      is SolUserDefinedTypeName -> typeName
-      is SolArrayTypeName, is SolElementaryTypeName, is SolBytesArrayTypeName -> return Calls.NONE
-      else -> null
-    } ?: return Calls.UNKNOWN
-    val resolved = SolResolver.resolveTypeNameUsingImports(userType)
-    return if (resolved.isNotEmpty() && resolved.all { it is SolContractDefinition }) Calls.EXTERNAL else Calls.UNKNOWN
+  private fun classifyNew(element: SolNewExpression): Calls = when (newTarget(element)) {
+    NewTarget.MEMORY -> Calls.NONE
+    NewTarget.CONTRACT -> Calls.EXTERNAL
+    NewTarget.UNKNOWN -> Calls.UNKNOWN
   }
 
   private fun classifyCall(call: SolFunctionCallExpression, depth: Int): Calls {
@@ -129,27 +121,19 @@ private class CallAnalysis {
 
   private fun classifyCallable(call: SolFunctionCallExpression, callable: SolCallable, depth: Int): Calls {
     val callee = call.expression as? SolMemberAccessExpression
-    return when (val element = callable.resolveElement()) {
-      // elementary type conversions and builtins like `bytes.concat` or `wrap`/`unwrap`
-      null -> Calls.NONE
-      is SolFunctionDefinition -> when {
-        element.isBuiltin() -> classifyBuiltin(element)
-        callee != null && isExternalMemberCall(callee, element) -> Calls.EXTERNAL
-        else -> classifyInternal(element, depth)
-      }
+    return when (val kind = calleeKind(callable)) {
+      CalleeKind.Conversion, CalleeKind.TypeName -> Calls.NONE
+      is CalleeKind.Builtin -> classifyBuiltin(kind.owner, kind.name)
+      is CalleeKind.Function ->
+        if (callee != null && isExternalMemberCall(callee, kind.function)) Calls.EXTERNAL else classifyInternal(kind.function, depth)
       // a public getter called on a contract
-      is SolStateVariableDeclaration ->
-        if (callee != null && !element.isBuiltin() && callee.receiverKind() == Receiver.VALUE) Calls.EXTERNAL else Calls.UNKNOWN
-      is SolContractDefinition, is SolStructDefinition, is SolEventDefinition, is SolErrorDefinition,
-      is SolUserDefinedValueTypeDefinition -> Calls.NONE
-      // function-typed variables and anything else
-      else -> Calls.UNKNOWN
+      is CalleeKind.StateVariable ->
+        if (callee != null && !kind.variable.isBuiltin() && callee.receiverKind() == Receiver.VALUE) Calls.EXTERNAL else Calls.UNKNOWN
+      CalleeKind.Unknown -> Calls.UNKNOWN
     }
   }
 
-  private fun classifyBuiltin(function: SolFunctionDefinition): Calls {
-    val owner = function.contract?.name?.let { deInternalise(it) } ?: return Calls.UNKNOWN
-    val name = function.name ?: return Calls.UNKNOWN
+  private fun classifyBuiltin(owner: String, name: String): Calls {
     return when {
       owner == "Address" && name in ADDRESS_CALLS -> Calls.EXTERNAL
       // calls to precompiles
