@@ -27,7 +27,6 @@ import me.serce.solidity.lang.psi.SolPragmaDirective
 import me.serce.solidity.lang.psi.SolPsiFactory
 import me.serce.solidity.nullIfError
 import java.awt.BorderLayout
-import java.io.File
 import java.nio.file.Paths
 import javax.swing.Icon
 import javax.swing.JPanel
@@ -226,32 +225,11 @@ class ImportFileAction(
       return factory.createImportDirective(content, false)
     }
 
+    /** The import of [destination] in [source]: through a remapping when one covers it, otherwise relative. */
     fun buildImportPath(project: Project, source: VirtualFile, destination: VirtualFile): String {
-      return Paths.get(source.path).parent.relativize(Paths.get(destination.path)).toString().let { importPath ->
-        val separator = File.separator
-
-        when {
-            importPath.contains("node_modules$separator") -> {
-              val idx = importPath.indexOf("node_modules$separator")
-              importPath.substring(idx + "node_modules$separator".length)
-            }
-
-            importPath.contains("lib$separator") -> {
-              val mapping = SolImportConfigService.getInstance(project).reverseRemappings(source)
-              mapping.keys.firstOrNull { importPath.contains(it) }
-                ?.let { importPath.substring(importPath.indexOf(it)).replaceFirst(it, mapping[it]!!) }
-                ?: importPath
-            }
-
-            importPath.contains("installed_contracts$separator") -> {
-              val idx = importPath.indexOf("installed_contracts$separator")
-              importPath.substring(idx + "installed_contracts$separator".length)
-                .replaceFirst("${separator}contracts${separator}", separator)
-            }
-            !importPath.startsWith(".") -> ".$separator$importPath"
-            else -> importPath
-        }
-      }.replace("\\", "/")
+      SolImportConfigService.getInstance(project).remappedImportPath(destination, source)?.let { return it }
+      val relative = Paths.get(source.path).parent.relativize(Paths.get(destination.path)).toString().replace("\\", "/")
+      return if (relative.startsWith(".")) relative else "./$relative"
     }
   }
 }

@@ -231,14 +231,14 @@ class SolImportResolveTest : SolResolveTestBase() {
     assertNull(SolImportConfigService.getInstance(project).resolve("Ownable.sol", file))
   }
 
-  fun testImportConfigReverseRemappingsWithInvalidFile() {
+  fun testImportConfigRemappedImportPathWithInvalidFile() {
     val file = myFixture.addFileToProject("contracts/Ownable.sol", "contract Ownable {}").virtualFile
     WriteCommandAction.runWriteCommandAction(project) {
       file.delete(this)
     }
 
     assertFalse(file.isValid)
-    assertTrue(SolImportConfigService.getInstance(project).reverseRemappings(file).isEmpty())
+    assertNull(SolImportConfigService.getInstance(project).remappedImportPath(file, file))
   }
 
   override fun getTestDataPath() = "src/test/resources/fixtures/import/"

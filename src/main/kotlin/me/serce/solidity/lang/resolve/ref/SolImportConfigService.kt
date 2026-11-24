@@ -76,16 +76,21 @@ class SolImportConfigService(val project: Project) {
     return null
   }
 
-  fun reverseRemappings(fromFile: VirtualFile): Map<String, String> {
-    if (!fromFile.isValid) {
-      return emptyMap()
+  /**
+   * [destination] as an import path through a remapping of the Foundry project of [fromFile] (`@oz/token/ERC20.sol`
+   * for `lib/openzeppelin/token/ERC20.sol` with `@oz/=lib/openzeppelin/`), or null when no remapping covers it.
+   * Remappings onto themselves (`src/=src/`) are left out, so files of the project keep relative imports.
+   */
+  fun remappedImportPath(destination: VirtualFile, fromFile: VirtualFile): String? {
+    if (!fromFile.isValid) return null
+    val fromDir = if (fromFile.isDirectory) fromFile else fromFile.parent ?: return null
+    val foundryRoot = findFoundryRoot(fromDir) ?: return null
+    val path = VfsUtilCore.getRelativePath(destination, foundryRoot) ?: return null
+    for ((target, prefix) in getOrLoadConfig(foundryRoot).reverseRemappings) {
+      val dir = target.trimEnd('/') + "/"
+      if (path.startsWith(dir)) return prefix.trimEnd('/') + "/" + path.removePrefix(dir)
     }
-    val fromDir = when {
-      fromFile.isDirectory -> fromFile
-      else -> fromFile.parent ?: return emptyMap()
-    }
-    val foundryRoot = findFoundryRoot(fromDir) ?: return emptyMap()
-    return getOrLoadConfig(foundryRoot).reverseRemappings
+    return null
   }
 
   private fun getOrLoadConfig(foundryRoot: VirtualFile): FoundryImportConfig {
@@ -211,14 +216,14 @@ class SolImportConfigService(val project: Project) {
     return match.target + path.removePrefix(match.prefix)
   }
 
+  /** Remapping targets to their prefixes, without remappings onto themselves. */
   private fun buildReverseRemappings(remappings: List<Remapping>): Map<String, String> {
     val reverse = linkedMapOf<String, String>()
     remappings.filter { it.context.isEmpty() }.forEach { (_, prefix, target) ->
       val trimmedPrefix = prefix.trim()
       val trimmedTarget = target.trim()
-      if (trimmedPrefix.isNotEmpty() && trimmedTarget.isNotEmpty()) {
+      if (trimmedPrefix.isNotEmpty() && trimmedTarget.isNotEmpty() && trimmedPrefix.trimEnd('/') != trimmedTarget.trimEnd('/')) {
         reverse.putIfAbsent(trimmedTarget, trimmedPrefix)
-        reverse.putIfAbsent(trimmedTarget.trimEnd('/'), trimmedPrefix)
       }
     }
     return reverse

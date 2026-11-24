@@ -7,11 +7,6 @@ import org.junit.Assert.assertEquals
 class ImportFileActionTest : SolTestBase() {
 
   fun testExecuteAddsImport() {
-    val nodeModule = myFixture.addFileToProject("node_modules/lib/Lib.sol", "contract Lib {}")
-    val installed = myFixture.addFileToProject(
-      "installed_contracts/github.com/owner/repo/contracts/C.sol",
-      "contract C {}",
-    )
     myFixture.addFileToProject("remappings.txt", "@oz=lib/openzeppelin")
     val remapped = myFixture.addFileToProject(
       "lib/openzeppelin/token/ERC20.sol",
@@ -31,8 +26,6 @@ class ImportFileActionTest : SolTestBase() {
       assertEquals(expectedText, source.text.trim())
     }
 
-    check("lib/Lib.sol", nodeModule)
-    check("github.com/owner/repo/C.sol", installed)
     check("@oz/token/ERC20.sol", remapped)
     check("./Util.sol", sibling)
   }

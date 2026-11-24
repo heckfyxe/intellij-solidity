@@ -150,7 +150,9 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   plain ones, from names used unqualified.
 * The Import file quick fix adds `import {Name} from "path";` when the target file declares `Name` at the top level
   (contracts, interfaces, events, errors, ...) and the code style's specific symbol imports option is on (the default);
-  otherwise a plain `import "path";`. Completion of contracts/events always adds named imports.
+  otherwise a plain `import "path";`. Completion of contracts/events always adds named imports. The path goes through
+  the first remapping whose target holds the file (`SolImportConfigService.remappedImportPath`, remappings onto
+  themselves like `src/=src/` ignored), otherwise it is relative (`./`, `../`).
 
 ## Types
 
