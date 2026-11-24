@@ -1,5 +1,8 @@
 package me.serce.solidity.ide.foundry
 
+import me.serce.solidity.chain.foundry.ForgeConfig
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.util.DocumentUtil
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.intellij.codeInsight.completion.CompletionContributor
@@ -30,17 +33,27 @@ object RemappingsFile {
   /** The Foundry root a remappings file belongs to: its own directory. */
   fun root(file: PsiFile): VirtualFile? = file.originalFile.virtualFile?.parent
 
-  /** The library directories forge looks in (`libs`), `lib` until forge's config is known. */
-  fun libDirs(root: VirtualFile): List<VirtualFile> {
-    val libs = FoundryProject(Path.of(root.path), "").cachedConfig()?.getOrNull()?.libs ?: listOf("lib")
-    return libs.mapNotNull { root.findFileByRelativePath(it.trim('/')) }.filter { it.isDirectory }
+  /**
+   * forge's config for the Foundry project at [root], if it is already known; otherwise null, and it is read in the
+   * background for the next time (never runs forge here: completion runs under a read action).
+   */
+  fun cachedConfig(project: Project, root: VirtualFile): ForgeConfig? {
+    val foundry = FoundryProject.find(project, root)?.takeIf { it.root == Path.of(root.path) } ?: return null
+    return foundry.cachedConfig()?.getOrNull() ?: run {
+      foundry.loadConfigInBackground {}
+      null
+    }
   }
+
+  /** The library directories forge looks in (`libs`), `lib` until forge's config is known. */
+  fun libDirs(root: VirtualFile, config: ForgeConfig?): List<VirtualFile> =
+    (config?.libs ?: listOf("lib")).mapNotNull { root.findFileByRelativePath(it.trim('/')) }.filter { it.isDirectory }
 
   /**
    * A remapping for each library: `name/=lib/name/src/` (or `contracts/`, or the library root), named after the
    * source directory's package.json when it has one, e.g. `@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/`.
    */
-  fun suggestedRemappings(root: VirtualFile): List<String> = libDirs(root).flatMap { libs ->
+  fun suggestedRemappings(root: VirtualFile, config: ForgeConfig?): List<String> = libDirs(root, config).flatMap { libs ->
     libs.children.filter { it.isDirectory && !it.name.startsWith(".") }.sortedBy { it.name }.map { lib ->
       val sourceDir = listOf("src", "contracts").firstOrNull { lib.findChild(it)?.isDirectory == true }
       val target = VfsUtilCore.getRelativePath(lib, root, '/') + "/" + (sourceDir?.let { "$it/" } ?: "")
@@ -68,8 +81,8 @@ class RemappingsCompletionContributor : CompletionContributor() {
     val eq = typed.indexOf('=')
     if (eq < 0) {
       val existing = text.lines().mapNotNull { line -> line.substringBefore('=', "").trim().takeIf { it.isNotEmpty() } }.toSet()
-      val known = FoundryProject(Path.of(root.path), "").cachedConfig()?.getOrNull()?.remappings.orEmpty()
-      val suggestions = (RemappingsFile.suggestedRemappings(root) + known).distinctBy { it.substringBefore('=') }
+      val config = RemappingsFile.cachedConfig(file.project, root)
+      val suggestions = (RemappingsFile.suggestedRemappings(root, config) + config?.remappings.orEmpty()).distinctBy { it.substringBefore('=') }
         .filter { it.substringBefore('=') !in existing }
       val matcher = result.withPrefixMatcher(typed.trimStart())
       suggestions.forEach { matcher.addElement(LookupElementBuilder.create(it).withIcon(AllIcons.Nodes.Folder)) }
@@ -109,7 +122,7 @@ class RemappingsInspection : LocalInspectionTool() {
         } else {
           val target = trimmed.substring(eq + 1).trim()
           val path = target.trimEnd('/')
-          val exists = path.isEmpty() || Path.of(path).isAbsolute && java.io.File(path).exists() ||
+          val exists = path.isEmpty() || Path.of(path).isAbsolute && LocalFileSystem.getInstance().findFileByPath(path) != null ||
             root.findFileByRelativePath(path) != null
           if (!exists) {
             val targetStart = start + trimmed.indexOf(target, eq + 1)
