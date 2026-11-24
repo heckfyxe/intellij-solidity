@@ -6,11 +6,11 @@ import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
+import com.intellij.psi.util.PsiTreeUtil
 import me.serce.solidity.ide.inspections.fixes.AddDataLocationFix
-import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.psi.*
-import me.serce.solidity.lang.resolve.SolResolver
+import me.serce.solidity.lang.types.*
 
 /**
  * Mirrors solc's "Data location must be ... but none was given" error for parameters, return parameters and local
@@ -44,18 +44,15 @@ class MissingDataLocationInspection : LocalInspectionTool() {
         }
       }
 
-      override fun visitVariableDeclaration(o: SolVariableDeclaration) {
-        if (o.identifier == null || !isLocal(o) || isLegacy(o)) {
-          return
-        }
-        check(o, o.typeName, true, false, "variable")
-      }
+      override fun visitVariableDeclaration(o: SolVariableDeclaration) = checkLocal(o, o.identifier, o.typeName)
 
-      override fun visitTypedDeclarationItem(o: SolTypedDeclarationItem) {
-        if (o.identifier == null || !isLocal(o) || isLegacy(o)) {
+      override fun visitTypedDeclarationItem(o: SolTypedDeclarationItem) = checkLocal(o, o.identifier, o.typeName)
+
+      private fun checkLocal(declaration: PsiElement, identifier: PsiElement?, typeName: SolTypeName?) {
+        if (identifier == null || !isLocal(declaration) || isLegacy(declaration)) {
           return
         }
-        check(o, o.typeName, true, false, "variable")
+        check(declaration, typeName, true, false, "variable")
       }
 
       private fun check(
@@ -108,34 +105,20 @@ class MissingDataLocationInspection : LocalInspectionTool() {
   private enum class ReferenceKind { ARRAY, STRUCT, MAPPING }
 
   private fun referenceKind(typeName: SolTypeName): ReferenceKind? {
-    return when (typeName) {
-      is SolArrayTypeName -> ReferenceKind.ARRAY
-      is SolBytesArrayTypeName -> if (typeName.bytesNumType.text == "bytes") ReferenceKind.ARRAY else null
-      is SolElementaryTypeName -> when (typeName.text) {
-        "string", "bytes" -> ReferenceKind.ARRAY
-        else -> null
-      }
-      is SolMappingTypeName -> ReferenceKind.MAPPING
-      is SolUserDefinedLocationTypeName, is SolUserDefinedTypeName -> {
-        val userType = (typeName as? SolUserDefinedLocationTypeName)?.userDefinedTypeName ?: typeName as? SolUserDefinedTypeName ?: return null
-        val resolved = SolResolver.resolveTypeNameUsingImports(userType)
-        if (resolved.isNotEmpty() && resolved.all { it is SolStructDefinition }) ReferenceKind.STRUCT else null
-      }
+    // the type loses array sizes that aren't literals (`uint[N]`)
+    if (typeName is SolArrayTypeName) return ReferenceKind.ARRAY
+    return when (getSolType(typeName)) {
+      is SolString, is SolArray -> ReferenceKind.ARRAY
+      is SolStruct -> ReferenceKind.STRUCT
+      is SolMapping -> ReferenceKind.MAPPING
       else -> null
     }
   }
 
   private fun isLocal(declaration: PsiElement): Boolean {
     val block = declaration.parentOfType<SolBlock>() ?: return false
-    var current: PsiElement? = block
-    while (current != null) {
-      when (current) {
-        is SolFunctionDefinition, is SolConstructorDefinition, is SolModifierDefinition -> return true
-        is SolContractDefinition, is SolidityFile -> return false
-      }
-      current = current.parent
-    }
-    return false
+    return PsiTreeUtil.getParentOfType(block, SolFunctionDefinition::class.java, SolConstructorDefinition::class.java,
+      SolModifierDefinition::class.java) != null
   }
 
   private fun isLegacy(element: PsiElement) = element.containingFile.allowsSolidityOlderThan(5)

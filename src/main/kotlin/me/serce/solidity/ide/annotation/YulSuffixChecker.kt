@@ -4,6 +4,7 @@ import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.psi.PsiElement
 import me.serce.solidity.lang.psi.*
+import me.serce.solidity.lang.types.*
 
 /**
  * The suffixes inline assembly allows on Solidity variables (solc's rules):
@@ -45,7 +46,7 @@ object YulSuffixChecker {
 
   private fun kindOf(declaration: PsiElement): Kind? = when (declaration) {
     is SolStateVariableDeclaration ->
-      if (declaration.mutationModifierList.any { it.text == "constant" || it.text == "immutable" }) Kind.CONSTANT else Kind.STORAGE
+      if (declaration.mutability != null) Kind.CONSTANT else Kind.STORAGE
     is SolConstantVariable -> Kind.CONSTANT
     is SolVariableDeclaration -> localKind(declaration.typeName, declaration.storageLocationSpecifier)
     is SolParameterDef -> localKind(declaration.typeName, declaration.storageLocationSpecifier)
@@ -56,26 +57,17 @@ object YulSuffixChecker {
   private fun localKind(typeName: SolTypeName?, declared: SolStorageLocationSpecifier?): Kind? {
     typeName ?: return null
     val location = (declared ?: typeName.children.filterIsInstance<SolStorageLocationSpecifier>().lastOrNull())?.text
-    return when (typeName) {
-      is SolFunctionTypeName ->
-        if (typeName.visibilitySpecifierList.any { it.text == "external" }) Kind.EXTERNAL_FUNCTION else Kind.VALUE
-      is SolElementaryTypeName -> when (typeName.text) {
-        "string", "bytes" -> referenceKind(location, dynamic = true)
-        "var" -> null
-        else -> Kind.VALUE
-      }
-      is SolBytesArrayTypeName -> referenceKind(location, dynamic = true)
-      is SolArrayTypeName -> referenceKind(location, dynamic = typeName.expression == null)
-      is SolMappingTypeName -> if (location == "storage") Kind.STORAGE else null
-      is SolUserDefinedLocationTypeName -> {
-        val type = typeName.children.filterIsInstance<SolUserDefinedTypeName>().firstOrNull() ?: return null
-        when (type.reference?.resolve()) {
-          is SolStructDefinition -> referenceKind(location, dynamic = false)
-          is SolContractDefinition, is SolEnumDefinition, is SolUserDefinedValueTypeDefinition -> Kind.VALUE
-          else -> null
-        }
-      }
-      else -> null
+    if (typeName is SolFunctionTypeName) {
+      return if (typeName.visibilitySpecifierList.any { it.text == "external" }) Kind.EXTERNAL_FUNCTION else Kind.VALUE
+    }
+    // the type loses array sizes that aren't literals (`uint[N]`)
+    if (typeName is SolArrayTypeName) return referenceKind(location, dynamic = typeName.expression == null)
+    return when (getSolType(typeName)) {
+      is SolString, SolBytes -> referenceKind(location, dynamic = true)
+      is SolStruct -> referenceKind(location, dynamic = false)
+      is SolMapping -> if (location == "storage") Kind.STORAGE else null
+      is SolArray, SolUnknown -> null
+      else -> Kind.VALUE
     }
   }
 
