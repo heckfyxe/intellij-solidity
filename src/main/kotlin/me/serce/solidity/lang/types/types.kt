@@ -8,6 +8,7 @@ import com.intellij.psi.util.CachedValuesManager
 import com.intellij.psi.util.PsiModificationTracker
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.Linearizable
+import me.serce.solidity.lang.psi.impl.LinearizationImpossibleException
 import me.serce.solidity.lang.resolve.SolResolver
 import me.serce.solidity.lang.types.SolInteger.Companion.UINT_160
 import java.math.BigInteger
@@ -357,21 +358,29 @@ fun SolType.displayName(): String {
 }
 
 data class SolContract(val ref: SolContractDefinition, val builtin: Boolean = false) : SolUserType, Linearizable<SolContract> {
+  // a failed linearization (a broken hierarchy) is cached too, so it isn't recomputed on every call
   override fun linearize(): List<SolContract> {
     return RecursionManager.doPreventingRecursion(ref, true) {
       CachedValuesManager.getCachedValue(ref) {
-        CachedValueProvider.Result.create(super.linearize(), PsiModificationTracker.MODIFICATION_COUNT)
+        CachedValueProvider.Result.create(linearization { super.linearize() }, PsiModificationTracker.MODIFICATION_COUNT)
       }
-    } ?: emptyList()
+    }?.getOrThrow() ?: emptyList()
   }
 
   override fun linearizeParents(): List<SolContract> {
     return RecursionManager.doPreventingRecursion(ref, true) {
       CachedValuesManager.getCachedValue(ref) {
-        CachedValueProvider.Result.create(super.linearizeParents(), PsiModificationTracker.MODIFICATION_COUNT)
+        CachedValueProvider.Result.create(linearization { super.linearizeParents() }, PsiModificationTracker.MODIFICATION_COUNT)
       }
-    } ?: emptyList()
+    }?.getOrThrow() ?: emptyList()
   }
+
+  private inline fun linearization(compute: () -> List<SolContract>): Result<List<SolContract>> =
+    try {
+      Result.success(compute())
+    } catch (e: LinearizationImpossibleException) {
+      Result.failure(e)
+    }
 
   /** The direct bases, right to left: solc searches them in that order (left to right in Python), depth-first. */
   override fun getParents(): List<SolContract> = ref.superContracts.map { SolContract(it) }.asReversed()
