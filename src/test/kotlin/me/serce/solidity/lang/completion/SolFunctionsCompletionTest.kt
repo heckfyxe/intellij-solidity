@@ -2,6 +2,17 @@ package me.serce.solidity.lang.completion
 
 class SolFunctionsCompletionTest : SolCompletionTestBase() {
 
+  fun testNamedArgumentNamesSkipGiven() = checkCompletion(
+    hashSetOf("amount"), """
+    contract A {
+      function send(address to, uint amount) internal {}
+      function example() {
+        send({to: address(0), /*caret*/});
+      }
+    }
+  """
+  )
+
   fun testFuncNameIfConditionPrimExpression() = checkCompletion(
     hashSetOf("f_1", "f_2"), """
     contract FunctionHolder {

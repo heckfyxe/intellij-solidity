@@ -42,7 +42,7 @@ class SolContextCompletionContributor : CompletionContributor() {
     extend(CompletionType.BASIC, mappingExpression(),
       object : CompletionProvider<CompletionParameters>() {
         override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
-          val descriptions = SolArgumentsDescription.findDescriptions(parameters.originalPosition?.parentOfType() ?: return)
+          val descriptions = SolArgumentsDescription.findDescriptions(parameters.originalPosition?.parentOfType<SolFunctionCallExpression>() ?: return)
           val defined = (parameters.originalPosition?.parentOfType<SolMapExpression>())?.mapExpressionClauseList?.map { it.identifier.text }?.toSet() ?: emptySet()
           val elements = descriptions.flatMap { it.arguments.map { it.split(" ").last() }.toList() }.toSet() - defined
           val needComma = parameters.originalPosition?.elementType != SolidityTokenTypes.RBRACE && elements.size > 1

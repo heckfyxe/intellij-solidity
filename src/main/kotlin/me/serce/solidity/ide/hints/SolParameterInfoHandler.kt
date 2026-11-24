@@ -6,9 +6,6 @@ import com.intellij.lang.parameterInfo.UpdateParameterInfoContext
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.intellij.psi.tree.IElementType
-import com.intellij.psi.util.childrenOfType
-import com.intellij.psi.util.endOffset
 import me.serce.solidity.lang.core.SolidityTokenTypes.*
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.SolFunctionDefMixin
@@ -30,36 +27,8 @@ class SolParameterInfoHandler : AbstractParameterInfoHandler<PsiElement, SolArgu
     // base constructor arguments: `contract B is A(…)` and `constructor() A(…)`, also modifier arguments
     element.findParent<SolInheritanceSpecifier>()?.takeIf { it.hasArgumentsAt(offset) }?.let { return it }
     element.findParent<SolModifierInvocation>()?.takeIf { it.hasArgumentsAt(offset) }?.let { return it }
-
-    if (element.parent.prevSibling is SolAssignmentExpression) {
-      val primaryExpressionChildren = element.parent.prevSibling.childrenOfType<SolPrimaryExpression>()
-      if (primaryExpressionChildren.isNotEmpty()) {
-        return primaryExpressionChildren.last()
-      }
-    }
-
-    var currentElement = if (element.prevSibling == null) {
-      element.parent
-    } else {
-      element
-    }
-    var lParenFound = false
-    while (currentElement.prevSibling != null) {
-      currentElement = currentElement.prevSibling
-      if (!lParenFound && currentElement.isToken(LPAREN)) {
-        lParenFound = true
-      } else if (lParenFound && currentElement.text != null && currentElement.text.isNotBlank()) {
-        return if (currentElement is SolEmitStatement || currentElement is SolRevertStatement) {
-          currentElement.childrenOfType<SolPrimaryExpression>().firstOrNull() ?: currentElement
-        } else {
-          currentElement
-        }
-      }
-    }
     return null
   }
-
-  private fun PsiElement.isToken(type: IElementType) = node?.elementType == type
 
   /** Whether [offset] is between the parentheses that follow the name. */
   private fun PsiElement.hasArgumentsAt(offset: Int): Boolean {
@@ -68,55 +37,27 @@ class SolParameterInfoHandler : AbstractParameterInfoHandler<PsiElement, SolArgu
     return offset > lParen.startOffset && (rParen == null || offset <= rParen.startOffset)
   }
 
-  override fun calculateParameterInfo(element: PsiElement): Array<SolArgumentsDescription>? {
-    if (element is SolInheritanceSpecifier || element is SolModifierInvocation) {
-      return SolArgumentsDescription.findDescriptions(element).takeIf { it.isNotEmpty() }?.toTypedArray()
-    }
-    val callElement: PsiElement = element.childrenOfType<SolFunctionCallExpression>().firstOrNull() ?: element
-    val descriptions = SolArgumentsDescription.findDescriptions(callElement)
-    return descriptions.takeIf { it.isNotEmpty() }?.toTypedArray()
-  }
+  override fun calculateParameterInfo(element: PsiElement): Array<SolArgumentsDescription>? =
+    SolArgumentsDescription.findDescriptions(element).takeIf { it.isNotEmpty() }?.toTypedArray()
 
   override fun updateParameterInfo(parameterOwner: PsiElement, context: UpdateParameterInfoContext) {
     if (context.parameterOwner != parameterOwner) {
       context.removeHint()
       return
     }
+    val arguments = when (parameterOwner) {
+      is SolInheritanceSpecifier -> parameterOwner.functionCallArguments
+      is SolModifierInvocation -> parameterOwner.functionCallArguments
+      is SolFunctionCallExpression -> parameterOwner.functionCallArguments
+      else -> null
+    }
     val idx = when {
       parameterOwner.startOffset == context.offset -> -1
-      parameterOwner is SolInheritanceSpecifier -> countCommasBefore(parameterOwner.functionCallArguments, context.offset)
-      parameterOwner is SolModifierInvocation -> countCommasBefore(parameterOwner.functionCallArguments, context.offset)
-      parameterOwner is SolFunctionCallExpression -> ParameterInfoUtils.getCurrentParameterIndex(
-        parameterOwner.functionCallArguments.node, context.offset, COMMA
-      )
-
-      parameterOwner.parent?.nextSibling is SolSeqExpression -> ParameterInfoUtils.getCurrentParameterIndex(
-        parameterOwner.parent.nextSibling.node, context.offset, COMMA
-      )
-
-      else -> computeIndexByScanning(parameterOwner, context.offset)
+      // `A()`: no arguments yet
+      arguments == null -> 0
+      else -> ParameterInfoUtils.getCurrentParameterIndex(arguments.node, context.offset, COMMA)
     }
     context.setCurrentParameter(idx)
-  }
-
-  private fun countCommasBefore(arguments: PsiElement?, offset: Int): Int =
-    generateSequence(arguments?.firstChild) { it.nextSibling }.count { it.isToken(COMMA) && it.startOffset < offset }
-
-  private fun computeIndexByScanning(anchor: PsiElement, targetOffset: Int): Int {
-    var index = -1
-    var currentElement =
-      if (anchor.parent is SolEmitStatement || anchor.parent is SolRevertStatement) anchor.parent else anchor
-    var offset = anchor.startOffset
-
-    while (offset < targetOffset && currentElement != null) {
-      when {
-        index == -1 && currentElement.isToken(LPAREN) -> index = 0
-        currentElement.isToken(COMMA) -> index++
-      }
-      offset = currentElement.endOffset
-      currentElement = currentElement.nextSibling
-    }
-    return index
   }
 
   override fun updateUI(p: SolArgumentsDescription, context: ParameterInfoUIContext) {
@@ -167,9 +108,7 @@ class SolArgumentsDescription(
 
         call is SolInheritanceSpecifier -> baseConstructors(call.userDefinedTypeName.reference?.multiResolve().orEmpty(), call.functionCallArguments?.expressionList.orEmpty())
         call is SolModifierInvocation -> resolveModifierInvocation(call)
-        call.parent is SolAssignmentExpression -> resolveStructAssignment(call)
-        call is SolMemberAccessExpression -> resolveMemberAccess(call)
-        else -> resolveByPsiElement(call)
+        else -> emptyList()
       }
     }
 
@@ -192,49 +131,6 @@ class SolArgumentsDescription(
       return baseConstructors(contracts, arguments)
     }
 
-    private fun resolveStructAssignment(call: PsiElement): List<SolArgumentsDescription> {
-      val currentArguments: List<PsiElement> = getArgumentsFromPsiElement(call)
-      return SolResolver.resolveTypeNameUsingImports(call)
-        .filter { it.name == call.text }
-        .filterIsInstance<SolStructDefinition>()
-        .map { def ->
-          createSolArgumentsDescriptionFromArguments(def, currentArguments)
-        }
-    }
-
-    private fun resolveMemberAccess(call: SolMemberAccessExpression): List<SolArgumentsDescription> {
-      val currentArguments: List<PsiElement> = getArgumentsFromPsiElement(call)
-      return SolResolver.resolveMemberFunctions(call).map { def ->
-        createSolArgumentsDescriptionFromArguments(def, currentArguments)
-      }
-    }
-
-    private fun resolveByPsiElement(call: PsiElement): List<SolArgumentsDescription> {
-      val currentArguments: List<PsiElement> = getArgumentsFromPsiElement(call)
-      val elementsFromSearch = SolResolver.lexicalDeclarations(call)
-        .filter { it.name == call.text }
-        .filterIsInstance<SolCallable>()
-        .ifEmpty {
-          SolResolver.resolveTypeNameUsingImportsWithFunctions(call)
-            .asSequence()
-            .filter { it.name == call.text }
-            .filterIsInstance<SolCallable>()
-        }
-        .toList()
-
-      return elementsFromSearch.map { def ->
-        var parameters = argumentStrings(def)
-        if (call.prevSibling?.node?.elementType == DOT) {
-          val functionCallMemberElement = SolResolver.lexicalDeclarations(call.prevSibling.prevSibling)
-            .firstOrNull { it.name == call.prevSibling.prevSibling.text }
-          if (parameters.isNotEmpty() && (functionCallMemberElement is SolElementaryTypeName || (functionCallMemberElement?.firstChild is SolElementaryTypeName))) {
-            parameters = parameters.drop(1).toTypedArray()
-          }
-        }
-        SolArgumentsDescription(def, currentArguments, parameters)
-      }
-    }
-
     private fun createSolArgumentsDescriptionFromArguments(
       def: SolCallable, currentArguments: List<PsiElement>
     ): SolArgumentsDescription {
@@ -245,24 +141,5 @@ class SolArgumentsDescription(
 
     private fun argumentStrings(parameters: List<Pair<String?, SolType>>): Array<String> =
       parameters.map { (name, type) -> if (name == SolInternalTypeFactory.varargsId) varargsText(type) else "$type${name?.let { " $it" } ?: ""}" }.toTypedArray()
-
-    fun getArgumentsFromPsiElement(element: PsiElement): List<PsiElement> {
-      (element.parent?.nextSibling as? SolSeqExpression)?.let { return it.expressionList }
-
-      val arguments = mutableListOf<PsiElement>()
-      var currentElement: PsiElement? = element.nextSibling
-      var depth = 0
-      while (currentElement != null) {
-        val type = currentElement.node?.elementType
-        when (type) {
-          LPAREN -> depth++
-          RPAREN -> if (depth == 0) break else depth--
-          COMMA -> { /* separator, ignore */ }
-          else -> if (!currentElement.text.isNullOrBlank()) arguments.add(currentElement)
-        }
-        currentElement = currentElement.nextSibling
-      }
-      return arguments
-    }
   }
 }
