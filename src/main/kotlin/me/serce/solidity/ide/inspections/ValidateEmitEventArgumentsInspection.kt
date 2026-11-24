@@ -3,6 +3,7 @@ package me.serce.solidity.ide.inspections
 import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.psi.PsiElementVisitor
+import com.intellij.psi.util.PsiTreeUtil
 import me.serce.solidity.ide.hints.hasNoValidationTag
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.resolve.SolResolver
@@ -11,12 +12,11 @@ class ValidateEmitEventArgumentsInspection : LocalInspectionTool() {
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitEmitStatement(o: SolEmitStatement) {
-        val call = (o.parent?.children?.firstOrNull() as? SolEmitStatement)?.lastChild as? SolFunctionCallExpression
-          ?: return
+        val call = PsiTreeUtil.getChildOfType(o, SolFunctionCallExpression::class.java) ?: return
         val args = call.functionCallArguments.expressionList
         val defs = SolResolver.resolveVarLiteralReference(call).filterIsInstance<SolEventDefinition>()
         if (defs.isEmpty()) {
-          holder.registerProblem(o.parent?.firstChild?.lastChild?.firstChild ?: o, "Can't find the event in that contract")
+          holder.registerProblem(call.expression, "Can't find the event in that contract")
           return
         }
 
