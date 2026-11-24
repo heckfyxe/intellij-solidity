@@ -63,6 +63,9 @@ function.
 
 Declarations are always `VariableDefinition`s (`uint x = (a + b);`, `(uint a, uint b) = ...;`, `var (a, b) = ...;`);
 `TupleStatement` is only a tuple assignment `(a, b) = ...;`, so code handling locals needs no tuple special case.
+Parameters, local variables and tuple items implement `SolTypedDeclaration` (`typeName`, `dataLocation`). The parser
+attaches a data location to the declaration after elementary and mapping types but to the type name for arrays,
+`bytes` and user-defined types, so read it with `dataLocation`, never `storageLocationSpecifier`.
 
 Where a keyword token is a plain name, the parser remaps it to `Identifier` with an external rule
 (`SolidityParserUtil.keywordFunctionName` for `function receive()`), so the PSI and name accessors are the same as

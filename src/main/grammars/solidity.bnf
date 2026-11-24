@@ -338,7 +338,7 @@ private IndexedParameterListItems ::= ( IndexedParamDef NextIndexedParamDef* )? 
 private NextIndexedParamDef ::= ',' IndexedParamDef {pin=1}
 IndexedParamDef ::= TypeName indexed?  Identifier?
 ParameterDef ::= TypeName (constant StorageLocationSpecifier? | StorageLocationSpecifier constant?)? Identifier? {
-    implements = "me.serce.solidity.lang.psi.SolNamedElement"
+    implements = "me.serce.solidity.lang.psi.SolTypedDeclaration"
     mixin = "me.serce.solidity.lang.psi.impl.SolParameterDefMixin"
 }
 // pinned: an error inside the list stays there instead of making the whole function backtrack
@@ -361,7 +361,7 @@ DeclarationItem ::= Identifier ','? | ',' {
 }
 DeclarationList ::= '(' DeclarationItem*  ')'
 TypedDeclarationItem ::= (TypeName StorageLocationSpecifier?)? Identifier ','? | ',' {
-    implements = "me.serce.solidity.lang.psi.SolNamedElement"
+    implements = "me.serce.solidity.lang.psi.SolTypedDeclaration"
     mixin = "me.serce.solidity.lang.psi.impl.SolTypedDeclarationItemMixin"
 }
 TypedDeclarationList ::= '(' TypedDeclarationItem*  ')' ;
@@ -371,7 +371,7 @@ VariableDeclaration ::=
     var DeclarationList |
     DeclarationList |
     TypeName StorageLocationSpecifier? Identifier {
-    implements = "me.serce.solidity.lang.psi.SolNamedElement"
+    implements = "me.serce.solidity.lang.psi.SolTypedDeclaration"
     mixin = "me.serce.solidity.lang.psi.impl.SolVariableDeclarationMixin"
 }
 

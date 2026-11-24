@@ -6,7 +6,6 @@ import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.lang.tree.util.children
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
-import com.intellij.psi.util.childrenOfType
 import me.serce.solidity.ide.colors.SolColor
 import me.serce.solidity.ide.hints.startOffset
 import me.serce.solidity.lang.core.SolidityTokenTypes
@@ -100,7 +99,7 @@ class SolidityAnnotator : Annotator {
         }
       }
       is SolVariableDeclaration -> {
-        if (isStorageElement(element) && element.identifier != null) {
+        if (element.isStoragePointer() && element.identifier != null) {
           applyColor(holder, element.identifier!!, SolColor.STATE_VARIABLE)
         }
       }
@@ -174,7 +173,7 @@ class SolidityAnnotator : Annotator {
             is SolParameterDef -> handleParameterDef(elementRef, element, holder)
             is SolErrorDefinition -> applyColor(holder, element, SolColor.ERROR_NAME)
             is SolEventDefinition -> applyColor(holder, element, SolColor.EVENT_NAME)
-            is SolVariableDeclaration -> if (isStorageElement(elementRef)) {
+            is SolVariableDeclaration -> if (elementRef.isStoragePointer()) {
               applyColor(holder, element, SolColor.STATE_VARIABLE)
             }
             else -> {
@@ -186,12 +185,8 @@ class SolidityAnnotator : Annotator {
     }
   }
 
-  private fun isStorageElement(element: PsiElement): Boolean {
-    return element.firstChild.childrenOfType<SolStorageLocationSpecifier>().firstOrNull()?.text == "storage"
-  }
-
   private fun handleParameterDef(parameterDef: SolParameterDef, element: PsiElement, holder: AnnotationHolder) {
-    if (isStorageElement(parameterDef)) {
+    if (parameterDef.isStoragePointer()) {
       applyColor(
         holder, element, SolColor.STATE_VARIABLE
       )

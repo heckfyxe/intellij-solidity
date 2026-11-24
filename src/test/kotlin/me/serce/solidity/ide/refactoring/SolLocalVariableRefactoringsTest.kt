@@ -96,6 +96,26 @@ class SolLocalVariableRefactoringsTest : SolTestBase() {
         }
       """.trimIndent()
     )
+    // the parser attaches the location of a struct parameter to its type name
+    introduce(
+      """
+        contract A {
+            struct S { uint x; }
+            function f(S storage p) internal view returns (uint) {
+                return <selection>p</selection>.x;
+            }
+        }
+      """.trimIndent(),
+      """
+        contract A {
+            struct S { uint x; }
+            function f(S storage p) internal view returns (uint) {
+                S storage <caret>value = p;
+                return value.x;
+            }
+        }
+      """.trimIndent()
+    )
   }
 
   fun testIntroduceRefusesUnknownTypes() {

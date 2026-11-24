@@ -434,13 +434,18 @@ abstract class SolVarLiteralMixin(node: ASTNode) : SolNamedElementImpl(node), So
 
 open class SolDeclarationItemMixin(node: ASTNode) : SolNamedElementImpl(node)
 
-open class SolTypedDeclarationItemMixin(node: ASTNode) : SolNamedElementImpl(node)
+abstract class SolTypedDeclarationMixin(node: ASTNode) : SolNamedElementImpl(node), SolTypedDeclaration {
+  override val dataLocation: SolStorageLocationSpecifier?
+    get() = storageLocationSpecifier ?: PsiTreeUtil.getChildOfType(typeName, SolStorageLocationSpecifier::class.java)
+}
 
-abstract class SolVariableDeclarationMixin(node: ASTNode) : SolVariableDeclaration, SolNamedElementImpl(node) {
+abstract class SolTypedDeclarationItemMixin(node: ASTNode) : SolTypedDeclarationMixin(node)
+
+abstract class SolVariableDeclarationMixin(node: ASTNode) : SolTypedDeclarationMixin(node) {
   override fun getIcon(flags: Int): Icon = SolidityIcons.STATE_VAR
 }
 
-open class SolParameterDefMixin(node: ASTNode) : SolNamedElementImpl(node)
+abstract class SolParameterDefMixin(node: ASTNode) : SolTypedDeclarationMixin(node)
 
 abstract class SolUserDefinedTypeNameImplMixin : SolStubbedElementImpl<SolTypeRefStub>, SolUserDefinedTypeName {
   constructor(node: ASTNode) : super(node)

@@ -48,15 +48,12 @@ object YulSuffixChecker {
     is SolStateVariableDeclaration ->
       if (declaration.mutability != null) Kind.CONSTANT else Kind.STORAGE
     is SolConstantVariable -> Kind.CONSTANT
-    is SolVariableDeclaration -> localKind(declaration.typeName, declaration.storageLocationSpecifier)
-    is SolParameterDef -> localKind(declaration.typeName, declaration.storageLocationSpecifier)
-    is SolTypedDeclarationItem -> localKind(declaration.typeName, declaration.storageLocationSpecifier)
+    is SolTypedDeclaration -> localKind(declaration.typeName, declaration.dataLocation?.text)
     else -> null
   }
 
-  private fun localKind(typeName: SolTypeName?, declared: SolStorageLocationSpecifier?): Kind? {
+  private fun localKind(typeName: SolTypeName?, location: String?): Kind? {
     typeName ?: return null
-    val location = (declared ?: typeName.children.filterIsInstance<SolStorageLocationSpecifier>().lastOrNull())?.text
     if (typeName is SolFunctionTypeName) {
       return if (typeName.visibilitySpecifierList.any { it.text == "external" }) Kind.EXTERNAL_FUNCTION else Kind.VALUE
     }

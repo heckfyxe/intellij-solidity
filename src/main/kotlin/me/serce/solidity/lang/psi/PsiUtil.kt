@@ -42,6 +42,9 @@ fun PsiElement.findContract(): SolContractDefinition? =
 fun SolNamedElement.outerContract(): SolContractDefinition? =
   parent?.takeIf { it is SolContractDefinition || it is SolEnumDefinition || it is SolStructDefinition }?.findContract()
 
+/** A local variable or a parameter declared with the `storage` data location. */
+fun PsiElement.isStoragePointer(): Boolean = (this as? SolTypedDeclaration)?.dataLocation?.text == "storage"
+
 /** The elements a name-keyed stub index holds for [name]. */
 inline fun <reified T : PsiElement> StubIndexKey<String, T>.elements(
   name: String,

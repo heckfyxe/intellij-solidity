@@ -197,14 +197,11 @@ class SolExtractFunctionHandler : RefactoringActionHandler {
 
   /** The declared type of a local, with its data location. */
   private fun typeOf(declaration: PsiElement): String {
-    val (type, location) = when (declaration) {
-      is SolParameterDef -> declaration.typeName to declaration.storageLocationSpecifier
-      is SolVariableDeclaration -> declaration.typeName to declaration.storageLocationSpecifier
-      is SolTypedDeclarationItem -> declaration.typeName to declaration.storageLocationSpecifier
-      else -> null to null
-    }
-    type ?: throw CannotExtract("The type of '${(declaration as PsiNamedElement).name}' isn't written out")
-    return listOfNotNull(type.text, location?.text).joinToString(" ")
+    val typed = declaration as? SolTypedDeclaration
+    val type = typed?.typeName
+      ?: throw CannotExtract("The type of '${(declaration as PsiNamedElement).name}' isn't written out")
+    // a location attached to the type name is part of its text
+    return listOfNotNull(type.text, typed.storageLocationSpecifier?.text).joinToString(" ")
   }
 
   private fun apply(project: Project, editor: Editor, plan: Plan, name: String) {

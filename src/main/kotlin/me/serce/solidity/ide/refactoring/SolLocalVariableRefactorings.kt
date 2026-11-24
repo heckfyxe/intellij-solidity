@@ -31,7 +31,7 @@ private const val INLINE = "Inline Variable"
 internal fun declarationType(type: SolType, expression: SolExpression): String? {
   fun location(): String = when (rootDeclaration(expression)) {
     is SolStateVariableDeclaration -> "storage"
-    is SolParameterDef -> (rootDeclaration(expression) as SolParameterDef).storageLocationSpecifier?.text ?: "memory"
+    is SolParameterDef -> (rootDeclaration(expression) as SolParameterDef).dataLocation?.text ?: "memory"
     else -> "memory"
   }
   return when (type) {

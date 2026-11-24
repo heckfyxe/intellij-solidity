@@ -284,29 +284,9 @@ object StateMutabilityAnalyzer {
   }
 
   private fun SolStateVariableDeclaration.isAddressStateMember(): Boolean {
-    val owner = contract()?.name?.let { deInternalise(it) }
+    val owner = outerContract()?.name?.let { deInternalise(it) }
     return owner == "Address" && name in ADDRESS_STATE_MEMBERS
   }
 
-  private fun SolStateVariableDeclaration.contract(): SolContractDefinition? = parent as? SolContractDefinition
 }
 
-/** A local variable or a parameter declared with the `storage` data location. */
-fun PsiElement.isStoragePointer(): Boolean {
-  val typeName = when (this) {
-    is SolVariableDeclaration -> typeName
-    is SolParameterDef -> typeName
-    is SolTypedDeclarationItem -> typeName
-    else -> return false
-  }
-  return dataLocation(this, typeName)?.text == "storage"
-}
-
-/**
- * The data location of a declaration. Depending on the type, the parser attaches the location either to the
- * declaration itself or to its type name.
- */
-fun dataLocation(declaration: PsiElement, typeName: SolTypeName?): SolStorageLocationSpecifier? {
-  return declaration.children.firstNotNullOfOrNull { it as? SolStorageLocationSpecifier }
-    ?: typeName?.children?.firstNotNullOfOrNull { it as? SolStorageLocationSpecifier }
-}

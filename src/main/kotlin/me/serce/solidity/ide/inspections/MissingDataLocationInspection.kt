@@ -29,9 +29,9 @@ class MissingDataLocationInspection : LocalInspectionTool() {
           contract?.contractType == ContractType.LIBRARY
         val external = visibility == Visibility.EXTERNAL
         val context = if (external) "parameter in external function" else "parameter in function"
-        o.parameters.forEach { check(it, it.typeName, storageAllowed, external, context) }
+        o.parameters.forEach { check(it, storageAllowed, external, context) }
         o.returns?.parameterDefList?.forEach {
-          check(it, it.typeName, storageAllowed, false, "return parameter in function")
+          check(it, storageAllowed, false, "return parameter in function")
         }
       }
 
@@ -40,30 +40,29 @@ class MissingDataLocationInspection : LocalInspectionTool() {
           return
         }
         o.parameterList?.parameterDefList?.forEach {
-          check(it, it.typeName, false, false, "parameter in function")
+          check(it, false, false, "parameter in function")
         }
       }
 
-      override fun visitVariableDeclaration(o: SolVariableDeclaration) = checkLocal(o, o.identifier, o.typeName)
+      override fun visitVariableDeclaration(o: SolVariableDeclaration) = checkLocal(o, o.identifier)
 
-      override fun visitTypedDeclarationItem(o: SolTypedDeclarationItem) = checkLocal(o, o.identifier, o.typeName)
+      override fun visitTypedDeclarationItem(o: SolTypedDeclarationItem) = checkLocal(o, o.identifier)
 
-      private fun checkLocal(declaration: PsiElement, identifier: PsiElement?, typeName: SolTypeName?) {
+      private fun checkLocal(declaration: SolTypedDeclaration, identifier: PsiElement?) {
         if (identifier == null || !isLocal(declaration) || isLegacy(declaration)) {
           return
         }
-        check(declaration, typeName, true, false, "variable")
+        check(declaration, true, false, "variable")
       }
 
       private fun check(
-        declaration: PsiElement,
-        typeName: SolTypeName?,
+        declaration: SolTypedDeclaration,
         storageAllowed: Boolean,
         calldataPreferred: Boolean,
         context: String
       ) {
-        typeName ?: return
-        if (dataLocation(declaration, typeName) != null) {
+        val typeName = declaration.typeName ?: return
+        if (declaration.dataLocation != null) {
           return
         }
         val kind = referenceKind(typeName) ?: return

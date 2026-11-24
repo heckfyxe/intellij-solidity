@@ -15,6 +15,19 @@ interface SolElement : PsiElement {
 
 interface SolNamedElement : SolElement, PsiNamedElement, NavigatablePsiElement
 
+/** A parameter or a local variable (also an item of a tuple declaration): a name with a type and a data location. */
+interface SolTypedDeclaration : SolNamedElement {
+  /** Null for the untyped forms (`var x`, `(a, b) = ...` declarations, an omitted tuple item). */
+  val typeName: SolTypeName?
+  /** The location written after the type when the parser doesn't attach it to the type name; use [dataLocation]. */
+  val storageLocationSpecifier: SolStorageLocationSpecifier?
+  /**
+   * The declared data location. The parser attaches it either to the declaration (after elementary and mapping
+   * types) or to the type name (arrays, `bytes`, user-defined types).
+   */
+  val dataLocation: SolStorageLocationSpecifier?
+}
+
 enum class Visibility {
   PRIVATE,
   INTERNAL,
