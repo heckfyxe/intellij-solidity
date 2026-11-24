@@ -13,7 +13,6 @@ class UnprotectedFunctionInspection : LocalInspectionTool() {
     const val MESSAGE = "Function might modify owners of the contract, but has no modifiers. Consider adding an explicit modifier."
   }
 
-  override fun getDisplayName() = ""
 
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {

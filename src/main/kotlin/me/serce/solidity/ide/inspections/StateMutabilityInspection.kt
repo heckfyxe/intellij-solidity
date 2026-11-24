@@ -15,8 +15,6 @@ import me.serce.solidity.lang.psi.SolVisitor
  * Mirrors solc's errors for `view` functions that modify the state and `pure` functions that read or modify it.
  */
 class StateMutabilityInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitFunctionDefinition(o: SolFunctionDefinition) {

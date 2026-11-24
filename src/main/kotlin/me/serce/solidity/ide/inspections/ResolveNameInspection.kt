@@ -9,8 +9,6 @@ import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.resolve.YulBuiltins
 
 class ResolveNameInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitImportDirective(o: SolImportDirective) {

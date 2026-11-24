@@ -17,8 +17,6 @@ import me.serce.solidity.lang.resolve.SolResolver
  * variables of reference types in functions with a body. Types that don't resolve are skipped.
  */
 class MissingDataLocationInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitFunctionDefinition(o: SolFunctionDefinition) {

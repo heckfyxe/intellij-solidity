@@ -18,8 +18,6 @@ import me.serce.solidity.lang.psi.SolVisitor
  * `unchecked` are lexed as keywords by the plugin and therefore never appear as identifiers.
  */
 class ReservedKeywordInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     val range = holder.file.solidityVersionRange() ?: return PsiElementVisitor.EMPTY_VISITOR
     if (!range.isAtLeast(SolVersions.V0_5_0)) return PsiElementVisitor.EMPTY_VISITOR

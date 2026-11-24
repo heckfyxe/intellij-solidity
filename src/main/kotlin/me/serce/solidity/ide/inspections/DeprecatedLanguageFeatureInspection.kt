@@ -28,8 +28,6 @@ private fun SolType.isUserContract() = this is SolContract && !builtin
  * Sources: the Solidity compiler changelog (0.8.18, 0.8.31).
  */
 class DeprecatedLanguageFeatureInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     val range = holder.file.solidityVersionRange() ?: return PsiElementVisitor.EMPTY_VISITOR
     if (!range.isAtLeast(SolVersions.V0_8_18)) return PsiElementVisitor.EMPTY_VISITOR

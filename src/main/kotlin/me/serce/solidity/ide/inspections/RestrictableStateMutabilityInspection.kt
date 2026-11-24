@@ -16,8 +16,6 @@ import me.serce.solidity.lang.resolve.function.SolFunctionResolver
  * modifiers, inline assembly or unresolved references are skipped.
  */
 class RestrictableStateMutabilityInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitFunctionDefinition(o: SolFunctionDefinition) {

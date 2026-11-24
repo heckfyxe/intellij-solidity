@@ -22,8 +22,6 @@ import me.serce.solidity.lang.types.type
  * Sources: the 0.5.0/0.7.0/0.8.0 breaking changes pages of the Solidity documentation and the compiler changelog.
  */
 class RemovedLanguageFeatureInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     val range = holder.file.solidityVersionRange() ?: return PsiElementVisitor.EMPTY_VISITOR
     if (!range.isAtLeast(SolVersions.V0_5_0)) return PsiElementVisitor.EMPTY_VISITOR

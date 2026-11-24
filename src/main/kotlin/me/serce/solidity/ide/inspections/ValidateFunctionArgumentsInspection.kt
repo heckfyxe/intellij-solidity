@@ -10,8 +10,6 @@ import me.serce.solidity.lang.types.SolInternalTypeFactory
 import me.serce.solidity.lang.types.getSolType
 
 class ValidateFunctionArgumentsInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitFunctionCallArguments(element: SolFunctionCallArguments) {

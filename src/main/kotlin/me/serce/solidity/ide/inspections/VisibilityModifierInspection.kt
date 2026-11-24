@@ -12,8 +12,6 @@ import me.serce.solidity.lang.psi.SolStateVariableDeclaration
 import me.serce.solidity.lang.psi.SolVisitor
 
 class VisibilityModifierInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitFunctionDefinition(o: SolFunctionDefinition) {

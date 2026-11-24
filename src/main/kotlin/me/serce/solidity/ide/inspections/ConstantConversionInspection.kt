@@ -16,8 +16,6 @@ import me.serce.solidity.lang.types.*
  * Only declarations with an explicit integer type and plain `=` assignments to an integer-typed target are checked.
  */
 class ConstantConversionInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     fun check(targetType: SolType, value: SolExpression?) {
       if (value == null || targetType !is SolInteger || targetType.isLiteral) return

@@ -19,8 +19,6 @@ import me.serce.solidity.lang.types.getSolType
  * functions without implementation. Contracts with unresolved or ambiguous bases are skipped.
  */
 class ContractShouldBeAbstractInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitContractDefinition(o: SolContractDefinition) {

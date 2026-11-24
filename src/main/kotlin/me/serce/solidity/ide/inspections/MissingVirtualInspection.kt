@@ -13,8 +13,6 @@ import me.serce.solidity.lang.psi.SolVisitor
 import me.serce.solidity.lang.resolve.function.SolOverrideResolver
 
 class MissingVirtualInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitFunctionDefinition(o: SolFunctionDefinition) = check(o, "Function", "function")

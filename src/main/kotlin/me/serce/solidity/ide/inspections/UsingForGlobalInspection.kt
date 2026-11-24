@@ -15,8 +15,6 @@ import me.serce.solidity.lang.types.*
  * file, and `*` at file level.
  */
 class UsingForGlobalInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitUsingForDeclaration(o: SolUsingForDeclaration) {

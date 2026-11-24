@@ -10,8 +10,6 @@ import me.serce.solidity.lang.types.SolUnknown
 import me.serce.solidity.lang.types.type
 
 class ValidateMemberAccessInspection : LocalInspectionTool() {
-  override fun getDisplayName(): String = ""
-
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitMemberAccessExpression(element: SolMemberAccessExpression) {
