@@ -9,7 +9,6 @@ import com.intellij.lang.annotation.ExternalAnnotator
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiFile
@@ -33,12 +32,8 @@ class SolcExternalAnnotator : ExternalAnnotator<SolcExternalAnnotator.Input, Lis
     val vFile = file.virtualFile ?: return null
     val foundry = FoundryProject.find(file.project, vFile) ?: return null
     val relative = foundry.relativePath(vFile) ?: return null
-    val fdm = FileDocumentManager.getInstance()
-    val unsaved = fdm.unsavedDocuments.mapNotNull { doc ->
-      val f = fdm.getFile(doc)?.takeIf { it != vFile && it.extension == "sol" } ?: return@mapNotNull null
-      foundry.relativePath(f)?.let { it to doc.text }
-    }.toMap()
-    return Input(foundry, relative, file.text, unsaved)
+    // a Yul file is no source of a Solidity compilation
+    return Input(foundry, relative, file.text, foundry.unsavedSolFiles(exclude = vFile, yul = false))
   }
 
   override fun doAnnotate(input: Input): List<Problem> {

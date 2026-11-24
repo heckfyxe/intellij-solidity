@@ -8,9 +8,13 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileTypes.FileTypeRegistry
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import me.serce.solidity.chain.abi.ContractAbi
+import me.serce.solidity.lang.SolidityFileType
+import me.serce.solidity.lang.YulFileType
 import me.serce.solidity.resolveForgeExecutable
 import me.serce.solidity.settings.SoliditySettings
 import java.nio.file.Files
@@ -82,6 +86,19 @@ class FoundryProject(val root: Path, private val forgeExe: String) {
   /** [file]'s path relative to [root], or null when it is outside. */
   fun relativePath(file: VirtualFile): String? =
     runCatching { root.relativize(Path.of(file.path)) }.getOrNull()?.takeIf { !it.startsWith("..") }?.toString()?.replace('\\', '/')
+
+  /**
+   * The editor text of this project's Solidity (and, with [yul], Yul) files that have unsaved changes, by relative
+   * path; [exclude] is left out.
+   */
+  fun unsavedSolFiles(exclude: VirtualFile? = null, yul: Boolean = true): Map<String, String> {
+    val fdm = FileDocumentManager.getInstance()
+    return fdm.unsavedDocuments.mapNotNull { doc ->
+      val file = fdm.getFile(doc)?.takeIf { it != exclude && it.isInLocalFileSystem } ?: return@mapNotNull null
+      if (!isSolidityFile(file, yul)) return@mapNotNull null
+      relativePath(file)?.let { it to doc.text }
+    }.toMap()
+  }
 
   /** Cached until foundry.toml or remappings.txt change; a failure is cached too, so the annotator doesn't respawn forge. */
   fun config(): ForgeConfig {
@@ -185,6 +202,12 @@ class FoundryProject(val root: Path, private val forgeExe: String) {
         optimizer = json["optimizer"]?.asBoolean() ?: false,
         optimizerRuns = json["optimizer_runs"]?.takeIf { it.canConvertToInt() }?.asInt() ?: 200,
       )
+    }
+
+    /** A Solidity file, or with [yul] also a Yul file, by file type (so `.sol` files mapped elsewhere don't count). */
+    fun isSolidityFile(file: VirtualFile, yul: Boolean = true): Boolean {
+      val registry = FileTypeRegistry.getInstance()
+      return registry.isFileOfType(file, SolidityFileType) || yul && registry.isFileOfType(file, YulFileType)
     }
 
     /** forge as configured in the settings, or `~/.foundry/bin/forge`. */

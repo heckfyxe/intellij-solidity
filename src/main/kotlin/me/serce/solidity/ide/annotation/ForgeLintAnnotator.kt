@@ -66,12 +66,7 @@ class ForgeLintAnnotator : ExternalAnnotator<ForgeLintAnnotator.Input, ForgeLint
     val foundry = FoundryProject.find(file.project, vFile) ?: return null
     val relative = foundry.relativePath(vFile) ?: return null
     if (LIB_DIRS.any { relative.startsWith(it) }) return null // dependencies aren't yours to fix
-    val fdm = FileDocumentManager.getInstance()
-    val unsaved = fdm.unsavedDocuments.mapNotNull { doc ->
-      val f = fdm.getFile(doc)?.takeIf { it.extension == "sol" && it.isInLocalFileSystem } ?: return@mapNotNull null
-      foundry.relativePath(f)?.let { it to doc.text }
-    }.toMap()
-    return Input(foundry, relative, document.text, document, unsaved)
+    return Input(foundry, relative, document.text, document, foundry.unsavedSolFiles())
   }
 
   override fun doAnnotate(input: Input): Result {
@@ -196,7 +191,7 @@ class OpenLintDocsFix(private val code: String, private val url: String) : Inten
 class ForgeLintOnSaveListener : FileDocumentManagerListener {
   // there is no after-save callback: saving finishes within the current EDT event, so look after it
   override fun beforeDocumentSaving(document: Document) {
-    val file = FileDocumentManager.getInstance().getFile(document)?.takeIf { it.extension == "sol" } ?: return
+    val file = FileDocumentManager.getInstance().getFile(document)?.takeIf { FoundryProject.isSolidityFile(it) } ?: return
     ApplicationManager.getApplication().invokeLater {
       for (project in ProjectLocator.getInstance().getProjectsForFile(file).filterNotNull()) {
         if (project.isDisposed) continue
