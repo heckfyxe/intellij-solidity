@@ -274,6 +274,10 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 
 ## Foundry Integration
 
+* forge, cast, anvil and solc run through `FoundryTools` (`chain/foundry/FoundryTools.kt`): `commandLine` sets UTF-8
+  and `NO_COLOR`, `run` checks the tool exists, kills it on timeout or when the progress indicator is cancelled, and
+  throws `FoundryException`; `ToolOutput.errorText` explains a non-zero exit. Paths come from
+  `FoundryProject.forgePath`/`toolPath`, and `FoundryProject.forge(args)` runs forge in the Foundry root.
 * `FoundryProject.config()` reads `forge config --json` (`FoundryProject.parseConfig`). The live compile
   (`SolcExternalAnnotator`, request built by `SolcRequest`) passes forge's `evm_version`, `via_ir` and optimizer
   settings; forge lowers `evm_version` to what the chosen solc supports (default `osaka` becomes `cancun` for 0.8.24),

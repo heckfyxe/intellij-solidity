@@ -1,5 +1,6 @@
 package me.serce.solidity.chain.compile
 
+import me.serce.solidity.chain.foundry.FoundryTools
 import me.serce.solidity.util.text
 import me.serce.solidity.util.Json
 import com.fasterxml.jackson.databind.JsonNode
@@ -49,7 +50,7 @@ class SolcExternalAnnotator : ExternalAnnotator<SolcExternalAnnotator.Input, Lis
       val command = listOf(solc.path, "--standard-json", "--base-path", root.path, "--allow-paths", allowed)
       fun compile(withEvmVersion: Boolean): JsonNode? {
         val request = SolcRequest.build(input.relativePath, input.text, input.unsaved, config, solcVersion, withEvmVersion)
-        val output = input.foundry.exec(command, timeoutMs = 15_000, stdin = Json.mapper.writeValueAsBytes(request))
+        val output = FoundryTools.run(FoundryTools.commandLine(command, input.foundry.root), timeoutMs = 15_000, stdin = Json.mapper.writeValueAsBytes(request))
         return if (output.stdout.isBlank()) null else Json.mapper.readTree(output.stdout)
       }
       var json = compile(withEvmVersion = true) ?: return emptyList()

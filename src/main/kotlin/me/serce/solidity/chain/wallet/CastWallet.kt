@@ -1,12 +1,12 @@
 package me.serce.solidity.chain.wallet
 
+import me.serce.solidity.chain.foundry.FoundryException
+import me.serce.solidity.chain.foundry.FoundryTools
+import me.serce.solidity.chain.foundry.ToolOutput
 import me.serce.solidity.util.toHex
 import me.serce.solidity.util.checksumAddress
 import me.serce.solidity.util.ADDRESS_REGEX
 import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.CapturingProcessHandler
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.EnvironmentUtil
@@ -98,20 +98,18 @@ class CastWallet(private val cast: String) {
   }
 
   private fun run(command: List<String>, env: Map<String, String>, timeout: Long): String {
-    if (!File(cast).canExecute()) throw CastException("cast not found at $cast. Install Foundry with foundryup.")
     // cast must not pick up the user's own wallet settings. GeneralCommandLine merges the parent environment only when the
     // process starts, so removing them from its `environment` would not work: pass the whole environment instead.
-    val cmd = GeneralCommandLine(command).withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.NONE)
-      .withEnvironment(EnvironmentUtil.getEnvironmentMap() - WALLET_ENV.toSet() + env + ("NO_COLOR" to "1"))
-    val handler = CapturingProcessHandler(cmd)
-    val indicator: ProgressIndicator? = ProgressManager.getInstance().progressIndicator
-    val output = if (indicator != null) handler.runProcessWithProgressIndicator(indicator, TimeUnit.SECONDS.toMillis(timeout).toInt())
-    else handler.runProcess(TimeUnit.SECONDS.toMillis(timeout).toInt())
-    if (output.isCancelled) throw CastException("Cancelled")
-    if (output.isTimeout) throw CastException("cast did not finish within $timeout seconds")
+    val cmd = FoundryTools.commandLine(command, environment = EnvironmentUtil.getEnvironmentMap() - WALLET_ENV.toSet() + env)
+      .withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.NONE)
+    val output = try {
+      FoundryTools.run(cmd, TimeUnit.SECONDS.toMillis(timeout).toInt())
+    } catch (e: FoundryException) {
+      throw CastException(e.message ?: "cast failed")
+    }
     if (output.exitCode != 0) {
-      val text = (output.stderr + "\n" + output.stdout).trim()
-      throw CastException(errorMessage(text), wrongPassword = text.contains("Mac Mismatch") || text.contains("Failed to decrypt"))
+      val text = output.stderr + "\n" + output.stdout
+      throw CastException(ToolOutput.errorText(output), wrongPassword = text.contains("Mac Mismatch") || text.contains("Failed to decrypt"))
     }
     return output.stdout
   }
@@ -142,15 +140,6 @@ class CastWallet(private val cast: String) {
     }
 
     fun castPath(project: Project): String = FoundryProject.toolPath(project, "cast")
-
-    /** cast's own `Error: …` line and its context, without the noise around it. */
-    fun errorMessage(output: String): String {
-      val lines = output.lines().map { it.trim() }.filter { it.isNotEmpty() }
-      val start = lines.indexOfFirst { it.startsWith("Error:") }
-      val relevant = if (start >= 0) lines.drop(start) else lines.takeLast(3)
-      return relevant.filter { it != "Context:" }.joinToString(" ") { it.removePrefix("Error:").removePrefix("- ").trim() }.take(500)
-        .ifEmpty { "cast failed" }
-    }
 
     /** Foundry's default keystore folder, where `cast wallet import` puts keys. */
     val defaultKeystoreDir = File(System.getProperty("user.home"), ".foundry/keystores")

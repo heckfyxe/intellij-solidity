@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.run
 
+import me.serce.solidity.chain.foundry.ToolOutput
 import com.intellij.execution.process.ProcessOutput
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.project.Project
@@ -36,7 +37,7 @@ abstract class ForgeSnapshotAction(private val check: Boolean) : ForgeAction("Fo
     if (exitCode == 0) {
       notify(project, "${GasSnapshot.FILE_NAME} updated", NotificationType.INFORMATION)
     } else {
-      notify(project, "forge snapshot failed (exit code $exitCode)\n${tail(output)}", NotificationType.ERROR)
+      notify(project, "forge snapshot failed (exit code $exitCode)\n${ToolOutput.tail(output)}", NotificationType.ERROR)
     }
   }
 
@@ -54,7 +55,7 @@ abstract class ForgeSnapshotAction(private val check: Boolean) : ForgeAction("Fo
         notify(project, "${diffs.size} test(s) differ from ${GasSnapshot.FILE_NAME}:<br>$shown$more", NotificationType.WARNING)
       }
       else -> notify(
-        project, "forge snapshot --check failed (exit code $exitCode)\n${tail(output)}", NotificationType.ERROR
+        project, "forge snapshot --check failed (exit code $exitCode)\n${ToolOutput.tail(output)}", NotificationType.ERROR
       )
     }
   }

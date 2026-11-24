@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.coverage
 
+import me.serce.solidity.chain.foundry.ToolOutput
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationType
@@ -22,7 +23,7 @@ class RunForgeCoverageAction : ForgeAction("Forge coverage") {
     val output = forge(project, foundry, listOf("coverage", "--report", "lcov")) ?: return
     // forge writes no report when a test fails: don't show a stale one
     if (!report.isFile || report.lastModified() < started - 2_000) {
-      notify(project, "forge coverage wrote no lcov.info (exit code ${output.exitCode})\n${tail(output)}", NotificationType.ERROR)
+      notify(project, "forge coverage wrote no lcov.info (exit code ${output.exitCode})\n${ToolOutput.tail(output)}", NotificationType.ERROR)
       return
     }
     val lcov = Lcov.parse(report.readText())

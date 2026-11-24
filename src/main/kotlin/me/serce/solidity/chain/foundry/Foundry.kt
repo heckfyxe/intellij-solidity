@@ -3,8 +3,6 @@ package me.serce.solidity.chain.foundry
 import me.serce.solidity.util.text
 import me.serce.solidity.util.Json
 import com.fasterxml.jackson.databind.JsonNode
-import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.execution.process.ProcessOutput
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
@@ -15,7 +13,6 @@ import com.intellij.openapi.vfs.VirtualFile
 import me.serce.solidity.chain.abi.ContractAbi
 import me.serce.solidity.resolveForgeExecutable
 import me.serce.solidity.settings.SoliditySettings
-import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -23,7 +20,8 @@ import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 
-class FoundryException(message: String) : Exception(message)
+/** [cancelled] when the user stopped the tool, which needs no error message. */
+class FoundryException(message: String, val cancelled: Boolean = false) : Exception(message)
 
 /** The JSON artifacts forge wrote into [outDir]: `<Source>.sol/<Contract>.json`. */
 fun artifactFiles(outDir: Path): List<Path> {
@@ -80,7 +78,7 @@ data class CompilerMessage(
 class BuildResult(val success: Boolean, val messages: List<CompilerMessage>)
 
 /** A Foundry project: the directory containing foundry.toml. */
-class FoundryProject(val root: Path, private val forge: String) {
+class FoundryProject(val root: Path, private val forgeExe: String) {
   /** [file]'s path relative to [root], or null when it is outside. */
   fun relativePath(file: VirtualFile): String? =
     runCatching { root.relativize(Path.of(file.path)) }.getOrNull()?.takeIf { !it.startsWith("..") }?.toString()?.replace('\\', '/')
@@ -112,16 +110,15 @@ class FoundryProject(val root: Path, private val forge: String) {
   private fun stamp() = listOf(CONFIG_FILE, "remappings.txt").map { root.resolve(it).toFile().lastModified() }
 
   private fun readConfig(): ForgeConfig {
-    val out = exec(listOf(forge, "config", "--json"), timeoutMs = 30_000).let { o ->
-      val text = o.stdout + o.stderr
-      if (o.exitCode != 0) throw FoundryException("forge config failed: $text")
-      text
+    val out = forge(listOf("config", "--json"), timeoutMs = 30_000).let { o ->
+      if (o.exitCode != 0) throw FoundryException("forge config failed: ${ToolOutput.errorText(o)}")
+      o.stdout + o.stderr
     }
     return parseConfig(out.substring(out.indexOf('{')))
   }
 
   fun build(): BuildResult {
-    val output = exec(listOf(forge, "build", "--json"), timeoutMs = 600_000)
+    val output = forge(listOf("build", "--json"), timeoutMs = 600_000)
     val code = output.exitCode
     val out = output.stdout + output.stderr
     val jsonStart = out.indexOf("{\n").takeIf { it >= 0 } ?: out.indexOf('{')
@@ -147,23 +144,14 @@ class FoundryProject(val root: Path, private val forge: String) {
 
   /** `forge inspect <path>:<name> storageLayout --json`: the storage layout solc reports for a compiled contract. */
   fun storageLayout(sourcePath: String, contract: String): String {
-    val out = exec(listOf(forge, "inspect", "$sourcePath:$contract", "storageLayout", "--json"), 180_000)
-    if (out.exitCode != 0) throw FoundryException(out.stderr.lines().lastOrNull { it.isNotBlank() }?.removePrefix("Error:")?.trim() ?: "forge inspect failed")
+    val out = forge(listOf("inspect", "$sourcePath:$contract", "storageLayout", "--json"), 180_000)
+    if (out.exitCode != 0) throw FoundryException(ToolOutput.errorText(out))
     return out.stdout
   }
 
-  /** Runs a Foundry tool (or solc) in [workDir]; throws [FoundryException] when it is missing or times out. */
-  fun exec(command: List<String>, timeoutMs: Int, stdin: ByteArray? = null, workDir: File = root.toFile()): ProcessOutput {
-    val tool = File(command[0])
-    if (!tool.exists()) throw FoundryException("${tool.name} not found at ${command[0]}. Install Foundry or set its path in Settings | Solidity")
-    val cmd = GeneralCommandLine(command).withWorkDirectory(workDir).withCharset(Charsets.UTF_8)
-      .withEnvironment("NO_COLOR", "1")
-    val handler = CapturingProcessHandler(cmd)
-    stdin?.let { bytes -> handler.processInput.use { it.write(bytes) } }
-    val output = handler.runProcess(timeoutMs)
-    if (output.isTimeout) throw FoundryException("${tool.name} ${command.getOrNull(1).orEmpty()} timed out")
-    return output
-  }
+  /** Runs `forge <args>` in [workDir]; throws [FoundryException] when forge is missing, times out or is cancelled. */
+  fun forge(args: List<String>, timeoutMs: Int, workDir: Path = root): ProcessOutput =
+    FoundryTools.run(FoundryTools.commandLine(listOf(forgeExe) + args, workDir), timeoutMs)
 
   private fun JsonNode.toCompilerMessage(): CompilerMessage {
     val loc = this["sourceLocation"]

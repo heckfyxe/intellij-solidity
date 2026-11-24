@@ -1,8 +1,9 @@
 package me.serce.solidity.ide.newProject
 
+import me.serce.solidity.chain.foundry.FoundryException
+import me.serce.solidity.chain.foundry.FoundryTools
+import me.serce.solidity.chain.foundry.ToolOutput
 import me.serce.solidity.chain.foundry.FoundryProject
-import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.ide.util.projectWizard.WizardContext
 import com.intellij.ide.wizard.AbstractNewProjectWizardStep
 import com.intellij.ide.wizard.GeneratorNewProjectWizard
@@ -109,12 +110,14 @@ private class FoundryStep(private val base: NewProjectWizardBaseStep) : Abstract
 private fun forgeInit(project: Project, dir: Path, forge: String, options: ForgeInitOptions) {
   object : Task.Backgroundable(project, "Running forge init", false) {
     override fun run(indicator: ProgressIndicator) {
-      val command = GeneralCommandLine(options.command(forge)).withWorkDirectory(dir.toFile()).withEnvironment("NO_COLOR", "1")
-      val output = CapturingProcessHandler(command).runProcess(10 * 60_000)
-      if (output.exitCode != 0 || output.isTimeout) {
+      val error = try {
+        FoundryTools.run(FoundryTools.commandLine(options.command(forge), dir), 10 * 60_000).takeIf { it.exitCode != 0 }?.let { ToolOutput.errorText(it) }
+      } catch (e: FoundryException) {
+        e.message
+      }
+      if (error != null) {
         refresh(dir)
-        val text = (output.stderr.ifBlank { output.stdout }).trim().ifEmpty { "exit code ${output.exitCode}" }
-        chainNotification("forge init failed", text, NotificationType.ERROR).notify(project)
+        chainNotification("forge init failed", error, NotificationType.ERROR).notify(project)
         return
       }
       ensureGitignore(dir)

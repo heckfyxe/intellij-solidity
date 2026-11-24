@@ -52,7 +52,7 @@ class ForgeLintAnnotator : ExternalAnnotator<ForgeLintAnnotator.Input, ForgeLint
 
   /** [unsaved] maps relative paths to editor text: this file's and other unsaved ones, empty when all are saved. */
   class Input(
-    val foundry: FoundryProject, val forge: String, val relativePath: String, val text: String, val document: Document,
+    val foundry: FoundryProject, val relativePath: String, val text: String, val document: Document,
     val unsaved: Map<String, String>,
   )
   class Result(val document: Document, val issues: List<ForgeLintIssue>?)
@@ -66,25 +66,24 @@ class ForgeLintAnnotator : ExternalAnnotator<ForgeLintAnnotator.Input, ForgeLint
     val foundry = FoundryProject.find(file.project, vFile) ?: return null
     val relative = foundry.relativePath(vFile) ?: return null
     if (LIB_DIRS.any { relative.startsWith(it) }) return null // dependencies aren't yours to fix
-    val forge = FoundryProject.forgePath(file.project)
     val fdm = FileDocumentManager.getInstance()
     val unsaved = fdm.unsavedDocuments.mapNotNull { doc ->
       val f = fdm.getFile(doc)?.takeIf { it.extension == "sol" && it.isInLocalFileSystem } ?: return@mapNotNull null
       foundry.relativePath(f)?.let { it to doc.text }
     }.toMap()
-    return Input(foundry, forge, relative, document.text, document, unsaved)
+    return Input(foundry, relative, document.text, document, unsaved)
   }
 
   override fun doAnnotate(input: Input): Result {
     val foundry = input.foundry
-    val command = listOf(input.forge, "lint", input.relativePath, "--json")
+    val args = listOf("lint", input.relativePath, "--json")
     val issues = try {
       val output = if (input.unsaved.isEmpty()) {
-        foundry.exec(command, timeoutMs = 30_000)
+        foundry.forge(args, timeoutMs = 30_000)
       } else {
         // build output stays out of the shadow, so forge can't write into the project through a link
         val skip = setOf("cache", foundry.config().out.trimEnd('/'), "broadcast")
-        ShadowProject.run(foundry.root, input.unsaved, skip) { shadow -> foundry.exec(command, timeoutMs = 30_000, workDir = shadow.toFile()) }
+        ShadowProject.run(foundry.root, input.unsaved, skip) { shadow -> foundry.forge(args, timeoutMs = 30_000, workDir = shadow) }
           ?: return Result(input.document, null) // no shadow: keep the last results
       }
       parse(output.stdout + "\n" + output.stderr, input.relativePath, input.text)

@@ -1,5 +1,7 @@
 package me.serce.solidity.chain.ui
 
+import me.serce.solidity.chain.foundry.FoundryTools
+import me.serce.solidity.chain.foundry.ToolOutput
 import com.intellij.icons.AllIcons
 import com.intellij.ide.CopyPasteManagerEx
 import com.intellij.openapi.Disposable
@@ -38,8 +40,6 @@ import me.serce.solidity.chain.abi.AbiFetcher
 import me.serce.solidity.chain.abi.AbiText
 import me.serce.solidity.chain.storage.StorageDialog
 import me.serce.solidity.chain.wallet.CastWallet
-import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.fileChooser.FileChooserFactory
 import com.intellij.openapi.fileChooser.FileSaverDescriptor
@@ -576,8 +576,8 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
         val abiFile = Files.createTempFile("abi", ".json")
         try {
           Files.writeString(abiFile, AbiText.withStructNames(d.abiJson, name))
-          val out = CapturingProcessHandler(GeneralCommandLine(cast, "interface", abiFile.toString(), "-n", name)).runProcess(60_000)
-          if (out.exitCode != 0) throw IllegalStateException(CastWallet.errorMessage(out.stderr + "\n" + out.stdout))
+          val out = FoundryTools.run(FoundryTools.commandLine(listOf(cast, "interface", abiFile.toString(), "-n", name)), 60_000)
+          if (out.exitCode != 0) throw IllegalStateException(ToolOutput.errorText(out))
           out.stdout
         } finally {
           Files.deleteIfExists(abiFile)

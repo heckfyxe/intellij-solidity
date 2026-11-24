@@ -1,10 +1,10 @@
 package me.serce.solidity.chain
 
+import me.serce.solidity.chain.foundry.FoundryTools
 import me.serce.solidity.util.hexToBytes
 import me.serce.solidity.util.hexToBigInt
 import me.serce.solidity.util.checksumAddress
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
-import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.filters.TextConsoleBuilderFactory
 import com.intellij.execution.process.KillableColoredProcessHandler
 import com.intellij.execution.process.ProcessEvent
@@ -235,8 +235,7 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     val anvil = FoundryProject.anvilPath(project)
     if (!Path.of(anvil).toFile().canExecute()) throw IllegalStateException("anvil not found at $anvil. Install Foundry with foundryup.")
     val port = freePort(config.port)
-    val cmd = GeneralCommandLine(anvilArgs(config, anvil, port)).withEnvironment("NO_COLOR", "1")
-    foundry?.let { cmd.withWorkDirectory(it.root.toFile()) }
+    val cmd = FoundryTools.commandLine(anvilArgs(config, anvil, port), foundry?.root)
     val handler = KillableColoredProcessHandler(cmd)
     handler.setShouldKillProcessSoftly(true) // SIGINT, so anvil dumps --state before exiting
     rt.process = handler

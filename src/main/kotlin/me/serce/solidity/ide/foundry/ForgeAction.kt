@@ -43,9 +43,9 @@ abstract class ForgeAction(private val notificationTitle: String) : DumbAwareAct
 
   /** Runs `forge <args>`; null after reporting a failure to start it or a timeout. */
   protected fun forge(project: Project, foundry: FoundryProject, args: List<String>): ProcessOutput? = try {
-    foundry.exec(listOf(FoundryProject.forgePath(project)) + args, timeoutMs = 30 * 60_000)
+    foundry.forge(args, timeoutMs = 30 * 60_000)
   } catch (ex: FoundryException) {
-    notify(project, ex.message ?: "forge ${args.firstOrNull().orEmpty()} failed", NotificationType.ERROR)
+    if (!ex.cancelled) notify(project, ex.message ?: "forge ${args.firstOrNull().orEmpty()} failed", NotificationType.ERROR)
     null
   }
 
@@ -55,11 +55,5 @@ abstract class ForgeAction(private val notificationTitle: String) : DumbAwareAct
 
   protected fun notify(project: Project, content: String, type: NotificationType) {
     notification(content, type).notify(project)
-  }
-
-  companion object {
-    /** The last lines of forge's output, for a failure forge explains itself (a failing test, a compile error). */
-    fun tail(output: ProcessOutput, lines: Int = 15): String =
-      (output.stdout + output.stderr).trim().lines().takeLast(lines).joinToString("\n")
   }
 }

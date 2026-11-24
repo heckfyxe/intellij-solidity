@@ -14,6 +14,7 @@ import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import me.serce.solidity.chain.foundry.Artifact
+import me.serce.solidity.chain.foundry.ToolOutput
 import me.serce.solidity.chain.wallet.CastException
 import me.serce.solidity.chain.wallet.CastWallet
 import me.serce.solidity.chain.wallet.TxSummary
@@ -257,7 +258,7 @@ class ChainNetworkTest : BasePlatformTestCase() {
 
   fun testCastErrorMessage() {
     assertEquals("Failed to decrypt keystore \"/k\" Mac Mismatch",
-      CastWallet.errorMessage("warning: x\nError: Failed to decrypt keystore \"/k\"\n\nContext:\n- Mac Mismatch\n"))
+      ToolOutput.errorText("warning: x\nError: Failed to decrypt keystore \"/k\"\n\nContext:\n- Mac Mismatch\n"))
   }
 
   fun testMainnetDetection() {
