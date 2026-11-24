@@ -14,6 +14,9 @@ import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.SolErrorDefMixin
 import me.serce.solidity.lang.resolve.SolResolver
 
+private val KEYWORDS = setOf("this", "require", "assert", "super")
+private val GLOBALS = setOf("msg", "block", "tx", "abi")
+
 class SolidityAnnotator : Annotator {
   override fun annotate(element: PsiElement, holder: AnnotationHolder) {
     if (element is SolElement) {
@@ -52,7 +55,7 @@ class SolidityAnnotator : Annotator {
       is SolMemberAccessExpression -> {
         when (element.expression.firstChild.text) {
           "super" -> applyColor(holder, element.expression.firstChild, SolColor.KEYWORD)
-          in globalKeywordList() -> applyColor(holder, element.expression.firstChild, SolColor.GLOBAL)
+          in GLOBALS -> applyColor(holder, element.expression.firstChild, SolColor.GLOBAL)
         }
 
         when (val elementRef: SolElement? = element.reference?.resolve()) {
@@ -90,7 +93,7 @@ class SolidityAnnotator : Annotator {
       is SolUserDefinedValueTypeDefinition -> element.identifier?.let { applyColor(holder, it, SolColor.USER_DEFINED_VALUE_TYPE) }
       is SolConstantVariableDeclaration -> applyColor(holder, element.identifier, SolColor.CONSTANT)
       is SolStateVariableDeclaration -> {
-        if (element.mutationModifier?.textMatches("constant") == true) {
+        if (element.mutability == VariableMutability.CONSTANT) {
           applyColor(holder, element.identifier, SolColor.CONSTANT)
         } else {
           applyColor(holder, element.identifier, SolColor.STATE_VARIABLE)
@@ -155,9 +158,11 @@ class SolidityAnnotator : Annotator {
           ?.let { applyColor(holder, it.textRange, SolColor.KEYWORD) }
       }
       is SolVarLiteral, is SolYulPath -> {
-        if (additionalKeywordList().contains(element.text)) {
+        // a callee is coloured by the SolFunctionCallElement branch
+        if ((element.parent?.parent as? SolFunctionCallElement)?.referenceNameElement == element) return
+        if (element.text in KEYWORDS) {
           applyColor(holder, element, SolColor.KEYWORD)
-        } else if (globalKeywordList().contains(element.text)) {
+        } else if (element.text in GLOBALS) {
           applyColor(holder, element, SolColor.GLOBAL)
         } else if (element.text == "keccak256") {
           applyColor(holder, element, SolColor.GLOBAL_FUNCTION_CALL)
@@ -195,14 +200,6 @@ class SolidityAnnotator : Annotator {
         holder, element, SolColor.FUNCTION_PARAMETER
       )
     }
-  }
-
-  private fun additionalKeywordList(): List<String> {
-    return listOf("this", "require", "assert", "super")
-  }
-
-  private fun globalKeywordList(): List<String> {
-    return listOf("msg", "block", "tx", "abi")
   }
 
   private fun applyColor(holder: AnnotationHolder, element: PsiElement, color: SolColor) {
