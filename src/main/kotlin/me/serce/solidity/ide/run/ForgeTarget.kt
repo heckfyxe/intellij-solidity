@@ -1,5 +1,7 @@
 package me.serce.solidity.ide.run
 
+import javax.swing.JLabel
+import java.awt.Component
 import com.intellij.openapi.util.JDOMExternalizerUtil
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
@@ -152,9 +154,9 @@ class ForgeTargetEditor(private val project: Project, private val urlLabel: Stri
   }
 
   /** FormBuilder puts a label before each field, whose `labelFor` is the field. */
-  private fun setRowVisible(field: java.awt.Component, visible: Boolean) {
+  private fun setRowVisible(field: Component, visible: Boolean) {
     field.isVisible = visible
-    field.parent?.components?.filterIsInstance<javax.swing.JLabel>()?.filter { it.labelFor === field }?.forEach { it.isVisible = visible }
+    field.parent?.components?.filterIsInstance<JLabel>()?.filter { it.labelFor === field }?.forEach { it.isVisible = visible }
   }
 
   val selectedChain: ChainConfig? get() = if (kind.item == ForgeTargetKind.CHAIN) chain.item else null

@@ -1,5 +1,7 @@
 package me.serce.solidity.ide.coverage
 
+import java.util.Locale
+
 enum class LineCoverage { COVERED, PARTIAL, UNCOVERED }
 
 /** The coverage of one source file; lines are 1-based as in lcov. */
@@ -36,7 +38,7 @@ class FileCoverage(
 
 /** Line and branch totals of a report, as `forge coverage --report summary` counts them. */
 class CoverageSummary(val linesHit: Int, val lines: Int, val branchesHit: Int, val branches: Int) {
-  private fun percent(hit: Int, total: Int) = if (total == 0) "n/a" else "%.1f%%".format(java.util.Locale.ROOT, hit * 100.0 / total)
+  private fun percent(hit: Int, total: Int) = if (total == 0) "n/a" else "%.1f%%".format(Locale.ROOT, hit * 100.0 / total)
 
   override fun toString(): String =
     "Lines: ${percent(linesHit, lines)} ($linesHit/$lines)" +

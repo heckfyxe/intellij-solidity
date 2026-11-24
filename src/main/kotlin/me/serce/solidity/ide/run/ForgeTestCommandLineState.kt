@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.run
 
+import com.intellij.openapi.module.Module
 import me.serce.solidity.chain.foundry.FoundryProject
 import com.intellij.execution.DefaultExecutionResult
 import com.intellij.execution.ExecutionException
@@ -101,7 +102,7 @@ private class ForgeRerunFailedTestsAction(consoleView: ConsoleView, properties: 
       .mapValues { it.value.toSet() }
     if (failed.isEmpty()) return null
     return object : MyRunProfile(configuration) {
-      override fun getModules() = emptyArray<com.intellij.openapi.module.Module>()
+      override fun getModules() = emptyArray<Module>()
       override fun getState(executor: Executor, env: ExecutionEnvironment) = ForgeTestCommandLineState(configuration, env, failed)
     }
   }

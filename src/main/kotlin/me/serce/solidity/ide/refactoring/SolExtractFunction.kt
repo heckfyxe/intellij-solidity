@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.refactoring
 
+import me.serce.solidity.lang.core.SolidityTokenTypes
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
@@ -187,7 +188,7 @@ class SolExtractFunctionHandler : RefactoringActionHandler {
     val parent = expr.parent
     return when (parent) {
       is SolAssignmentExpression -> parent.expressionList.firstOrNull() == expr
-      is SolTupleStatement -> expr.textRange.endOffset < (parent.node.findChildByType(me.serce.solidity.lang.core.SolidityTokenTypes.ASSIGN)?.startOffset ?: 0)
+      is SolTupleStatement -> expr.textRange.endOffset < (parent.node.findChildByType(SolidityTokenTypes.ASSIGN)?.startOffset ?: 0)
       is SolIncrementExpression -> true
       is SolUnaryExpression -> parent.firstChild.text.let { it == "++" || it == "--" || it == "delete" }
       else -> false

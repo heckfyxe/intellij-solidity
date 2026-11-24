@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.generation
 
+import javax.swing.JComponent
 import com.intellij.codeInsight.hint.HintManager
 import com.intellij.codeInsight.generation.ClassMember
 import com.intellij.codeInsight.generation.MemberChooserObject
@@ -112,7 +113,7 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
       candidates.map { SolMemberChooserObject(it) }.toTypedArray()
     }
     val checkbox = JCheckBox("Implement getters as public state variables", getterVariables)
-    val options: Array<javax.swing.JComponent> = if (offersGetterVariables) arrayOf(checkbox) else emptyArray()
+    val options: Array<JComponent> = if (offersGetterVariables) arrayOf(checkbox) else emptyArray()
     val chooser = MemberChooser(objects, false, true, project, null, options)
     chooser.title = title
     chooser.show()

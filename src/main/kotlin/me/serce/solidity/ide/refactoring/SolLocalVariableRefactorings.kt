@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.refactoring
 
+import com.intellij.openapi.util.Pass
 import me.serce.solidity.ide.indentAt
 import com.intellij.codeInsight.unwrap.ScopeHighlighter
 import com.intellij.lang.Language
@@ -92,7 +93,7 @@ class SolIntroduceVariableHandler : RefactoringActionHandler {
       candidates.isEmpty() -> fail(project, editor, "Select an expression inside a function body")
       candidates.size == 1 || ApplicationManager.getApplication().isUnitTestMode -> introduce(project, editor, candidates.first())
       else -> IntroduceTargetChooser.showChooser(
-        editor, candidates, com.intellij.openapi.util.Pass.create { introduce(project, editor, it) },
+        editor, candidates, Pass.create { introduce(project, editor, it) },
         { it.text }, "Expressions", 0, ScopeHighlighter.NATURAL_RANGER
       )
     }

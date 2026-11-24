@@ -1,5 +1,8 @@
 package me.serce.solidity.ide.run
 
+import com.intellij.execution.filters.Filter
+import com.intellij.execution.filters.OpenFileHyperlinkInfo
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.execution.Location
 import com.intellij.execution.PsiLocation
 import com.intellij.execution.testframework.sm.runner.SMTestLocator
@@ -59,10 +62,10 @@ object ForgeTestLocator : SMTestLocator {
 }
 
 /** Links `test/A.t.sol:8:33` (compiler messages, traces) in forge's output to the file, relative to [root]. */
-class SolidityFileLocationFilter(private val project: Project, private val root: com.intellij.openapi.vfs.VirtualFile?) : com.intellij.execution.filters.Filter {
+class SolidityFileLocationFilter(private val project: Project, private val root: VirtualFile?) : Filter {
   private val location = Regex("""((?:[\w.@-]+/)*[\w.@-]+\.sol):(\d+)(?::(\d+))?""")
 
-  override fun applyFilter(line: String, entireLength: Int): com.intellij.execution.filters.Filter.Result? {
+  override fun applyFilter(line: String, entireLength: Int): Filter.Result? {
     val lineStart = entireLength - line.length
     val items = location.findAll(line).mapNotNull { m ->
       val path = m.groupValues[1]
@@ -70,11 +73,11 @@ class SolidityFileLocationFilter(private val project: Project, private val root:
         ?: return@mapNotNull null
       val lineNumber = m.groupValues[2].toInt() - 1
       val column = m.groupValues[3].toIntOrNull()?.minus(1) ?: 0
-      com.intellij.execution.filters.Filter.ResultItem(
+      Filter.ResultItem(
         lineStart + m.range.first, lineStart + m.range.last + 1,
-        com.intellij.execution.filters.OpenFileHyperlinkInfo(project, file, lineNumber, column)
+        OpenFileHyperlinkInfo(project, file, lineNumber, column)
       )
     }.toList()
-    return if (items.isEmpty()) null else com.intellij.execution.filters.Filter.Result(items)
+    return if (items.isEmpty()) null else Filter.Result(items)
   }
 }

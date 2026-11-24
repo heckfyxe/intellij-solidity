@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.run
 
+import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.execution.Executor
 import com.intellij.execution.configurations.LocatableConfigurationBase
 import com.intellij.execution.runners.ExecutionEnvironment
@@ -59,13 +60,13 @@ class ForgeTestRunConfiguration(
 
   override fun checkConfiguration() {
     if (fuzzSeed.isNotBlank() && !FUZZ_SEED.matches(fuzzSeed.trim())) {
-      throw com.intellij.execution.configurations.RuntimeConfigurationError("Fuzz seed must be a decimal or 0x-prefixed hex number")
+      throw RuntimeConfigurationError("Fuzz seed must be a decimal or 0x-prefixed hex number")
     }
     if (forkBlock.isNotBlank() && !FORK_BLOCK.matches(forkBlock.trim())) {
-      throw com.intellij.execution.configurations.RuntimeConfigurationError("Fork block must be a block number")
+      throw RuntimeConfigurationError("Fork block must be a block number")
     }
     if (forkBlock.isNotBlank() && fork.kind == ForgeTargetKind.LOCAL) {
-      throw com.intellij.execution.configurations.RuntimeConfigurationError("A fork block needs something to fork: pick a target")
+      throw RuntimeConfigurationError("A fork block needs something to fork: pick a target")
     }
   }
 
