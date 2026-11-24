@@ -16,17 +16,17 @@ import me.serce.solidity.lang.resolve.ref.SolFunctionCallReference
 import me.serce.solidity.lang.types.SolInternalTypeFactory
 import me.serce.solidity.lang.types.SolType
 import me.serce.solidity.lang.types.SolUnknown
-import me.serce.solidity.lang.types.findParent
+import me.serce.solidity.lang.psi.parentOfType
 
 class SolParameterInfoHandler : AbstractParameterInfoHandler<PsiElement, SolArgumentsDescription>() {
 
   override fun findTargetElement(file: PsiFile, offset: Int): PsiElement? {
     val element = file.findElementAt(offset) ?: return null
 
-    element.findParent<SolFunctionCallExpression>()?.let { return it }
+    element.parentOfType<SolFunctionCallExpression>(false)?.let { return it }
     // base constructor arguments: `contract B is A(…)` and `constructor() A(…)`, also modifier arguments
-    element.findParent<SolInheritanceSpecifier>()?.takeIf { it.hasArgumentsAt(offset) }?.let { return it }
-    element.findParent<SolModifierInvocation>()?.takeIf { it.hasArgumentsAt(offset) }?.let { return it }
+    element.parentOfType<SolInheritanceSpecifier>(false)?.takeIf { it.hasArgumentsAt(offset) }?.let { return it }
+    element.parentOfType<SolModifierInvocation>(false)?.takeIf { it.hasArgumentsAt(offset) }?.let { return it }
     return null
   }
 

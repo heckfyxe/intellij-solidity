@@ -1,6 +1,7 @@
 package me.serce.solidity.ide.navigation
 
 import com.intellij.psi.PsiNamedElement
+import me.serce.solidity.lang.psi.findContract
 import me.serce.solidity.utils.SolTestBase
 
 class SolGotoSuperTest : SolTestBase() {
@@ -8,7 +9,7 @@ class SolGotoSuperTest : SolTestBase() {
     InlineFile(code)
     val element = myFixture.file.findElementAt(myFixture.caretOffset)!!
     return SolGotoSuperHandler.superTargets(element).map { target ->
-      val contract = com.intellij.psi.util.PsiTreeUtil.getParentOfType(target, me.serce.solidity.lang.psi.SolContractDefinition::class.java)
+      val contract = target.parent.findContract()
       listOfNotNull(contract?.name, (target as PsiNamedElement).name).joinToString(".")
     }
   }

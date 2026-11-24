@@ -9,7 +9,6 @@ import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.GlobalSearchScope.FilesScope
 import com.intellij.psi.search.GlobalSearchScope.allScope
 import com.intellij.psi.search.searches.DefinitionsScopedSearch.SearchParameters
-import com.intellij.psi.stubs.StubIndex
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
 import com.intellij.psi.util.PsiModificationTracker
@@ -17,6 +16,7 @@ import com.intellij.util.*
 import me.serce.solidity.lang.SolidityFileType
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
+import me.serce.solidity.lang.psi.elements
 import me.serce.solidity.lang.resolve.function.SolFunctionResolver
 import me.serce.solidity.lang.stubs.SolInheritanceIndex
 import java.util.*
@@ -87,9 +87,7 @@ fun SolContractDefinition.findImplementations(): Query<SolContractDefinition> {
   // Look contracts up by the name of the contract they inherit from, then keep only those whose inheritance
   // actually resolves to this contract. This replaces a project-wide reference search and keeps the line
   // markers and "go to implementation" fast regardless of project size.
-  val candidates = StubIndex.getElements(
-    SolInheritanceIndex.KEY, contractName, project, solOnlyScope, SolContractDefinition::class.java
-  )
+  val candidates = SolInheritanceIndex.KEY.elements(contractName, project, solOnlyScope)
   return CollectionQuery(
     candidates.filter { candidate ->
       candidate.supers.any { superType -> superType.reference?.multiResolve()?.contains(this) == true }

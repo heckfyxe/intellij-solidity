@@ -175,6 +175,9 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 
 ## Resolve
 
+* PSI helpers are in `lang/psi/PsiUtil.kt`: `findContract()` (the enclosing contract, or the element itself, walking
+  stubs), `outerContract()` (the contract a member is declared in, null for top-level declarations and locals) and
+  `StubIndexKey.elements(name, project, scope)` instead of `StubIndex.getElements`.
 * Name lookup (`SolResolver.lexicalDeclarations`) caches what a file declares and imports (`fileDeclarations`, walking
   the import graph with a visited set because imports can be circular) and what a contract declares and inherits
   (`contractDeclarations`). Tests fail on `CachingPreventedException`, so cached values must not depend on other

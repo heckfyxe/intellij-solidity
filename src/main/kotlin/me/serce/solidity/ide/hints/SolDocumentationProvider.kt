@@ -23,7 +23,7 @@ import me.serce.solidity.lang.psi.parentOfType
 import me.serce.solidity.lang.resolve.SolResolver
 import me.serce.solidity.lang.resolve.YulBuiltins
 import me.serce.solidity.lang.resolve.function.SolFunctionResolver
-import me.serce.solidity.lang.types.findContract
+import me.serce.solidity.lang.psi.findContract
 import me.serce.solidity.lang.types.getSolType
 import me.serce.solidity.lang.types.isBuiltin
 

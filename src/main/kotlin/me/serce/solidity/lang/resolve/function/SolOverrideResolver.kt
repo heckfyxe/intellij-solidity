@@ -16,12 +16,6 @@ object SolOverrideResolver {
   fun overridableMembers(contract: SolContractDefinition): List<SolNamedElement> =
     contract.functionDefinitionList.filter { !it.isConstructor } + contract.modifierDefinitionList
 
-  fun containingContract(member: SolNamedElement): SolContractDefinition? = when (member) {
-    is SolFunctionDefinition -> member.contract
-    is SolModifierDefinition -> member.parent as? SolContractDefinition
-    else -> null
-  }
-
   fun sameSignature(a: SolNamedElement, b: SolNamedElement): Boolean = when {
     a is SolFunctionDefinition && b is SolFunctionDefinition -> {
       if (a.specialFunction != null || b.specialFunction != null) {
@@ -36,7 +30,7 @@ object SolOverrideResolver {
 
   /** Whether [member] can take part in overriding at all (as overrider or overridden). */
   fun participates(member: SolNamedElement): Boolean {
-    val contract = containingContract(member) ?: return false
+    val contract = member.outerContract() ?: return false
     if (contract.contractType == ContractType.LIBRARY) return false
     if (member is SolFunctionDefinition) {
       if (member.isConstructor) return false
@@ -72,7 +66,7 @@ object SolOverrideResolver {
 
   /** What [member] directly overrides; empty when it doesn't take part in overriding. */
   fun overrides(member: SolNamedElement): Overrides {
-    val contract = containingContract(member)
+    val contract = member.outerContract()
     if (contract == null || !participates(member)) return Overrides(emptyList(), emptyList())
     val bases = visibleDeclaringBases(contract, member)
     return Overrides(bases, bases.mapNotNull { declarationIn(it, member) })
@@ -84,7 +78,7 @@ object SolOverrideResolver {
   /** Whether a member of a derived contract overrides [decl] (directly or indirectly). Uses the inheritance index. */
   fun isOverriddenInDerived(decl: SolNamedElement): Boolean {
     if (!participates(decl)) return false
-    val contract = containingContract(decl) ?: return false
+    val contract = decl.outerContract() ?: return false
     return contract.findAllImplementations().any { declarationIn(it, decl) != null }
   }
 
@@ -92,7 +86,7 @@ object SolOverrideResolver {
     overridableMembers(contract).firstOrNull { participates(it) && sameSignature(it, member) }
 
   fun isVirtual(decl: SolNamedElement): Boolean =
-    virtualSpecifier(decl) != null || containingContract(decl)?.contractType == ContractType.INTERFACE
+    virtualSpecifier(decl) != null || decl.outerContract()?.contractType == ContractType.INTERFACE
 
   fun hasBody(decl: SolNamedElement): Boolean = when (decl) {
     is SolFunctionDefinition -> decl.block != null
@@ -130,7 +124,7 @@ object SolOverrideResolver {
   }
 
   /** "Contract.member" label used in messages. */
-  fun label(member: SolNamedElement): String = "${containingContract(member)?.name}.${displayName(member)}"
+  fun label(member: SolNamedElement): String = "${member.outerContract()?.name}.${displayName(member)}"
 
   /** Linearized parents, most derived first; null when linearization is impossible. */
   fun linearizedParents(contract: SolContractDefinition): List<SolContractDefinition>? = try {

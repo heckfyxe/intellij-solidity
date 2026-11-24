@@ -6,7 +6,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import me.serce.solidity.lang.core.SolidityVersion
 import me.serce.solidity.lang.core.solidityVersionRange
 import me.serce.solidity.lang.psi.*
-import me.serce.solidity.lang.types.findContract
+import me.serce.solidity.lang.psi.findContract
 import me.serce.solidity.lang.types.isBuiltin
 
 internal object SolVersions {

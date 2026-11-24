@@ -148,13 +148,7 @@ class ContractLookupElement(
       return
     }
     val declaration = runReadAction {
-      val candidates = StubIndex.getElements(
-        SolGotoClassIndex.KEY,
-        contractName,
-        project,
-        GlobalSearchScope.projectScope(project),
-        SolNamedElement::class.java
-      ).filter { it.parent is SolidityFile } // a contract's own events and structs aren't imported by name
+      val candidates = SolGotoClassIndex.KEY.elements(contractName, project, GlobalSearchScope.projectScope(project)).filter { it.parent is SolidityFile } // a contract's own events and structs aren't imported by name
       candidates.firstOrNull { it.containingFile == context.file } ?: candidates.singleOrNull()
     } ?: return
     if (!ImportFileAction.isImportedAlready(context.file, declaration.containingFile)) {

@@ -114,8 +114,8 @@ private val ENUM_MIN_MAX = SolidityVersion.of("0.8.8")
 fun inferDeclType(decl: SolNamedElement): SolType {
   return when (decl) {
     is SolDeclarationItem -> {
-      val list = decl.findParent<SolDeclarationList>() ?: decl.findParent<SolTypedDeclarationList>() ?: return SolUnknown
-      val def = list.findParent<SolVariableDefinition>() ?: return SolUnknown
+      val list = decl.parentOfType<SolDeclarationList>(false) ?: decl.parentOfType<SolTypedDeclarationList>(false) ?: return SolUnknown
+      val def = list.parentOfType<SolVariableDefinition>(false) ?: return SolUnknown
       val inferred = def.expression.typeOrUnknown
       val declarationItemList = (list as? SolDeclarationList)?.declarationItemList
         ?: (list as? SolTypedDeclarationList)?.typedDeclarationItemList ?: return SolUnknown
@@ -160,16 +160,6 @@ fun inferRefType(ref: SolVarLiteral): SolType {
     }
   }
 }
-
-inline fun <reified T : PsiElement> PsiElement.findParent(): T? {
-  return this.ancestors
-    .filterIsInstance<T>()
-    .firstOrNull()
-}
-
-fun PsiElement.findContract(): SolContractDefinition? = findParent()
-
-fun SolNamedElement.outerContract() = parent?.takeIf { it is SolContractDefinition || it is SolEnumDefinition || it is SolStructDefinition }?.findContract()
 
 fun PsiElement.isBuiltin() = this.containingFile.virtualFile == null
 

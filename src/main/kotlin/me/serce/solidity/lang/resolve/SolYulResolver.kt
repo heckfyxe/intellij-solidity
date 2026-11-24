@@ -5,7 +5,7 @@ import com.intellij.psi.PsiFile
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.SolYulFunctionDefMixin
 import me.serce.solidity.lang.types.SolInternalTypeFactory
-import me.serce.solidity.lang.types.findContract
+import me.serce.solidity.lang.psi.findContract
 
 /**
  * Name resolution inside inline assembly and Yul files, following Yul's scoping rules:

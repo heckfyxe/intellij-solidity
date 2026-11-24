@@ -158,7 +158,7 @@ class SolIntroduceVariableHandler : RefactoringActionHandler {
   /** [base], or `base2`, `base3`... when a variable visible at [statement] already has that name. */
   private fun uniqueName(base: String, statement: PsiElement): String {
     val function = PsiTreeUtil.getParentOfType(statement, SolFunctionDefinition::class.java, SolModifierDefinition::class.java, SolConstructorDefinition::class.java)
-    val contract = PsiTreeUtil.getParentOfType(statement, SolContractDefinition::class.java)
+    val contract = statement.findContract()
     val taken = buildSet {
       function?.let { f -> PsiTreeUtil.findChildrenOfType(f, SolNamedElement::class.java).mapNotNullTo(this) { it.name } }
       contract?.stateVariableDeclarationList?.mapNotNullTo(this) { it.name }

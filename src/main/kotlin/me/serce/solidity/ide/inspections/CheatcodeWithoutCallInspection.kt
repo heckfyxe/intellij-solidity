@@ -6,7 +6,6 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiErrorElement
 import com.intellij.psi.util.PsiTreeUtil
-import com.intellij.psi.util.parentOfType
 import me.serce.solidity.ide.run.hasForgeTests
 import me.serce.solidity.ide.run.isForgeTestFile
 import me.serce.solidity.lang.psi.*
@@ -64,7 +63,7 @@ class CheatcodeWithoutCallInspection : LocalInspectionTool() {
         if (cheatcode != "expectRevert" && cheatcode != "prank") return
         val statement = o.parent as? SolStatement ?: return
         val block = statement.parent as? SolBlock ?: return
-        val contract = o.parentOfType<SolContractDefinition>() ?: return
+        val contract = o.findContract() ?: return
         if (!testFile && !testContracts.getOrPut(contract) { contract.hasForgeTests() }) return
         if (nextCallIsMissing(statement, block)) {
           holder.registerProblem(o, "vm.$cheatcode is not followed by an external call")

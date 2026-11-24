@@ -11,7 +11,6 @@ import com.intellij.lang.LanguageCodeInsightActionHandler
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.command.WriteCommandAction
-import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
@@ -29,7 +28,8 @@ import me.serce.solidity.lang.psi.ContractType
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.SolNamedElement
-import me.serce.solidity.lang.psi.parentOfType
+import me.serce.solidity.lang.psi.findContract
+import me.serce.solidity.lang.psi.outerContract
 import me.serce.solidity.lang.core.solidityVersionRange
 import me.serce.solidity.lang.resolve.function.SolOverrideResolver
 import me.serce.solidity.lang.resolve.function.SolPublicGetter
@@ -75,7 +75,7 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
   internal fun contractAt(editor: Editor, file: PsiFile): SolContractDefinition? {
     val offset = editor.caretModel.offset
     val element = file.findElementAt(offset) ?: file.findElementAt(offset - 1) ?: return null
-    val contract = element.parentOfType<SolContractDefinition>(strict = false) ?: return null
+    val contract = element.findContract() ?: return null
     if (contract.contractType == ContractType.LIBRARY) return null
     val lbrace = contract.node.findChildByType(SolidityTokenTypes.LBRACE) ?: return null
     return if (offset >= lbrace.textRange.endOffset) contract else null
@@ -223,7 +223,7 @@ class SolImplementMethodsHandler : SolOverrideImplementHandler() {
 
 /** Text, icon and parent are computed on creation: the chooser renders on the EDT outside a read action. */
 private class SolMemberChooserObject(val member: SolNamedElement) : ClassMember {
-  private val parent = SolOverrideResolver.containingContract(member)?.let { SolContractChooserObject(it) }
+  private val parent = member.outerContract()?.let { SolContractChooserObject(it) }
   private val text = "${SolOverrideResolver.displayName(member)}${SolOverrideResolver.parametersText(member) ?: "()"}"
   private val virtual = SolOverrideResolver.isVirtual(member)
   private val icon = member.getIcon(0)

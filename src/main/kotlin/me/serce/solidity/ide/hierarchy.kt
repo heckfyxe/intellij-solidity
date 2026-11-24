@@ -13,7 +13,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.util.ArrayUtilRt
 import me.serce.solidity.ide.navigation.findAllImplementations
 import me.serce.solidity.lang.psi.SolContractDefinition
-import me.serce.solidity.lang.psi.parentOfType
+import me.serce.solidity.lang.psi.findContract
 import me.serce.solidity.lang.types.SolContract
 import java.awt.Font
 import javax.swing.JPanel
@@ -26,7 +26,7 @@ class SolHierarchyTypeProvider : HierarchyProvider {
       TargetElementUtil.ELEMENT_NAME_ACCEPTED or TargetElementUtil.REFERENCED_ELEMENT_ACCEPTED or TargetElementUtil.LOOKUP_ITEM_ACCEPTED
     )
     targetElement as? SolContractDefinition
-      ?: file.findElementAt(editor.caretModel.offset)?.parentOfType<SolContractDefinition>(false)
+      ?: file.findElementAt(editor.caretModel.offset)?.findContract()
   }, { it as? SolContractDefinition })
 
   override fun createHierarchyBrowser(p0: PsiElement): HierarchyBrowser {

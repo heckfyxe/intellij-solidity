@@ -29,6 +29,7 @@ import me.serce.solidity.lang.psi.SolMemberAccessExpression
 import me.serce.solidity.lang.psi.SolReferenceElement
 import me.serce.solidity.lang.psi.SolStateVariableDeclaration
 import me.serce.solidity.ide.navigation.SolGotoSuperHandler
+import me.serce.solidity.lang.psi.findContract
 import me.serce.solidity.lang.resolve.function.SolFunctionResolver
 import javax.swing.JTree
 
@@ -44,7 +45,7 @@ object SolCallables {
   fun containerOf(element: PsiElement): PsiElement? =
     PsiTreeUtil.getParentOfType(element, false, *CALLABLE_TYPES)
       ?: PsiTreeUtil.getParentOfType(element, false, SolStateVariableDeclaration::class.java)
-      ?: PsiTreeUtil.getParentOfType(element, false, SolContractDefinition::class.java)
+      ?: element.findContract()
 
   /**
    * Where [callable] is called (or a modifier used), grouped by the definition the call is in, in source order.
@@ -172,7 +173,7 @@ class SolCallHierarchyNodeDescriptor(
 ) : SolHierarchyNodeDescriptor(project, parent, element, isBase) {
   override fun present(element: PsiElement, text: CompositeAppearance.DequeEnd) {
     text.addText(presentableName(element))
-    val contract = PsiTreeUtil.getParentOfType(element, SolContractDefinition::class.java)
+    val contract = element.findContract()
     if (contract != null && contract != element) {
       text.addText("  ${contract.name}", SimpleTextAttributes.GRAY_ATTRIBUTES.toTextAttributes())
     }

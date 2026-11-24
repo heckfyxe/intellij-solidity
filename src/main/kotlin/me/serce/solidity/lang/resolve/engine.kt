@@ -5,7 +5,6 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiNamedElement
-import com.intellij.psi.stubs.StubIndex
 import com.intellij.psi.util.*
 import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.core.SolidityVersion
@@ -228,13 +227,7 @@ object SolResolver {
   private val PsiElement.nameOrText
     get() = if (this is PsiNamedElement) name else text
 
-  fun resolveTypeName(element: SolReferenceElement): Collection<SolNamedElement> = StubIndex.getElements(
-    SolGotoClassIndex.KEY,
-    element.referenceName,
-    element.project,
-    null,
-    SolNamedElement::class.java
-  )
+  fun resolveTypeName(element: SolReferenceElement): Collection<SolNamedElement> = SolGotoClassIndex.KEY.elements(element.referenceName, element.project)
 
   private fun resolveTypeNameStrict(element: SolReferenceElement) : Collection<SolNamedElement> {
     val names = resolveTypeName(element)
@@ -244,7 +237,7 @@ object SolResolver {
   fun resolveVarLiteralReference(element: SolNamedElement): List<SolNamedElement> {
     return when {
         element.parent?.parent is SolFunctionCallExpression -> {
-          val functionCall = element.findParent<SolFunctionCallElement>()!!
+          val functionCall = element.parentOfType<SolFunctionCallElement>(false)!!
           val resolved = functionCall.reference?.multiResolve() ?: emptyList()
           if (resolved.isNotEmpty()) {
             resolved.filterIsInstance<SolNamedElement>()
@@ -303,7 +296,7 @@ object SolResolver {
 
   private fun computeMemberAccess(element: SolMemberAccessExpression): List<SolMember> {
     if (element.parent is SolFunctionCallExpression) {
-      val functionCall = element.findParent<SolFunctionCallElement>()!!
+      val functionCall = element.parentOfType<SolFunctionCallElement>(false)!!
       val resolved = (functionCall.reference as SolFunctionCallReference)
         .resolveFunctionCallAndFilter()
         .filterIsInstance<SolMember>()

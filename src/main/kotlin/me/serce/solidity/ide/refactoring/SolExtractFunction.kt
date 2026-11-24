@@ -152,7 +152,7 @@ class SolExtractFunctionHandler : RefactoringActionHandler {
     val mixedStorage = outputs.any { it !in declaredInside } && outputs.any { it in declaredInside && typeOf(it).endsWith(" storage") }
     if (mixedStorage) throw CannotExtract("A storage pointer declared by the statements can't be returned together with assigned variables")
 
-    val contract = PsiTreeUtil.getParentOfType(callable, SolContractDefinition::class.java)
+    val contract = callable.findContract()
     val taken = contract?.functionDefinitionList?.mapNotNull { it.name }?.toSet()
       ?: PsiTreeUtil.getChildrenOfTypeAsList(callable.containingFile, SolFunctionDefinition::class.java).mapNotNull { it.name }.toSet()
     val defaultName = generateSequence(1) { it + 1 }.map { if (it == 1) "extracted" else "extracted$it" }.first { it !in taken }

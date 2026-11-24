@@ -14,7 +14,7 @@ import me.serce.solidity.ide.inspections.fixes.ImportFileAction
 import me.serce.solidity.lang.SolidityFileType
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.resolve.SolResolver
-import me.serce.solidity.lang.types.outerContract
+import me.serce.solidity.lang.psi.outerContract
 
 class SolImportOptimizer : ImportOptimizer {
   override fun supports(file: PsiFile) = file.fileType == SolidityFileType

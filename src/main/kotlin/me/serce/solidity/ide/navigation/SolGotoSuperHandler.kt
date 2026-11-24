@@ -12,6 +12,7 @@ import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.SolModifierDefinition
 import me.serce.solidity.lang.psi.SolStateVariableDeclaration
+import me.serce.solidity.lang.psi.findContract
 import me.serce.solidity.lang.resolve.function.SolOverrideResolver
 import me.serce.solidity.lang.resolve.function.SolFunctionResolver
 import me.serce.solidity.lang.types.SolContract
@@ -50,7 +51,7 @@ class SolGotoSuperHandler : LanguageCodeInsightActionHandler {
 
     /** The nearest definitions of the same modifier in the base contracts, in linearization order. */
     private fun overriddenModifiers(modifier: SolModifierDefinition): List<PsiElement> {
-      val contract = PsiTreeUtil.getParentOfType(modifier, SolContractDefinition::class.java) ?: return emptyList()
+      val contract = modifier.findContract() ?: return emptyList()
       val name = modifier.name ?: return emptyList()
       return (SolOverrideResolver.linearizedParents(contract) ?: emptyList())
         .flatMap { it.modifierDefinitionList }
@@ -59,7 +60,7 @@ class SolGotoSuperHandler : LanguageCodeInsightActionHandler {
 
     /** A public state variable overrides external functions without parameters of the same name. */
     private fun overriddenByStateVariable(variable: SolStateVariableDeclaration): List<PsiElement> {
-      val contract = PsiTreeUtil.getParentOfType(variable, SolContractDefinition::class.java) ?: return emptyList()
+      val contract = variable.findContract() ?: return emptyList()
       val name = variable.name ?: return emptyList()
       return (SolOverrideResolver.linearizedParents(contract) ?: emptyList())
         .flatMap { it.functionDefinitionList }

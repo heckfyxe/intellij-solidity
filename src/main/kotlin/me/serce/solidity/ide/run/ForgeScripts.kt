@@ -41,6 +41,7 @@ import me.serce.solidity.lang.psi.ContractType
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.Visibility
+import me.serce.solidity.lang.psi.findContract
 import org.jdom.Element
 import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.execution.process.ProcessEvent
@@ -381,7 +382,7 @@ class ForgeScriptRunConfigurationProducer : LazyRunConfigurationProducer<ForgeSc
     val element = context.location?.psiElement ?: return null
     val function = PsiTreeUtil.getParentOfType(element, SolFunctionDefinition::class.java, false)
     if (function != null && function.isForgeScriptEntry()) return function.contract!! to function
-    val contract = PsiTreeUtil.getParentOfType(element, SolContractDefinition::class.java, false) ?: return null
+    val contract = element.findContract() ?: return null
     // inside another member of the contract, e.g. setUp or a state variable: not a script target
     if (function != null) return null
     return if (contract.isForgeScript()) contract to null else null

@@ -53,7 +53,7 @@ class SolEventCompletionContributor : CompletionContributor() {
       events.distinctBy { it.name }.forEach { event -> event.toEmitLookup()?.let(result::addElement) }
 
       // contracts whose events are not visible unqualified: `emit IERC20.Transfer(...)`
-      val current = PsiTreeUtil.getParentOfType(position, SolContractDefinition::class.java)
+      val current = position.findContract()
       val inScope = current?.let { setOf(it) + it.allSuperContracts }.orEmpty()
       declarations.filterIsInstance<SolContractDefinition>()
         .filter { it !in inScope && it.events().isNotEmpty() }
@@ -84,7 +84,7 @@ class SolEventCompletionContributor : CompletionContributor() {
       val scope = GlobalSearchScope.allScope(project)
       StubIndex.getInstance().getAllKeys(SolEventIndex.KEY, project)
         .filter { result.prefixMatcher.prefixMatches(it) }
-        .flatMap { StubIndex.getElements(SolEventIndex.KEY, it, project, scope, SolNamedElement::class.java).filterIsInstance<SolEventDefinition>() }
+        .flatMap { SolEventIndex.KEY.elements(it, project, scope).filterIsInstance<SolEventDefinition>() }
         .forEach { event ->
           if (event.key() in visibleEvents) return@forEach
           val owner = event.parent as? SolContractDefinition
@@ -184,7 +184,7 @@ private fun SolEventDefinition.toEmitLookup(qualifier: String? = null, import: S
   var builder = LookupElementBuilder.create(this, name)
     .withIcon(SolidityIcons.EVENT)
     .withTailText(tail, true)
-    .withTypeText(if (import != null) "from ${import.containingFile.name}" else PsiTreeUtil.getParentOfType(this, SolContractDefinition::class.java)?.name)
+    .withTypeText(if (import != null) "from ${import.containingFile.name}" else findContract()?.name)
     .withInsertHandler(EmitInsertHandler(params.isNotEmpty(), qualifier, import))
   if (qualifier != null) builder = builder.withPresentableText("$qualifier.$name").withLookupString("$qualifier.$name")
   // events to import come after the visible ones

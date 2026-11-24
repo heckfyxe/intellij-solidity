@@ -15,10 +15,9 @@ import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.intellij.psi.util.parentOfType
 import me.serce.solidity.chain.foundry.FoundryProject
-import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
+import me.serce.solidity.lang.psi.findContract
 
 /** One line of forge's `.gas-snapshot`: `CounterTest:test_Increment() (gas: 51847)`. */
 data class GasSnapshotEntry(val contract: String, val function: String, val parameters: String, val measurement: String) {
@@ -84,7 +83,7 @@ class ForgeGasSnapshotInlayProvider : InlayHintsProvider {
         val function = element as? SolFunctionDefinition ?: return
         if (!function.isForgeTest()) return
         val name = function.name ?: return
-        val contract = function.parentOfType<SolContractDefinition>()?.name ?: return
+        val contract = function.findContract()?.name ?: return
         val entry = GasSnapshot.find(entries, contract, name, function.parameters.size) ?: return
         val anchor = function.identifier ?: return
         val line = document.getLineNumber(anchor.textRange.startOffset)
