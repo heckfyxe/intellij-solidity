@@ -133,6 +133,8 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   directly and lay out their text themselves. The postfix templates override `expandForChooseExpression` instead of
   going through the live-template engine, which deleted text before the expression in tests, and their provider adds
   a `;` before the check (`preCheck`/`preExpand`) so a line being typed parses as a statement.
+* Quick fixes (`ide/inspections/fixes`) edit the document through `editDocument`, which commits it afterwards; offsets
+  are taken from the PSI before the first change.
 * Introduce Variable and Inline Variable (`SolLocalVariableRefactorings.kt`) work on local variables only; reference
   types get `storage` when the expression starts from a state variable, the parameter's location for parameters,
   `memory` otherwise.
