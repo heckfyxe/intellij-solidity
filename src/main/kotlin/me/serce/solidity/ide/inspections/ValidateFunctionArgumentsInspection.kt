@@ -5,7 +5,7 @@ import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.psi.PsiElementVisitor
 import me.serce.solidity.ide.hints.hasNoValidationTag
 import me.serce.solidity.lang.psi.*
-import me.serce.solidity.lang.resolve.SolResolver
+import me.serce.solidity.lang.resolve.ref.SolFunctionCallReference
 import me.serce.solidity.lang.types.SolInternalTypeFactory
 import me.serce.solidity.lang.types.getSolType
 
@@ -35,10 +35,9 @@ class ValidateFunctionArgumentsInspection : LocalInspectionTool() {
     }
   }
 
+  /** Every function the call may resolve to, before overloads are filtered by the arguments. */
   private fun resolveCallee(arguments: SolFunctionCallArguments): List<SolFunctionDefElement>? {
-    val call = arguments.parent?.parent
-    val defs = (call?.children?.firstOrNull() as? SolMemberAccessExpression)?.let { SolResolver.resolveMemberAccess(it) }
-      ?: (call as? SolFunctionCallExpression)?.let { SolResolver.resolveVarLiteralReference(it) }
-    return defs?.filterIsInstance<SolFunctionDefElement>()
+    val call = arguments.parent?.parent as? SolFunctionCallExpression ?: return null
+    return (call.reference as? SolFunctionCallReference)?.resolveFunctionCall()?.filterIsInstance<SolFunctionDefElement>()
   }
 }
