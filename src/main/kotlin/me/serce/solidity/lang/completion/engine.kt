@@ -15,6 +15,7 @@ import com.intellij.psi.stubs.StubIndex
 import com.intellij.psi.stubs.StubIndexKey
 import me.serce.solidity.ide.SolidityIcons
 import me.serce.solidity.ide.inspections.fixes.ImportFileAction
+import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.ADDRESS_MEMBER
 import me.serce.solidity.lang.resolve.SolResolver
@@ -54,10 +55,10 @@ object SolCompleter {
     // Use CamelHump matching ("FB" -> "FooBar") to match the behaviour of IJ idea
     val matcher = if (prefix.isBlank()) null else CamelHumpMatcher(prefix)
     val project = element.project
-    return SolContractNamesCache.getInstance(project)
-      .allNames()
+    val names = SolContractNamesCache.getInstance(project)
+    return names.allNames()
       .filter { matcher == null || matcher.prefixMatches(it) }
-      .map { ContractLookupElement(project, it) }
+      .map { ContractLookupElement(project, it, icon = names.iconOf(it)) }
       .toTypedArray()
   }
 
@@ -117,10 +118,12 @@ object SolCompleter {
   }
 }
 
+/** A top-level declaration of the project by name, imported on insertion when its file isn't imported yet. */
 class ContractLookupElement(
   private val project: Project,
   private val contractName: String,
-  private val sourceFileName: String? = null
+  private val sourceFileName: String? = null,
+  private val icon: Icon = SolidityIcons.CONTRACT,
 ) : LookupElement() {
   constructor(contract: SolContractDefinition) : this(
     contract.project,
@@ -131,7 +134,7 @@ class ContractLookupElement(
   override fun getLookupString(): String = contractName
 
   override fun renderElement(presentation: LookupElementPresentation) {
-    presentation.icon = SolidityIcons.CONTRACT
+    presentation.icon = icon
     presentation.itemText = contractName
     sourceFileName?.let {
       presentation.typeText = "from $it"
@@ -144,18 +147,18 @@ class ContractLookupElement(
     if (DumbService.isDumb(project)) {
       return
     }
-    val contract = runReadAction {
+    val declaration = runReadAction {
       val candidates = StubIndex.getElements(
         SolGotoClassIndex.KEY,
         contractName,
         project,
         GlobalSearchScope.projectScope(project),
         SolNamedElement::class.java
-      ).filterIsInstance<SolContractDefinition>()
+      ).filter { it.parent is SolidityFile } // a contract's own events and structs aren't imported by name
       candidates.firstOrNull { it.containingFile == context.file } ?: candidates.singleOrNull()
     } ?: return
-    if (!ImportFileAction.isImportedAlready(context.file, contract.containingFile)) {
-      ImportFileAction.addContractImport(contract, context.file)
+    if (!ImportFileAction.isImportedAlready(context.file, declaration.containingFile)) {
+      ImportFileAction.addNamedImport(declaration, context.file)
     }
   }
 }

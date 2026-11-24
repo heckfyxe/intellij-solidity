@@ -46,6 +46,29 @@ contract A is test{}"""
     )
   }
 
+  fun testCompletionImportsFileLevelStruct() {
+    InlineFile(code = "struct Position { uint256 x; }", name = "types.sol")
+
+    checkResultAfterCompletion(
+      """contract A { Positi/*caret*/ p; }""", """import {Position} from "./types.sol";
+
+contract A { Position p; }"""
+    )
+  }
+
+  fun testEventsAndErrorsKeepTheirIconsInTypeCompletion() {
+    InlineFile("event Deposited(); error Failed(); contract Vault {}", "external.sol")
+    InlineFile("contract A { function f() { /*caret*/ } }").withCaret()
+
+    val position = checkNotNull(myFixture.file.findElementAt(myFixture.caretOffset))
+    val icons = SolCompleter.completeTypeName(position).associate { element ->
+      element.lookupString to com.intellij.codeInsight.lookup.LookupElementPresentation().also { element.renderElement(it) }.icon
+    }
+    assertEquals(me.serce.solidity.ide.SolidityIcons.EVENT, icons["Deposited"])
+    assertEquals(me.serce.solidity.ide.SolidityIcons.ERROR, icons["Failed"])
+    assertEquals(me.serce.solidity.ide.SolidityIcons.CONTRACT, icons["Vault"])
+  }
+
   fun testCompletionWithImportRecursion() {
     InlineFile(
       code = """contract test {}""", name = "test.sol"
