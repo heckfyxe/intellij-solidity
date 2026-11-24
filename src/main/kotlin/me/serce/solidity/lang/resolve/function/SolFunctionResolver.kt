@@ -19,8 +19,6 @@ object SolFunctionResolver {
 
   fun collectOverrides(func: SolFunctionDefinition): Collection<SolFunctionDefinition> = overridesIn(func).toList()
 
-  fun hasOverrides(func: SolFunctionDefinition): Boolean = overridesIn(func).any()
-
   /** Functions of derived contracts with the same signature as [func]. */
   private fun overridesIn(func: SolFunctionDefinition): Sequence<SolFunctionDefinition> {
     val contract = func.parentOfType<SolContractDefinition>() ?: return emptySequence()

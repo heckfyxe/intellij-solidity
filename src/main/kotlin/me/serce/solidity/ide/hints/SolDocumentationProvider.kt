@@ -61,11 +61,8 @@ private fun collectBlockComments(nonSolElements: List<PsiElement>): List<PsiElem
 
 class SolDocumentationProvider : AbstractDocumentationProvider() {
   override fun getQuickNavigateInfo(element: PsiElement?, originalElement: PsiElement?): String? {
-    if (element == null) return null
-    val builder = StringBuilder()
-    if (!builder.appendDefinition(element)) return null
-
-    return builder.toString()
+    val definition = element?.let { calcDefinition(it) } ?: return null
+    return StringBuilder().appendDefinition(definition).toString()
   }
 
   private val keywordColors = (SolHighlighter.keywords.types + SolHighlighter.types.types).filter { it != SolidityTokenTypes.RETURN }.map { it.toString() }
@@ -90,14 +87,13 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
     // psiElement is the resolved declaration and originalElement the token at the caret, usually far from it;
     // only a member access the reference couldn't resolve to a describable declaration is resolved here
     var element = psiElement
-    if (calcDefinition(element) == null) {
+    var definition = calcDefinition(element)
+    if (definition == null) {
       val access = element as? SolMemberAccessExpression ?: originalElement?.parent as? SolMemberAccessExpression
       element = access?.let { SolResolver.resolveMemberAccess(it).filterIsInstance<SolFunctionDefinition>().firstOrNull() } ?: return null
+      definition = calcDefinition(element) ?: return null
     }
-    val builder = StringBuilder()
-    if (!builder.appendDefinition(element)) {
-      return null
-    }
+    val builder = StringBuilder().appendDefinition(definition)
     val own: List<PsiElement> = element.comments()
     val inherited: List<PsiElement> = if (own.isEmpty() || own.any { it.isInheritDoc() }) {
       when (element) {
@@ -180,14 +176,8 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
     return comments.subList(natParam.index, nextNatParam)
   }
 
-  private fun StringBuilder.appendDefinition(element: PsiElement) : Boolean {
-    return calcDefinition(element)?.let {
-      append(DEFINITION_START)
-      append(it.colorizeKeywords())
-      append(DEFINITION_END)
-      true
-    } ?: false
-  }
+  private fun StringBuilder.appendDefinition(definition: String): StringBuilder =
+    append(DEFINITION_START).append(definition.colorizeKeywords()).append(DEFINITION_END)
 
   private fun calcDefinition(element: PsiElement): String? {
     return when (element) {
