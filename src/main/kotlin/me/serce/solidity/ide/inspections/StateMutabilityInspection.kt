@@ -23,7 +23,7 @@ class StateMutabilityInspection : LocalInspectionTool() {
           return
         }
         val body = o.block ?: return
-        if (o.specialFunction != null || o.containingFile.allowsSolidityOlderThan(5)) {
+        if (o.specialFunction != null || o.containingFile.allowsSolidityOlderThan(SolVersions.V0_5_0)) {
           return
         }
         val analysis = StateMutabilityAnalyzer.analyze(body)

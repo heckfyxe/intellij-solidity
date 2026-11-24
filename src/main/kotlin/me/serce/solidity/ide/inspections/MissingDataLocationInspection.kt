@@ -121,5 +121,5 @@ class MissingDataLocationInspection : LocalInspectionTool() {
       SolModifierDefinition::class.java) != null
   }
 
-  private fun isLegacy(element: PsiElement) = element.containingFile.allowsSolidityOlderThan(5)
+  private fun isLegacy(element: PsiElement) = element.containingFile.allowsSolidityOlderThan(SolVersions.V0_5_0)
 }

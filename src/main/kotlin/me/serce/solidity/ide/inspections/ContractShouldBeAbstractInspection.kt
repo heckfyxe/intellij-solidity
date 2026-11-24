@@ -26,7 +26,7 @@ class ContractShouldBeAbstractInspection : LocalInspectionTool() {
           return
         }
         val identifier = o.identifier ?: return
-        if (o.containingFile.allowsSolidityOlderThan(6)) {
+        if (o.containingFile.allowsSolidityOlderThan(SolVersions.V0_6_0)) {
           return
         }
         if (findUnimplementedFunctions(o).isNotEmpty()) {

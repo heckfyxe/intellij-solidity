@@ -30,7 +30,7 @@ class RestrictableStateMutabilityInspection : LocalInspectionTool() {
         if (o.functionVisibilitySpecifierList.any { it.virtualSpecifier != null || it.overrideSpecifier != null }) {
           return
         }
-        if (o.containingFile.allowsSolidityOlderThan(5)) {
+        if (o.containingFile.allowsSolidityOlderThan(SolVersions.V0_5_0)) {
           return
         }
         if (SolFunctionResolver.collectOverridden(o).isNotEmpty()) {

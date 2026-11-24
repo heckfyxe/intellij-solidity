@@ -17,6 +17,7 @@ import me.serce.solidity.lang.core.SolidityParserDefinition
 import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.core.YulFile
+import me.serce.solidity.ide.inspections.SolVersions
 import me.serce.solidity.ide.inspections.allowsSolidityOlderThan
 
 /**
@@ -63,7 +64,7 @@ internal fun createAnalyzer(document: Document, file: PsiElement): SolStatementA
   return SolStatementAnalyzer(
     document,
     yulFile = psiFile is YulFile,
-    legacyFallback = (psiFile as? SolidityFile)?.allowsSolidityOlderThan(6) == true,
+    legacyFallback = (psiFile as? SolidityFile)?.allowsSolidityOlderThan(SolVersions.V0_6_0) == true,
   )
 }
 
