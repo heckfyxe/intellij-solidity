@@ -11,6 +11,7 @@ import com.intellij.psi.stubs.StubIndex
 import com.intellij.psi.util.*
 import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.core.SolidityTokenTypes
+import me.serce.solidity.lang.core.SolidityVersion
 import me.serce.solidity.lang.core.solidityVersionRange
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.SolImportAlias
@@ -366,7 +367,7 @@ object SolResolver {
     val result = mutableListOf<SolUsingForDeclaration>()
     place.findContract()?.let { contract ->
       result += contract.usingForDeclarationList
-      if (file.solidityVersionRange()?.isBelow("0.7.0") == true) {
+      if (file.solidityVersionRange()?.isBelow(USING_FOR_NOT_INHERITED) == true) {
         result += inheritedUsingForDeclarations(contract, hashSetOf(contract))
       }
     }
@@ -756,6 +757,9 @@ object SolResolver {
   }
 
 }
+
+/** Before 0.7.0, `using ... for` in a base contract also applied in derived ones. */
+private val USING_FOR_NOT_INHERITED = SolidityVersion.of("0.7.0")
 
 /** The statements of a block visible at [place]: in a block around it, only those that start before it. */
 private fun List<SolStatement>.declaredBefore(place: PsiElement): Sequence<SolStatement> {

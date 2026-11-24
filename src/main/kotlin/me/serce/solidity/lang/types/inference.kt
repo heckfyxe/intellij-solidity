@@ -9,6 +9,7 @@ import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.childrenOfType
 import me.serce.solidity.lang.core.SolidityTokenTypes
+import me.serce.solidity.lang.core.SolidityVersion
 import me.serce.solidity.lang.core.solidityVersionRange
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.SolMemberAccessElement
@@ -106,6 +107,9 @@ private fun getSolTypeFromUserDefinedTypeName(type: SolUserDefinedTypeName): Sol
 }
 
 private val BYTE_N = Regex("byte\\d+")
+
+/** `type(E).min`/`max` for enums were added in 0.8.8. */
+private val ENUM_MIN_MAX = SolidityVersion.of("0.8.8")
 
 fun inferDeclType(decl: SolNamedElement): SolType {
   return when (decl) {
@@ -243,7 +247,7 @@ fun inferExprType(expr: SolExpression?): SolType {
     }
     is SolMetaTypeExpression -> SolMetaType(
       getSolType(expr.typeName),
-      enumMinMax = expr.containingFile?.solidityVersionRange()?.isBelow("0.8.8") != true
+      enumMinMax = expr.containingFile?.solidityVersionRange()?.isBelow(ENUM_MIN_MAX) != true
     )
     else -> SolUnknown
   }
