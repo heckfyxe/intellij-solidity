@@ -8,7 +8,6 @@ import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.patterns.*
 import com.intellij.patterns.PlatformPatterns.psiElement
 import com.intellij.psi.PsiElement
-import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.impl.source.tree.LeafPsiElement
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.stubs.StubIndex
@@ -22,7 +21,6 @@ import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.resolve.ref.SolImportPathReference
 import me.serce.solidity.lang.stubs.SolGotoClassIndex
 import me.serce.solidity.removeQuotes
-import java.io.File
 
 /**
  * Special Variables and Functions
@@ -55,7 +53,6 @@ class SolContextCompletionContributor : CompletionContributor() {
                   val insert = ": ${if (needComma) "," else ""}"
                   context.document.insertString(context.selectionEndOffset, insert)
                   context.editor.caretModel.currentCaret.moveToOffset(context.selectionEndOffset - 1)
-                  CodeStyleManager.getInstance(context.project).reformatText(parent.containingFile, parent.startOffset, parent.textRange.endOffset)
                 }
               }
             }
@@ -73,8 +70,9 @@ class SolContextCompletionContributor : CompletionContributor() {
               val knownPrefixes = listOf('.', '/', '"')
 
               val matcher = CamelHumpMatcher(text)
-              val humpFiles = SolContractNamesCache.getInstance(project)
-                .allNames()
+              // an empty path would list the file of every contract in the project
+              val names = if (text.isEmpty()) emptySet() else SolContractNamesCache.getInstance(project).allNames()
+              val humpFiles = names
                 .filter { matcher.prefixMatches(it) }
                 .flatMap {
                   StubIndex.getInstance().getContainingFilesIterator(
@@ -128,8 +126,7 @@ class SolContextCompletionContributor : CompletionContributor() {
     }
 
   private fun dirPartOf(input: String): String {
-    val isDir = File(input).isDirectory || input.endsWith("/")
-    val base = if (isDir) input else input.substringBeforeLast("/", missingDelimiterValue = input)
+    val base = if (input.endsWith("/")) input else input.substringBeforeLast("/", missingDelimiterValue = input)
     return if (base.endsWith("/")) base else "$base/"
   }
 
