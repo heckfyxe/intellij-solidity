@@ -36,7 +36,7 @@ internal fun declarationType(type: SolType, expression: SolExpression): String? 
   }
   return when (type) {
     is SolInteger -> if (type.literalValue != null) (if (type.literalValue.signum() < 0) "int256" else "uint256") else type.toString()
-    is SolBoolean, is SolAddress, is SolFixedBytes, is SolFixedByte -> type.toString()
+    is SolBoolean, is SolAddress, is SolFixedBytes -> type.toString()
     is SolContract -> type.ref.name
     is SolEnum -> type.ref.name
     is SolUserDefinedValueTypeReferenceType -> type.ref.name

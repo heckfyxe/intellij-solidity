@@ -211,17 +211,14 @@ class SolFunctionCallReference(element: SolFunctionCallExpression) : SolReferenc
   }
 
   private fun resolveElementaryTypeCasts(expr: SolPrimaryExpression): Collection<SolCallable> {
-    return listOfNotNull(expr.elementaryTypeName
-      ?.let {
-        val type = getSolType(it)
-        object : SolCallable {
-          override fun resolveElement(): SolNamedElement? = null
-          override fun parseParameters(): List<Pair<String?, SolType>> = listOf(null to SolUnknown)
-          override fun parseType(): SolType = type
-          override val callablePriority: Int = 1000
-          override fun getName(): String? = null
-        }
-      })
+    val type = getSolType(expr.elementaryTypeName ?: return emptyList())
+    return listOf(object : SolCallable {
+      override fun resolveElement(): SolNamedElement? = null
+      override fun parseParameters(): List<Pair<String?, SolType>> = listOf(null to SolUnknown)
+      override fun parseType(): SolType = type
+      override val callablePriority: Int = 1000
+      override fun getName(): String? = null
+    })
   }
 
   override fun doMultiResolve(): Collection<PsiElement> {

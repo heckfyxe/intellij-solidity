@@ -30,14 +30,15 @@ fun getSolType(type: SolTypeName?): SolType {
     is SolElementaryTypeName -> {
       when (val text = type.firstChild.text) {
         "bool" -> SolBoolean
-        "string" -> SolString(text.length)
+        "string" -> SolString()
         "address" -> if (type.childrenOfType<LeafPsiElement>().drop(1).any { it.elementType == SolidityTokenTypes.PAYABLE }) SolAddress.PAYABLE else SolAddress.NON_PAYABLE
         "payable" -> SolAddress.PAYABLE
         "bytes" -> SolBytes
         "byte" -> SolFixedBytes(1)
         else -> try {
             when {
-              text.matches(SolFixedByte.regex) -> SolFixedByte.parse(text)
+              // `byteN` isn't Solidity, but lexed as a type name; `byte` is bytes1
+              text.matches(BYTE_N) -> SolFixedBytes(text.removePrefix("byte").toInt())
               text.matches(SolFixedBytes.regex) -> SolFixedBytes.parse(text)
               else -> SolInteger.parse(text)
             }
@@ -103,6 +104,8 @@ private fun getSolTypeFromUserDefinedTypeName(type: SolUserDefinedTypeName): Sol
     }
     .firstOrNull { it != null } ?: SolUnknown
 }
+
+private val BYTE_N = Regex("byte\\d+")
 
 fun inferDeclType(decl: SolNamedElement): SolType {
   return when (decl) {

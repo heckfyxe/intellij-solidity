@@ -21,4 +21,16 @@ class SolTypeTest {
     assertTrue(SolBytes.isAssignableFrom(SolString(0)))
   }
 
+  @Test
+  fun testOnlyStringLiteralsConvertToFixedBytes() {
+    assertTrue(SolFixedBytes(3).isAssignableFrom(SolString(3)))
+    // a `string` value, whose type name has 6 letters, isn't a 6-byte literal
+    assertFalse(SolFixedBytes(6).isAssignableFrom(SolString()))
+  }
+
+  @Test
+  fun testBytesElementIsBytes1() {
+    assertTrue(SolBytes.type == SolFixedBytes(1))
+  }
+
 }

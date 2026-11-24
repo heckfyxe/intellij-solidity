@@ -1,5 +1,6 @@
 package me.serce.solidity.lang.types
 
+import me.serce.solidity.removeQuotes
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.RecursionManager
 import com.intellij.psi.util.CachedValueProvider
@@ -70,19 +71,15 @@ object SolBoolean : SolPrimitiveType {
   override fun toString() = "bool"
 }
 
-data class SolString(val length: Int) : SolPrimitiveType {
+/** `string`; a string literal's type also has its [literalLength], which decides whether it converts to `bytesN`. */
+data class SolString(val literalLength: Int? = null) : SolPrimitiveType {
   override fun isAssignableFrom(other: SolType): Boolean =
     other is SolString
 
   override fun toString() = "string"
 
   companion object {
-    fun inferType(stringLiteral: SolStringLiteral): SolString {
-      return SolString(stringLiteral.text
-        .removeSurrounding("\"")
-        .removeSurrounding("'")
-        .length)
-    }
+    fun inferType(stringLiteral: SolStringLiteral): SolString = SolString(stringLiteral.text.removeQuotes().length)
   }
 }
 
@@ -532,7 +529,7 @@ sealed class SolArray(val type: SolType) : SolType {
   }
 }
 
-object SolBytes : SolArray.SolDynamicArray(SolFixedByte(1)) {
+object SolBytes : SolArray.SolDynamicArray(SolFixedBytes(1)) {
   // bytes.concat takes any number of bytes, bytesN and string/hex literals; the arguments are left unchecked
   internal val concatFunction = BuiltinCallable(listOf(SolInternalTypeFactory.varargsId to SolUnknown), SolBytes, "concat", null)
 
@@ -552,26 +549,6 @@ fun elementaryTypeNameMembers(type: SolType, project: Project): List<SolMember> 
   else -> emptyList()
 }
 
-data class SolFixedByte(val size: Int): SolPrimitiveType {
-  override fun toString() = "byte$size"
-
-  override fun isAssignableFrom(other: SolType): Boolean =
-    other is SolFixedByte && other.size <= size
-
-  companion object {
-
-    val regex = "byte\\d*$".toRegex()
-    fun parse(name: String): SolFixedByte {
-      return if (name.startsWith("byte")) {
-        SolFixedByte(name.substring(4).toInt())
-      } else {
-        throw java.lang.IllegalArgumentException("should start with 'byte'")
-      }
-    }
-  }
-}
-
-
 data class SolFixedBytes(val size: Int): SolPrimitiveType {
 
   override fun toString() = "bytes$size"
@@ -580,7 +557,7 @@ data class SolFixedBytes(val size: Int): SolPrimitiveType {
     return other is SolFixedBytes && other.size <= size ||
       other is SolInteger &&
       (other.literalType == NumericLiteralType.HEX && other.digitCount == size * 2 || other.literalType == NumericLiteralType.ZERO) ||
-      other is SolString && (other.length == size || other.length == 0)
+      other is SolString && (other.literalLength == size || other.literalLength == 0)
   }
 
   override fun getMembers(project: Project) = getSdkMembers(SolInternalTypeFactory.of(project).fixedBytesType)
