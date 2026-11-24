@@ -27,14 +27,6 @@ import java.awt.Component
 
 
 class SentryReportSubmitter : ErrorReportSubmitter() {
-
-  init {
-    // IntelliJ Solidity N
-    val dsn = "https://4cf4758bb74b408a82c9c4f200b63837:45584ba1888b405f80c886e163031be0@sentry.io/301677" +
-      "?${DefaultSentryClientFactory.UNCAUGHT_HANDLER_ENABLED_OPTION}=false"
-    Sentry.init(dsn)
-  }
-
   private val pluginVersion = PluginManagerCore.getPlugin(PluginId.getId("me.serce.solidity"))?.version ?: "unknown"
 
   override fun getReportActionText() = "Submit error to IntelliJ Solidity maintainers"
@@ -84,7 +76,7 @@ class SentryReportSubmitter : ErrorReportSubmitter() {
             eventBuilder.withExtra("extra_events", events.drop(1).joinToString("\n") { it.toString() })
           }
           try {
-            Sentry.capture(eventBuilder)
+            sentryClient.sendEvent(eventBuilder)
           } catch (_: ConnectionException) {
             // sentry is temporarily unavailable
             success = false
@@ -103,3 +95,10 @@ class SentryReportSubmitter : ErrorReportSubmitter() {
     return true
   }
 }
+
+/** The "IntelliJ Solidity N" Sentry project; the platform reports uncaught exceptions itself. */
+private const val SENTRY_DSN = "https://4cf4758bb74b408a82c9c4f200b63837:45584ba1888b405f80c886e163031be0@sentry.io/301677" +
+  "?${DefaultSentryClientFactory.UNCAUGHT_HANDLER_ENABLED_OPTION}=false"
+
+/** Initialised on the first report, once: the platform creates a submitter for every error dialog. */
+private val sentryClient by lazy { Sentry.init(SENTRY_DSN) }
