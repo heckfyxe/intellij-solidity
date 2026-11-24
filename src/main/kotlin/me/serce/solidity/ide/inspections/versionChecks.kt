@@ -59,6 +59,9 @@ internal fun SolExpression?.isGlobalIdentifier(name: String): Boolean {
 internal fun SolMemberAccessExpression.isGlobalMember(qualifier: String, member: String): Boolean =
   identifier?.text == member && expression.isGlobalIdentifier(qualifier)
 
+/** A call of the global `revert(...)`, not shadowed by user code. */
+internal fun SolFunctionCallExpression.isGlobalRevert(): Boolean = expression.isGlobalIdentifier("revert")
+
 /** The called expression of a call `f(...)` when `f` is a plain identifier. */
 internal val SolFunctionCallExpression.calleeVarLiteral: SolVarLiteral?
   get() = (expression as? SolPrimaryExpression)?.varLiteral

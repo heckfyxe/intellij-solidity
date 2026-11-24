@@ -22,50 +22,57 @@ import me.serce.solidity.lang.types.isBuiltin
  * `require(false)`, an internal function that does so unconditionally).
  */
 class CheatcodeWithoutCallInspection : LocalInspectionTool() {
-  override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor = object : SolVisitor() {
-    override fun visitFunctionCallExpression(o: SolFunctionCallExpression) {
-      val cheatcode = o.cheatcodeName() ?: return
-      if (cheatcode != "expectRevert" && cheatcode != "prank") return
-      val statement = o.parent as? SolStatement ?: return
-      val block = statement.parent as? SolBlock ?: return
-      val contract = o.parentOfType<SolContractDefinition>() ?: return
-      if (!isForgeTestFile(o.containingFile) && !contract.hasForgeTests()) return
-      if (nextCallIsMissing(statement, block)) {
-        holder.registerProblem(o, "vm.$cheatcode is not followed by an external call")
-      } else if (cheatcode == "expectRevert" && revertsBeforeNextCall(statement)) {
-        holder.registerProblem(o, "The test reverts before the external call vm.expectRevert applies to")
-      }
-    }
-  }
+  override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
+    val testFile = isForgeTestFile(holder.file)
+    val testContracts = HashMap<SolContractDefinition, Boolean>()
+    // the statements after each cheatcode of a block are classified once for all of them
+    val calls = HashMap<PsiElement, Calls>()
+    fun callsOf(element: PsiElement) = calls.getOrPut(element) { CallAnalysis().classify(element) }
 
-  /** A statement before the next external call that always reverts, at the test's own depth. */
-  private fun revertsBeforeNextCall(statement: SolStatement): Boolean {
-    val analysis = CallAnalysis()
-    var next: PsiElement? = statement.nextSibling
-    while (next != null) {
-      if (next is SolStatement && !next.isCheatcodeCall()) {
-        if (analysis.classify(next) != Calls.NONE) return false
-        if (RevertAnalysis().alwaysReverts(next)) return true
+    /** A statement before the next external call that always reverts, at the test's own depth. */
+    fun revertsBeforeNextCall(statement: SolStatement): Boolean {
+      var next: PsiElement? = statement.nextSibling
+      while (next != null) {
+        if (next is SolStatement && !next.isCheatcodeCall()) {
+          if (callsOf(next) != Calls.NONE) return false
+          if (RevertAnalysis().alwaysReverts(next)) return true
+        }
+        if (next is SolUncheckedBlock && callsOf(next) != Calls.NONE) return false
+        next = next.nextSibling
       }
-      if (next is SolUncheckedBlock && analysis.classify(next) != Calls.NONE) return false
-      next = next.nextSibling
+      return false
     }
-    return false
-  }
 
-  private fun nextCallIsMissing(statement: SolStatement, block: SolBlock): Boolean {
-    var next: PsiElement? = statement.nextSibling
-    while (next != null) {
-      when {
-        next is PsiErrorElement -> return false
-        next is SolStatement && next.isCheatcodeCall() -> Unit
-        // statements without external calls don't use up the cheatcode: forge applies it to the next external call
-        next is SolStatement || next is SolUncheckedBlock -> if (CallAnalysis().classify(next) != Calls.NONE) return false
+    fun nextCallIsMissing(statement: SolStatement, block: SolBlock): Boolean {
+      var next: PsiElement? = statement.nextSibling
+      while (next != null) {
+        when {
+          next is PsiErrorElement -> return false
+          next is SolStatement && next.isCheatcodeCall() -> Unit
+          // statements without external calls don't use up the cheatcode: forge applies it to the next external call
+          next is SolStatement || next is SolUncheckedBlock -> if (callsOf(next) != Calls.NONE) return false
+        }
+        next = next.nextSibling
       }
-      next = next.nextSibling
+      // at the end of a nested block the call may follow the block
+      return block.parent is SolFunctionDefinition
     }
-    // at the end of a nested block the call may follow the block
-    return block.parent is SolFunctionDefinition
+
+    return object : SolVisitor() {
+      override fun visitFunctionCallExpression(o: SolFunctionCallExpression) {
+        val cheatcode = o.cheatcodeName() ?: return
+        if (cheatcode != "expectRevert" && cheatcode != "prank") return
+        val statement = o.parent as? SolStatement ?: return
+        val block = statement.parent as? SolBlock ?: return
+        val contract = o.parentOfType<SolContractDefinition>() ?: return
+        if (!testFile && !testContracts.getOrPut(contract) { contract.hasForgeTests() }) return
+        if (nextCallIsMissing(statement, block)) {
+          holder.registerProblem(o, "vm.$cheatcode is not followed by an external call")
+        } else if (cheatcode == "expectRevert" && revertsBeforeNextCall(statement)) {
+          holder.registerProblem(o, "The test reverts before the external call vm.expectRevert applies to")
+        }
+      }
+    }
   }
 }
 
@@ -196,11 +203,9 @@ private class RevertAnalysis {
   private fun callReverts(call: SolFunctionCallExpression, depth: Int): Boolean {
     val callee = call.expression
     val arguments = call.functionInvocation.functionCallArguments?.expressionList.orEmpty()
-    if (callee is SolPrimaryExpression) {
-      when (callee.varLiteral?.text) {
-        "revert" -> return true
-        "require", "assert" -> return arguments.firstOrNull()?.text == "false"
-      }
+    if (call.isGlobalRevert()) return true
+    if (callee is SolPrimaryExpression && callee.varLiteral?.text.let { it == "require" || it == "assert" }) {
+      return arguments.firstOrNull()?.text == "false"
     }
     if (depth >= MAX_DEPTH || callee !is SolPrimaryExpression) return false
     val function = (call.reference as? SolFunctionCallReference)?.resolveFunctionCall()?.singleOrNull()?.resolveElement()

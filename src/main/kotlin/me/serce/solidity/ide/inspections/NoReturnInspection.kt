@@ -7,8 +7,6 @@ import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiRecursiveElementWalkingVisitor
 import com.intellij.psi.util.PsiTreeUtil
 import me.serce.solidity.lang.psi.*
-import me.serce.solidity.lang.types.SolInternalTypeFactory
-import me.serce.solidity.lang.types.findContract
 
 class NoReturnInspection : LocalInspectionTool() {
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
@@ -34,9 +32,6 @@ private fun SolFunctionDefinition.inspectReturns(holder: ProblemsHolder) {
   }
 }
 
-private val SolFunctionCallExpression.revert: Boolean
-  get() = name == "revert" && reference?.resolve()?.isGlobal() == true
-
 private fun SolStatement.hasAssignment(el: SolNamedElement): Boolean {
   if (throwSt != null || revertStatement != null) return true
   variableDefinition?.let { return it.hasAssignment(el) }
@@ -58,7 +53,7 @@ private fun SolExpression.isReferenceTo(el: SolNamedElement): Boolean =
 
 private val SolStatement.returns: Boolean
   get() {
-    (expression as? SolFunctionCallExpression)?.let { if (it.revert) return true }
+    if ((expression as? SolFunctionCallExpression)?.isGlobalRevert() == true) return true
     if (revertStatement != null) return true
     inlineAssemblyStatement?.yulBlock?.let { return it.returns }
     if (throwSt != null) return true
@@ -104,7 +99,7 @@ private fun SolExpression.hasAssignment(el: SolNamedElement): Boolean {
   accept(object : PsiRecursiveElementWalkingVisitor() {
     override fun visitElement(element: PsiElement) {
       hasAssignment = element is SolAssignmentExpression && element.expressionList.any { it.isReferenceTo(el) } ||
-        element is SolFunctionCallExpression && element.revert
+        element is SolFunctionCallExpression && element.isGlobalRevert()
       if (hasAssignment) {
         stopWalking()
         return
@@ -120,6 +115,3 @@ private fun SolTryStatement.hasAssignment(el: SolNamedElement): Boolean =
 
 private val SolTryStatement.returns: Boolean
   get() = block?.returns == true && catchClauseList.all { it.block?.returns == true }
-
-private fun SolElement.isGlobal(): Boolean =
-  findContract() == SolInternalTypeFactory.of(project).globalType.ref
