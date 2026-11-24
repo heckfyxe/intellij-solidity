@@ -62,7 +62,13 @@ object ForgeTestLocator : SMTestLocator {
 }
 
 /** Links `test/A.t.sol:8:33` (compiler messages, traces) in forge's output to the file, relative to [root]. */
-class SolidityFileLocationFilter(private val project: Project, private val root: VirtualFile?) : Filter {
+class SolidityFileLocationFilter(private val project: Project, rootProvider: () -> VirtualFile?) : Filter {
+  constructor(project: Project, root: VirtualFile?) : this(project, { root })
+
+  /** [rootPath] is looked up on first use, off the EDT where run profile states are created. */
+  constructor(project: Project, rootPath: String) : this(project, { LocalFileSystem.getInstance().findFileByPath(rootPath) })
+
+  private val root by lazy(rootProvider)
   private val location = Regex("""((?:[\w.@-]+/)*[\w.@-]+\.sol):(\d+)(?::(\d+))?""")
 
   override fun applyFilter(line: String, entireLength: Int): Filter.Result? {

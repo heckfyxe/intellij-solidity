@@ -16,7 +16,6 @@ import com.intellij.execution.testframework.actions.AbstractRerunFailedTestsActi
 import com.intellij.execution.testframework.sm.runner.SMTRunnerConsoleProperties
 import com.intellij.execution.ui.ConsoleView
 import com.intellij.openapi.util.SystemInfo
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.util.execution.ParametersListUtil
 import me.serce.solidity.settings.ConfigurationMode
 import me.serce.solidity.settings.SoliditySettings
@@ -68,7 +67,7 @@ class ForgeTestCommandLineState(
     val processHandler = startProcess()
     val root = (processHandler as? ForgeTestTransformingProcessHandler)?.workDirectory?.path
       ?: configuration.workingDirectory.ifBlank { configuration.project.basePath ?: "" }
-    console.addMessageFilter(SolidityFileLocationFilter(configuration.project, LocalFileSystem.getInstance().findFileByPath(root)))
+    console.addMessageFilter(SolidityFileLocationFilter(configuration.project, root))
     console.attachToProcess(processHandler)
     return DefaultExecutionResult(console, processHandler, *createActions(console, processHandler))
   }

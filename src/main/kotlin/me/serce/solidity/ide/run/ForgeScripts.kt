@@ -25,7 +25,6 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.registry.Registry
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -197,9 +196,8 @@ class ForgeScriptCommandLineState(private val configuration: ForgeScriptRunConfi
 
   init {
     val project = configuration.project
-    val root = LocalFileSystem.getInstance().findFileByPath(configuration.workingDirectory)
     consoleBuilder = TextConsoleBuilderFactory.getInstance().createBuilder(project).apply {
-      addFilter(SolidityFileLocationFilter(project, root))
+      addFilter(SolidityFileLocationFilter(project, configuration.workingDirectory))
     }
   }
 
