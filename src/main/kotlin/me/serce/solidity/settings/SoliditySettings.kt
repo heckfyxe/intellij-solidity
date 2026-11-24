@@ -9,47 +9,33 @@ import java.io.File
 class SoliditySettings :
   SimplePersistentStateComponent<SoliditySettingsState>(SoliditySettingsState()) {
 
-  var formatterConfigurationMode: ConfigurationMode
-    get() = state.configurationMode
-    set(value) {
-      state.configurationMode = value
-    }
-
   var formatterType: FormatterType
     get() = state.formatterType.takeIf { it != FormatterType.INTELLIJ_SOLIDITY } ?: FormatterType.FOUNDRY
-    set(value) {
-      state.formatterType = value
-    }
+    set(value) { state.formatterType = value }
+
+  var formatterConfigurationMode: ConfigurationMode
+    get() = state.formatterConfigurationMode
+    set(value) { state.formatterConfigurationMode = value }
 
   var formatterFoundryExecutablePath: String
-    get() = state.executablePath ?: ""
-    set(value) {
-      state.executablePath = value
-    }
+    get() = state.formatterFoundryExecutablePath
+    set(value) { state.formatterFoundryExecutablePath = value }
 
   var formatterFoundryConfigPath: String
-    get() = state.configPath ?: ""
-    set(value) {
-      state.configPath = configDirectory(value)
-    }
+    get() = state.formatterFoundryConfigPath
+    set(value) { state.formatterFoundryConfigPath = configDirectory(value) }
 
   var testFoundryConfigurationMode: ConfigurationMode
     get() = state.testFoundryConfigurationMode
-    set(value) {
-      state.testFoundryConfigurationMode = value
-    }
+    set(value) { state.testFoundryConfigurationMode = value }
 
   var testFoundryExecutablePath: String
-    get() = state.testFoundryExecutablePath ?: ""
-    set(value) {
-      state.testFoundryExecutablePath = value
-    }
+    get() = state.testFoundryExecutablePath
+    set(value) { state.testFoundryExecutablePath = value }
 
   var testFoundryConfigPath: String
-    get() = state.testFoundryConfigPath ?: ""
-    set(value) {
-      state.testFoundryConfigPath = configDirectory(value)
-    }
+    get() = state.testFoundryConfigPath
+    set(value) { state.testFoundryConfigPath = configDirectory(value) }
 
   /** Users may pick foundry.toml itself; the stored setting is the directory that contains it. */
   private fun configDirectory(path: String): String {
