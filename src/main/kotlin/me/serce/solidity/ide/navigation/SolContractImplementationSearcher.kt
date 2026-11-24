@@ -4,7 +4,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.QueryExecutorBase
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.util.Condition
 import com.intellij.psi.PsiElement
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.GlobalSearchScope.FilesScope
@@ -44,20 +43,12 @@ fun SolContractDefinition.findAllImplementations(): HashSet<SolContractDefinitio
     val implementations = HashSet<SolContractDefinition>()
     val implQueue = ArrayDeque<SolContractDefinition>(MAX_IMPLEMENTATIONS)
     implQueue.add(this)
-    // Run the implementation resolution under an empty progress to avoid the noisy
-    // "Must be executed under progress indicator" error, see https://github.com/intellij-solidity/intellij-solidity/issues/295
-    // TODO: would it be worth using a real progress here?
-    // TODO: would resolution from EDT only be called in tests? If not, it might trigger a warning again. If yes, then
-    //    need to find a way to run tests from a non dispatcher thread.
     val application = ApplicationManager.getApplication()
-    if (application.isDispatchThread) {
-      findAllImplementationsInAction(implQueue, implementations)
-    } else {
-      ProgressManager.getInstance().runProcess({
-        application.runReadAction {
-          findAllImplementationsInAction(implQueue, implementations)
-        }
-      }, EmptyProgressIndicator())
+    val search = { application.runReadAction { findAllImplementationsInAction(implQueue, implementations) } }
+    when {
+      application.isDispatchThread || ProgressManager.getGlobalProgressIndicator() != null -> search()
+      // the reference search needs a progress indicator, see https://github.com/intellij-solidity/intellij-solidity/issues/295
+      else -> ProgressManager.getInstance().runProcess(search, EmptyProgressIndicator())
     }
     implementations.remove(this)
     CachedValueProvider.Result.create(
@@ -78,13 +69,9 @@ private fun findAllImplementationsInAction(
     if (!implementations.add(current)) {
       continue
     }
-    current.findImplementations()
-      .filterQuery(Condition { !implementations.contains(it) })
-      .forEach(Processor { implQueue.add(it) })
+    current.findImplementations().findAll().filterTo(implQueue) { it !in implementations }
   }
 }
-
-fun <U> Query<U>.filterQuery(condition: Condition<U>): Query<U> = FilteredQuery(this, condition)
 
 fun SolContractDefinition.findImplementations(): Query<SolContractDefinition> {
   val contractName = name ?: return EmptyQuery()
