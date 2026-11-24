@@ -16,37 +16,37 @@ const val KEYWORD_PRIORITY = -1.0
 const val LATEST_SOLIDITY = "0.8.38"
 
 val KEYWORD_TYPE = arrayOf(
-  "address ",
-  "string ",
+  "address",
+  "string",
   "fixed",
   "ufixed",
-  "uint8 ",
-  "uint16 ",
-  "uint32 ",
-  "uint64 ",
-  "uint128 ",
-  "uint256 ",
-  "int8 ",
-  "int16 ",
-  "int32 ",
-  "int64 ",
-  "int128 ",
-  "int256 ",
-  "uint ",
-  "int ",
-  "bytes ",
-  "bool "
-) + (1..32).map { "bytes$it " }
+  "uint8",
+  "uint16",
+  "uint32",
+  "uint64",
+  "uint128",
+  "uint256",
+  "int8",
+  "int16",
+  "int32",
+  "int64",
+  "int128",
+  "int256",
+  "uint",
+  "int",
+  "bytes",
+  "bool"
+) + (1..32).map { "bytes$it" }
 
 val KEYWORD_CONTRACT_BODY = arrayOf(
-  "constructor", "function ", "modifier ", "fallback", "receive", "mapping", "this"
+  "constructor", "function", "modifier", "fallback", "receive", "mapping", "this"
 )
 
 val KEYWORD_ROOT_AND_BODY = arrayOf(
-  "enum ", "struct ", "event ", "error ", "using ", "type ", "global "
+  "enum", "struct", "event", "error", "using", "type", "global"
 )
 
-val KEYWORD_ON_CONTRACT = arrayOf("layout ")
+val KEYWORD_ON_CONTRACT = arrayOf("layout")
 
 val KEYWORD_FUNCTION = arrayOf(
   "this",
@@ -73,9 +73,9 @@ val KEYWORD_FUNCTION = arrayOf(
   "false"
 )
 
-val KEYWORD_ON_FUNCTION = arrayOf("external ", "internal ", "public ", "private ", "virtual ", "override", "returns")
+val KEYWORD_ON_FUNCTION = arrayOf("external", "internal", "public", "private", "virtual", "override", "returns")
 
-val KEYWORD_STATE_MUTABILITY = arrayOf("pure ", "view ", "payable ")
+val KEYWORD_STATE_MUTABILITY = arrayOf("pure", "view", "payable")
 
 val KEYWORD_DATA_LOCATION = arrayOf(
   "memory", "storage", "calldata"
@@ -87,8 +87,7 @@ class SolKeywordCompletionProvider(private vararg val keywords: String) : Comple
   ) {
     if (isAfterDot(parameters.position)) return // `x.` is followed by a member, never by a keyword
     if (isInsideYul(parameters.position)) return // Yul keywords come from SolYulCompletionContributor
-    // only the keyword is inserted; what follows it is up to the user
-    keywords.forEach { result.addElement(LookupElementBuilder.create(it.trimEnd()).keywordPrioritised()) }
+    keywords.forEach { result.addElement(LookupElementBuilder.create(it).keywordPrioritised()) }
   }
 
   private fun isAfterDot(position: PsiElement): Boolean =
@@ -101,12 +100,12 @@ class SolKeywordCompletionContributor : CompletionContributor(), DumbAware {
     extend(
       CompletionType.BASIC, rootDeclaration(), SolKeywordCompletionProvider(
         *(arrayOf(
-          "pragma ",
-          "import ",
-          "contract ",
-          "library ",
-          "interface ",
-          "abstract ",
+          "pragma",
+          "import",
+          "contract",
+          "library",
+          "interface",
+          "abstract",
         ) + KEYWORD_TYPE + KEYWORD_ROOT_AND_BODY + KEYWORD_CONTRACT_BODY + KEYWORD_ON_CONTRACT)
       )
     )
@@ -139,43 +138,43 @@ class SolKeywordCompletionContributor : CompletionContributor(), DumbAware {
       SolKeywordCompletionProvider(*(KEYWORD_DATA_LOCATION + KEYWORD_TYPE + "mapping"))
     )
     extend(
-      CompletionType.BASIC, inImportDeclaration(), SolKeywordCompletionProvider("from ")
+      CompletionType.BASIC, inImportDeclaration(), SolKeywordCompletionProvider("from")
     )
     extend(
       CompletionType.BASIC,
       inStateVariableDeclaration(),
       SolKeywordCompletionProvider(
-        "constant ",
-        "internal ",
-        "public ",
-        "private ",
-        "override ",
-        "immutable ",
-        "transient "
+        "constant",
+        "internal",
+        "public",
+        "private",
+        "override",
+        "immutable",
+        "transient"
       )
     )
 
     extend(
       CompletionType.BASIC,
       inFunctionDeclaration(),
-      SolKeywordCompletionProvider("external ", "virtual ", "override ", "payable ")
+      SolKeywordCompletionProvider("external", "virtual", "override", "payable")
     )
     extend(
       CompletionType.BASIC,
       inConstructorDeclaration(),
-      SolKeywordCompletionProvider("payable ", "internal ", "public ")
+      SolKeywordCompletionProvider("payable", "internal", "public")
     )
 
     extend(
       CompletionType.BASIC,
       inUsingForDeclaration(),
-      SolKeywordCompletionProvider("for ")
+      SolKeywordCompletionProvider("for")
     )
 
     extend(
       CompletionType.BASIC,
       insideContract(),
-      SolKeywordCompletionProvider("override ", "virtual ")
+      SolKeywordCompletionProvider("override", "virtual")
     )
     extend(
       CompletionType.BASIC,
