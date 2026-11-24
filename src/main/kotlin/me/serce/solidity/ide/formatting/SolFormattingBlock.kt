@@ -10,7 +10,7 @@ import com.intellij.psi.TokenType
 import com.intellij.psi.codeStyle.CodeStyleSettings
 import com.intellij.psi.formatter.FormatterUtil
 import com.intellij.psi.impl.source.tree.CompositeElement
-import com.intellij.psi.tree.IElementType
+import com.intellij.psi.tree.TokenSet
 import me.serce.solidity.lang.core.SolidityTokenTypes.*
 import java.util.*
 
@@ -49,9 +49,6 @@ open class SolFormattingBlock(
     return Collections.unmodifiableList(blocks)
   }
 
-  private val binaryExpressionTypes = setOf(OR_EXPRESSION, AND_EXPRESSION, EQ_EXPRESSION, COMP_EXPRESSION, OR_OP_EXPRESSION,
-    XOR_OP_EXPRESSION, AND_OP_EXPRESSION, SHIFT_EXPRESSION, PLUS_MIN_EXPRESSION, MULT_DIV_EXPRESSION, EXPONENT_EXPRESSION)
-
   private fun buildSubBlock(child: ASTNode): Block {
     var enforceChildIndent = isEnforceChildIndent
     val childType = child.elementType
@@ -68,18 +65,9 @@ open class SolFormattingBlock(
       enforceChildIndent = false
     }
     val result = when {
-      child is PsiComment && type in setOf(
-        CONTRACT_DEFINITION,
-        BLOCK,
-        ENUM_DEFINITION,
-        FUNCTION_DEFINITION,
-        CONSTRUCTOR_DEFINITION,
-        IF_STATEMENT,
-        STRUCT_DEFINITION,
-        YUL_BLOCK
-      ) -> Indent.getNormalIndent()
+      child is PsiComment && type in indentedCommentParents -> Indent.getNormalIndent()
 
-      type == CONTRACT_DEFINITION && childType.isContractPart() -> Indent.getNormalIndent()
+      type == CONTRACT_DEFINITION && childType in contractParts -> Indent.getNormalIndent()
 
       // header parts after the parameters (visibility, modifiers, `returns (...)`) placed on their own lines
       type in functionLikeDefinitions && childType != BLOCK && childType != SEMICOLON &&
@@ -97,11 +85,10 @@ open class SolFormattingBlock(
 
 
       // inside a block, list of parameters, etc..
-      parentType in setOf(BLOCK, UNCHECKED_BLOCK, ENUM_DEFINITION, YUL_BLOCK, PARAMETER_LIST, INDEXED_PARAMETER_LIST,
-        MAP_EXPRESSION, SEQ_EXPRESSION, INLINE_ARRAY_EXPRESSION, TYPED_DECLARATION_LIST, RETURN_ST) -> Indent.getNormalIndent()
+      parentType in listLikeParents -> Indent.getNormalIndent()
 
       // all expressions inside parens should have indentation when lines are split
-      parentType in setOf(IF_STATEMENT, WHILE_STATEMENT, DO_WHILE_STATEMENT, FOR_STATEMENT) && childType != BLOCK -> {
+      parentType in controlStatements && childType != BLOCK -> {
         Indent.getNormalIndent()
       }
 
@@ -114,17 +101,15 @@ open class SolFormattingBlock(
       }
 
       // all function calls
-      parentType in setOf(FUNCTION_INVOCATION, YUL_FUNCTION_CALL) -> Indent.getNormalIndent()
+      parentType in callParents -> Indent.getNormalIndent()
 
       // multi-line assign expression & return expressions
-      type in setOf(
-        VARIABLE_DEFINITION, ASSIGNMENT_EXPRESSION, RETURN_ST
-      ) && lastChildIsComposite && lastChild == child -> {
+      type in assignmentLike && lastChildIsComposite && lastChild == child -> {
         enforceChildIndent = true
         Indent.getNormalIndent()
       }
 
-      type == FUNCTION_INVOCATION && parent?.treeParent?.elementType == MAP_EXPRESSION_CLAUSE && childType in setOf(FUNCTION_CALL_ARGUMENTS, LPAREN, RPAREN) -> Indent.getNormalIndent()
+      type == FUNCTION_INVOCATION && parent?.treeParent?.elementType == MAP_EXPRESSION_CLAUSE && childType in callArgumentParts -> Indent.getNormalIndent()
 
       else -> if (enforceChildIndent) Indent.getNormalIndent() else Indent.getNoneIndent()
     }
@@ -138,13 +123,13 @@ open class SolFormattingBlock(
     val previousType = previous?.elementType
     return when {
       type == BLOCK && previous != null && previous.firstChildNode == null && previous !is PsiComment &&
-        previousType !in setOf(LBRACE, RBRACE, SEMICOLON) -> {
+        previousType !in statementDelimiters -> {
         // an unfinished statement (`uint a =`, `foo(a,`): the parser leaves its tokens loose in the block,
         // so continue it one level deeper than the statements around it
         doubleIndent()
       }
 
-      type in listOf(BLOCK, YUL_BLOCK, CONTRACT_DEFINITION, STRUCT_DEFINITION, ENUM_DEFINITION) -> {
+      type in bracedBodies -> {
         val lbraceIndex = subBlocks.indexOfFirst { it is ASTBlock && it.node?.elementType == LBRACE }
         if (lbraceIndex != -1 && lbraceIndex < childIndex) {
           Indent.getNormalIndent()
@@ -157,8 +142,7 @@ open class SolFormattingBlock(
       type == UNCHECKED_BLOCK -> doubleIndent()
 
       // the body of `if (x)`, `else`, `while (x)`, `for (...)` and `do` written without braces
-      type in setOf(IF_STATEMENT, WHILE_STATEMENT, FOR_STATEMENT, DO_WHILE_STATEMENT) &&
-        previousType in setOf(RPAREN, ELSE, DO) -> Indent.getNormalIndent()
+      type in controlStatements && previousType in bracelessBodyPredecessors -> Indent.getNormalIndent()
 
       // modifiers, visibility and `returns` moved to their own lines in a function header
       type in functionLikeDefinitions && childIndex > 0 && previousType != BLOCK -> {
@@ -168,11 +152,10 @@ open class SolFormattingBlock(
 
       // inside a function call
       type == STATEMENT -> Indent.getContinuationIndent()
-      type in listOf(FUNCTION_CALL_ARGUMENTS, FUNCTION_INVOCATION) -> Indent.getNormalIndent()
+      type == FUNCTION_CALL_ARGUMENTS || type == FUNCTION_INVOCATION -> Indent.getNormalIndent()
 
       // lists and expressions continued on the next line; `uint a =` or `a =` followed by Enter
-      type in setOf(MAP_EXPRESSION, PARAMETER_LIST, INDEXED_PARAMETER_LIST, INLINE_ARRAY_EXPRESSION, TERNARY_EXPRESSION,
-        VARIABLE_DEFINITION, ASSIGNMENT_EXPRESSION) -> Indent.getNormalIndent()
+      type in continuedLists -> Indent.getNormalIndent()
       else -> Indent.getNoneIndent()
     }
   }
@@ -197,24 +180,30 @@ open class SolFormattingBlock(
   override fun isIncomplete(): Boolean = isNodeIncomplete
 
   override fun isLeaf(): Boolean = astNode.firstChildNode == null
-
-  // TODO nicer way to do the same
-  private fun IElementType.isContractPart() = this in setOf(
-    STATE_VARIABLE_DECLARATION,
-    USING_FOR_DECLARATION,
-    STRUCT_DEFINITION,
-    MODIFIER_DEFINITION,
-    FUNCTION_DEFINITION,
-    CONSTRUCTOR_DEFINITION,
-    EVENT_DEFINITION,
-    ERROR_DEFINITION,
-    ENUM_DEFINITION,
-    USER_DEFINED_VALUE_TYPE_DEFINITION
-  )
 }
 
 class SyntheticSolFormattingBlock(real: SolFormattingBlock) : Block by real {
   override fun getSubBlocks(): List<Block> = emptyList()
 }
 
-private val functionLikeDefinitions = setOf(FUNCTION_DEFINITION, CONSTRUCTOR_DEFINITION, MODIFIER_DEFINITION)
+// computed once: the blocks are built on every Enter, `}` and Auto-Indent
+private val functionLikeDefinitions = TokenSet.create(FUNCTION_DEFINITION, CONSTRUCTOR_DEFINITION, MODIFIER_DEFINITION)
+private val binaryExpressionTypes = TokenSet.create(OR_EXPRESSION, AND_EXPRESSION, EQ_EXPRESSION, COMP_EXPRESSION, OR_OP_EXPRESSION,
+  XOR_OP_EXPRESSION, AND_OP_EXPRESSION, SHIFT_EXPRESSION, PLUS_MIN_EXPRESSION, MULT_DIV_EXPRESSION, EXPONENT_EXPRESSION)
+private val indentedCommentParents = TokenSet.create(CONTRACT_DEFINITION, BLOCK, ENUM_DEFINITION, FUNCTION_DEFINITION,
+  CONSTRUCTOR_DEFINITION, IF_STATEMENT, STRUCT_DEFINITION, YUL_BLOCK)
+/** The members of a contract body (`ContractPart` is a private rule, so it has no element type). */
+private val contractParts = TokenSet.create(STATE_VARIABLE_DECLARATION, USING_FOR_DECLARATION, STRUCT_DEFINITION,
+  MODIFIER_DEFINITION, FUNCTION_DEFINITION, CONSTRUCTOR_DEFINITION, EVENT_DEFINITION, ERROR_DEFINITION, ENUM_DEFINITION,
+  USER_DEFINED_VALUE_TYPE_DEFINITION)
+private val listLikeParents = TokenSet.create(BLOCK, UNCHECKED_BLOCK, ENUM_DEFINITION, YUL_BLOCK, PARAMETER_LIST,
+  INDEXED_PARAMETER_LIST, MAP_EXPRESSION, SEQ_EXPRESSION, INLINE_ARRAY_EXPRESSION, TYPED_DECLARATION_LIST, RETURN_ST)
+private val controlStatements = TokenSet.create(IF_STATEMENT, WHILE_STATEMENT, DO_WHILE_STATEMENT, FOR_STATEMENT)
+private val callParents = TokenSet.create(FUNCTION_INVOCATION, YUL_FUNCTION_CALL)
+private val assignmentLike = TokenSet.create(VARIABLE_DEFINITION, ASSIGNMENT_EXPRESSION, RETURN_ST)
+private val callArgumentParts = TokenSet.create(FUNCTION_CALL_ARGUMENTS, LPAREN, RPAREN)
+private val statementDelimiters = TokenSet.create(LBRACE, RBRACE, SEMICOLON)
+private val bracedBodies = TokenSet.create(BLOCK, YUL_BLOCK, CONTRACT_DEFINITION, STRUCT_DEFINITION, ENUM_DEFINITION)
+private val bracelessBodyPredecessors = TokenSet.create(RPAREN, ELSE, DO)
+private val continuedLists = TokenSet.create(MAP_EXPRESSION, PARAMETER_LIST, INDEXED_PARAMETER_LIST, INLINE_ARRAY_EXPRESSION,
+  TERNARY_EXPRESSION, VARIABLE_DEFINITION, ASSIGNMENT_EXPRESSION)
