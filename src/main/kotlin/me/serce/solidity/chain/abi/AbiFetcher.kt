@@ -1,5 +1,8 @@
 package me.serce.solidity.chain.abi
 
+import me.serce.solidity.util.toHex
+import me.serce.solidity.util.Keccak
+import me.serce.solidity.util.checksumAddress
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
@@ -41,7 +44,7 @@ class AbiFetcher(
         val merged = mapper.createArrayNode().addAll(impl.abi)
         val seen = impl.abi.map(::key).toHashSet()
         own?.abi?.filter { key(it) !in seen }?.forEach { merged.add(it) }
-        return FetchedAbi(mapper.writeValueAsString(merged), impl.name ?: own?.name, impl.source, AbiCodec.checksum(implementation))
+        return FetchedAbi(mapper.writeValueAsString(merged), impl.name ?: own?.name, impl.source, checksumAddress(implementation))
       }
     }
     if (own != null) return FetchedAbi(mapper.writeValueAsString(own.abi), own.name, own.source)
@@ -111,7 +114,7 @@ class AbiFetcher(
 
     private fun addressIn(word: ByteArray): String? {
       if (word.size < 32 || word.all { it.toInt() == 0 }) return null
-      return AbiCodec.checksum(word.copyOfRange(word.size - 20, word.size).toHex())
+      return checksumAddress(word.copyOfRange(word.size - 20, word.size).toHex())
     }
 
     /** Identifies an ABI entry by kind, name and parameter types, to merge a proxy's ABI with its implementation's. */

@@ -1,5 +1,8 @@
 package me.serce.solidity.chain.abi
 
+import me.serce.solidity.util.toHex
+import me.serce.solidity.util.Keccak
+import me.serce.solidity.util.checksumAddress
 import junit.framework.TestCase
 import java.math.BigInteger
 
@@ -29,7 +32,7 @@ class AbiCodecTest : TestCase() {
   }
 
   fun testChecksum() {
-    assertEquals("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", AbiCodec.checksum("5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"))
+    assertEquals("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", checksumAddress("5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"))
   }
 
   fun testEncodeStatic() {

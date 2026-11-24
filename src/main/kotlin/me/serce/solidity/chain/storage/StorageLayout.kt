@@ -1,13 +1,14 @@
 package me.serce.solidity.chain.storage
 
+import me.serce.solidity.util.toHex
+import me.serce.solidity.util.Keccak
+import me.serce.solidity.util.checksumAddress
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiInputException
 import me.serce.solidity.chain.abi.AbiType
 import me.serce.solidity.chain.abi.AbiValueParser
-import me.serce.solidity.chain.abi.Keccak
-import me.serce.solidity.chain.abi.toHex
 import me.serce.solidity.chain.abi.toWord
 import java.math.BigInteger
 
@@ -283,7 +284,7 @@ class StorageLayout(val variables: List<Variable>, private val types: Map<String
       return when {
         label == "bool" -> (unsigned.signum() != 0).toString()
         label == "address" || label == "address payable" || label.startsWith("contract ") || label.startsWith("interface ") ->
-          AbiCodec.checksum(bytes.copyOfRange(maxOf(0, bytes.size - 20), bytes.size).toHex())
+          checksumAddress(bytes.copyOfRange(maxOf(0, bytes.size - 20), bytes.size).toHex())
         label.startsWith("int") -> BigInteger(bytes).toString() // two's complement of the packed width
         label.startsWith("bytes") -> bytes.toHex()
         label.startsWith("enum ") -> "$unsigned"

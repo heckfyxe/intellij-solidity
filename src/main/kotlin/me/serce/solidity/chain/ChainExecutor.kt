@@ -1,5 +1,9 @@
 package me.serce.solidity.chain
 
+import me.serce.solidity.util.toHex
+import me.serce.solidity.util.hexToBytes
+import me.serce.solidity.util.hexToBigInt
+import me.serce.solidity.util.checksumAddress
 import com.fasterxml.jackson.databind.JsonNode
 import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiEntry
@@ -7,8 +11,6 @@ import me.serce.solidity.chain.abi.AbiType
 import me.serce.solidity.chain.abi.AbiValueFormatter
 import me.serce.solidity.chain.abi.ContractAbi
 import me.serce.solidity.chain.abi.RevertDecoder
-import me.serce.solidity.chain.abi.hexToBytes
-import me.serce.solidity.chain.abi.toHex
 import me.serce.solidity.chain.debug.CompiledSources
 import me.serce.solidity.chain.debug.RevertTracer
 import me.serce.solidity.chain.debug.TraceTarget
@@ -16,7 +18,6 @@ import me.serce.solidity.chain.foundry.Artifact
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import me.serce.solidity.chain.rpc.RpcException
-import me.serce.solidity.chain.rpc.hexToBigInt
 import me.serce.solidity.chain.wallet.CastException
 import me.serce.solidity.chain.wallet.CastWallet
 import me.serce.solidity.chain.wallet.DefaultWalletPrompts
@@ -49,7 +50,7 @@ class ChainExecutor(
       val receipt = awaitReceipt(chain, rpc, hash)
       applyReceipt(rpc, record, receipt, artifact.abi)
       if (record.status == TxStatus.SUCCESS) {
-        val address = AbiCodec.checksum(receipt["contractAddress"].asText())
+        val address = checksumAddress(receipt["contractAddress"].asText())
         record.to = address
         record.results += "address: $address"
         deployment = Deployment().also {

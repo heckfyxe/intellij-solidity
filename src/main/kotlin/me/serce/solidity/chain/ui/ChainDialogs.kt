@@ -1,5 +1,7 @@
 package me.serce.solidity.chain.ui
 
+import me.serce.solidity.util.checksumAddress
+import me.serce.solidity.util.isAddress
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.DialogWrapper
@@ -23,7 +25,6 @@ import me.serce.solidity.chain.ChainKind
 import me.serce.solidity.chain.Network
 import me.serce.solidity.chain.Networks
 import me.serce.solidity.chain.Deployment
-import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiInputException
 import me.serce.solidity.chain.abi.AbiText
 import me.serce.solidity.chain.abi.AbiFetchException
@@ -346,7 +347,7 @@ class AttachDialog(
     }
     val result = try {
       ProgressManager.getInstance().runProcessWithProgressSynchronously<FetchedAbi, AbiFetchException>(
-        { fetcher(AbiCodec.checksum(a)) }, "Fetching ABI", true, project)
+        { fetcher(checksumAddress(a)) }, "Fetching ABI", true, project)
     } catch (e: AbiFetchException) {
       setErrorText(e.message)
       return
@@ -363,11 +364,6 @@ class AttachDialog(
       "Etherscan API key, kept in the system keychain. One key works for every chain Etherscan supports. Leave empty to remove it.",
       "Etherscan API Key", null) ?: return
     Secrets.set(Secrets.ETHERSCAN_KEY, key.trim())
-  }
-
-  private fun isAddress(text: String): Boolean {
-    val a = text.trim().removePrefix("0x")
-    return a.length == 40 && a.all { Character.digit(it, 16) >= 0 }
   }
 
   /** [parsedAbi]'s last text and result: validation asks on every tick, and a large ABI takes a while to parse. */
@@ -396,7 +392,7 @@ class AttachDialog(
     return null
   }
 
-  val checksummedAddress get() = AbiCodec.checksum(address.trim())
+  val checksummedAddress get() = checksumAddress(address.trim())
 
   /** Call after OK: the contract to add to [chainId]. */
   fun deployment(chainId: String): Deployment = Deployment().also { d ->

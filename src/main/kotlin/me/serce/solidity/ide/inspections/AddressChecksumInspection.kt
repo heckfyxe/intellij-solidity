@@ -1,5 +1,7 @@
 package me.serce.solidity.ide.inspections
 
+import me.serce.solidity.util.checksumAddress
+import me.serce.solidity.util.ADDRESS_REGEX
 import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
@@ -17,7 +19,7 @@ class AddressChecksumInspection : LocalInspectionTool() {
         if (!ADDRESS_REGEX.matches(text) || isValidChecksum(text)) {
           return
         }
-        val checksummed = toChecksumAddress(text)
+        val checksummed = checksumAddress(text)
         holder.registerProblem(
           o,
           "Invalid address checksum. Correct checksummed address: $checksummed",
@@ -34,6 +36,6 @@ class AddressChecksumInspection : LocalInspectionTool() {
     if (address.none { it in 'a'..'f' || it in 'A'..'F' }) {
       return true
     }
-    return toChecksumAddress(address) == address
+    return checksumAddress(address) == address
   }
 }

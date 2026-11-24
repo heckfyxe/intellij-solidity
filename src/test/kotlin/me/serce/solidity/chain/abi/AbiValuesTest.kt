@@ -1,5 +1,7 @@
 package me.serce.solidity.chain.abi
 
+import me.serce.solidity.util.toHex
+import me.serce.solidity.util.hexToBytes
 import junit.framework.TestCase
 import me.serce.solidity.chain.foundry.SolcLocator
 import java.math.BigInteger

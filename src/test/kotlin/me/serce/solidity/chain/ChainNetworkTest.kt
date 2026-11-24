@@ -1,13 +1,14 @@
 package me.serce.solidity.chain
 
+import me.serce.solidity.util.hexToBytes
+import me.serce.solidity.util.checksumAddress
+import me.serce.solidity.util.withoutHexPrefix
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.SystemProperties
 import com.intellij.util.ui.UIUtil
 import me.serce.solidity.chain.abi.AbiText
-import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiFetcher
-import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.project.Project
@@ -183,7 +184,7 @@ class ChainNetworkTest : BasePlatformTestCase() {
     val cancelled = executor.invoke(chain, d, poke, emptyList(), wallet.address, BigInteger.ZERO)
     assertEquals(TxStatus.FAILED, cancelled.record.status)
     assertEquals("Not sent: cancelled", cancelled.record.error)
-    assertEquals(BigInteger.ONE, rpc.call("eth_getTransactionCount", wallet.address, "latest").asText().removePrefix("0x").toBigInteger(16))
+    assertEquals(BigInteger.ONE, rpc.call("eth_getTransactionCount", wallet.address, "latest").asText().withoutHexPrefix().toBigInteger(16))
 
     prompts.answer = WalletPrompts.Confirmation.SEND_AND_STOP_ASKING
     val sent = executor.invoke(chain, d, poke, emptyList(), wallet.address, BigInteger.ZERO)
@@ -204,13 +205,13 @@ class ChainNetworkTest : BasePlatformTestCase() {
     val impl = "0x2222222222222222222222222222222222222222"
     val proxy = "0x1111111111111111111111111111111111111111"
     assertNull(AbiFetcher.proxyImplementation(rpc, proxy))
-    rpc.call("anvil_setStorageAt", proxy, AbiFetcher.IMPLEMENTATION_SLOT, "0x" + "0".repeat(24) + impl.removePrefix("0x"))
+    rpc.call("anvil_setStorageAt", proxy, AbiFetcher.IMPLEMENTATION_SLOT, "0x" + "0".repeat(24) + impl.withoutHexPrefix())
     assertEquals(impl, AbiFetcher.proxyImplementation(rpc, proxy))
     // a beacon proxy: the beacon's implementation() returns 42, read as an address
     val hash = rpc.sendTransaction(from, null, "0x600a600c600039600a6000f3602a60005260206000f3".hexToBytes(), BigInteger.ZERO)
     val beacon = rpc.waitForReceipt(hash)["contractAddress"].asText()
     val beaconProxy = "0x3333333333333333333333333333333333333333"
-    rpc.call("anvil_setStorageAt", beaconProxy, AbiFetcher.BEACON_SLOT, "0x" + "0".repeat(24) + beacon.removePrefix("0x"))
+    rpc.call("anvil_setStorageAt", beaconProxy, AbiFetcher.BEACON_SLOT, "0x" + "0".repeat(24) + beacon.withoutHexPrefix())
     assertEquals("0x000000000000000000000000000000000000002A", AbiFetcher.proxyImplementation(rpc, beaconProxy)!!.uppercase().replace("0X", "0x"))
   }
 
@@ -229,7 +230,7 @@ class ChainNetworkTest : BasePlatformTestCase() {
     val rpc = startNetwork("Low-level net")
     val accounts = rpc.accounts()
     val hash = rpc.sendTransaction(accounts[0], null, "0x600a600c600039600a6000f3602a60005260206000f3".hexToBytes(), BigInteger.ZERO)
-    val answer = AbiCodec.checksum(rpc.waitForReceipt(hash)["contractAddress"].asText())
+    val answer = checksumAddress(rpc.waitForReceipt(hash)["contractAddress"].asText())
     val service = ChainService.getInstance(project)
     // a node that unlocks its accounts, so sending needs no wallet
     val chain = ChainConfig().apply { kind = ChainKind.EXTERNAL; url = rpc.url; name = "node" }
@@ -244,7 +245,7 @@ class ChainNetworkTest : BasePlatformTestCase() {
     assertEquals("call 0xdeadbeef", call.record.function)
     assertEquals("returned: 0x" + "0".repeat(62) + "2a", call.record.results.single())
 
-    val to = AbiCodec.checksum(accounts[1])
+    val to = checksumAddress(accounts[1])
     val before = rpc.balance(to)
     val transfer = executor.lowLevel(chain, to, ByteArray(0), rt.accounts.first(), BigInteger.TEN, send = true)
     assertEquals(transfer.record.error, TxStatus.SUCCESS, transfer.record.status)

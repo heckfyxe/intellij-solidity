@@ -1,5 +1,7 @@
 package me.serce.solidity.chain.wallet
 
+import me.serce.solidity.util.checksumAddress
+import me.serce.solidity.util.isAddress
 import com.intellij.ide.CopyPasteManagerEx
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
@@ -21,7 +23,6 @@ import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.panel
 import me.serce.solidity.chain.WalletConfig
 import me.serce.solidity.chain.WalletKind
-import me.serce.solidity.chain.abi.AbiCodec
 import java.awt.datatransfer.StringSelection
 import java.io.File
 import javax.swing.JComponent
@@ -123,15 +124,14 @@ class AddWalletDialog(private val project: Project, private val kind: WalletKind
   override fun doValidate(): ValidationInfo? = when (kind) {
     WalletKind.KEYSTORE -> if (keystoreCombo.selectedItem == null) ValidationInfo("Pick a keystore", keystoreCombo) else null
     WalletKind.BROWSER -> {
-      val a = addressField.text.trim().removePrefix("0x")
-      if (a.length != 40 || a.any { Character.digit(it, 16) < 0 }) ValidationInfo("Not an address", addressField) else null
+      if (!isAddress(addressField.text)) ValidationInfo("Not an address", addressField) else null
     }
     else -> null
   }
 
   override fun doOKAction() {
     when (kind) {
-      WalletKind.BROWSER -> wallet.address = AbiCodec.checksum(addressField.text.trim())
+      WalletKind.BROWSER -> wallet.address = checksumAddress(addressField.text.trim())
       WalletKind.KEYSTORE -> {
         wallet.keystorePath = (keystoreCombo.selectedItem as File).path
         if (!detectAddress()) return

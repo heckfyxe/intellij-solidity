@@ -1,5 +1,7 @@
 package me.serce.solidity.chain.abi
 
+import me.serce.solidity.util.checksumAddress
+import me.serce.solidity.util.withoutHexPrefix
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 
@@ -58,7 +60,7 @@ object AbiCodec {
       require(n.bitLength() < t.bits) { "$n does not fit in ${t.canonical}" }
       uint(if (n.signum() < 0) n.add(TWO_256) else n)
     }
-    AbiType.Address -> uint(BigInteger((v as String).removePrefix("0x"), 16))
+    AbiType.Address -> uint(BigInteger((v as String).withoutHexPrefix(), 16))
     AbiType.Bool -> uint(if (v as Boolean) BigInteger.ONE else BigInteger.ZERO)
     is AbiType.FixedBytes -> {
       val b = v as ByteArray
@@ -103,7 +105,7 @@ object AbiCodec {
   private fun decodeValue(t: AbiType, data: ByteArray, at: Int): Any = when (t) {
     is AbiType.UInt -> word(data, at)
     is AbiType.Int -> word(data, at).let { if (it.testBit(255)) it.subtract(TWO_256) else it }
-    AbiType.Address -> checksum(word(data, at).toString(16).padStart(40, '0').takeLast(40))
+    AbiType.Address -> checksumAddress(word(data, at).toString(16).padStart(40, '0').takeLast(40))
     AbiType.Bool -> word(data, at).signum() != 0
     is AbiType.FixedBytes -> slice(data, at, t.size)
     AbiType.Bytes -> slice(data, at + 32, index(data, at))
@@ -135,11 +137,4 @@ object AbiCodec {
     return data.copyOfRange(at, at + len)
   }
 
-  /** EIP-55 mixed-case checksum address. [hex] is 40 hex chars, with or without 0x. */
-  fun checksum(hex: String): String {
-    val lower = hex.removePrefix("0x").lowercase()
-    val hash = Keccak.hash(lower).toHex(prefix = false)
-    return "0x" + lower.mapIndexed { i, c -> if (c.isLetter() && Character.digit(hash[i], 16) >= 8) c.uppercaseChar() else c }
-      .joinToString("")
-  }
 }

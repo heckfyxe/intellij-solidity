@@ -1,5 +1,8 @@
 package me.serce.solidity.chain.storage
 
+import me.serce.solidity.util.toHex
+import me.serce.solidity.util.checksumAddress
+import me.serce.solidity.util.isAddress
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.project.Project
@@ -18,9 +21,7 @@ import com.intellij.util.ui.ListTableModel
 import me.serce.solidity.chain.ChainConfig
 import me.serce.solidity.chain.ChainService
 import me.serce.solidity.chain.Deployment
-import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiInputException
-import me.serce.solidity.chain.abi.toHex
 import me.serce.solidity.chain.abi.toWord
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.RpcException
@@ -106,10 +107,7 @@ class StorageDialog(
     }
   }.apply { preferredSize = JBUI.size(760, if (deployment?.sourcePath?.isNotEmpty() == true) 560 else 160) }
 
-  private fun address(): String? = addressField.text.trim().takeIf {
-    val hex = it.removePrefix("0x")
-    hex.length == 40 && hex.all { c -> Character.digit(c, 16) >= 0 }
-  }?.let { AbiCodec.checksum(it) }
+  private fun address(): String? = addressField.text.takeIf { isAddress(it) }?.let { checksumAddress(it) }
 
   private fun reader(): StorageReader? {
     val rpc = service.runtime(chain.id).rpc ?: return null
@@ -234,7 +232,7 @@ class StorageDialog(
       val n = BigInteger(1, word)
       val parts = mutableListOf(word.toHex())
       if (n.signum() != 0) parts += "uint $n"
-      if (n.signum() != 0 && word.take(12).all { it.toInt() == 0 } && n.bitLength() > 64) parts += "address ${AbiCodec.checksum(word.copyOfRange(12, 32).toHex())}"
+      if (n.signum() != 0 && word.take(12).all { it.toInt() == 0 } && n.bitLength() > 64) parts += "address ${checksumAddress(word.copyOfRange(12, 32).toHex())}"
       return parts.joinToString("   ")
     }
   }

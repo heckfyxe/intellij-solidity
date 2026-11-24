@@ -1,5 +1,8 @@
 package me.serce.solidity.chain
 
+import me.serce.solidity.util.hexToBytes
+import me.serce.solidity.util.hexToBigInt
+import me.serce.solidity.util.checksumAddress
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.filters.TextConsoleBuilderFactory
@@ -30,12 +33,9 @@ import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.ShutDownTracker
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.messages.Topic
-import me.serce.solidity.chain.abi.AbiCodec
-import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.JsonRpcClient
 import me.serce.solidity.chain.rpc.RpcException
-import me.serce.solidity.chain.rpc.hexToBigInt
 import java.math.BigInteger
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -383,14 +383,14 @@ class ChainService(val project: Project) : PersistentStateComponent<ChainState>,
     for (account in rpc.accounts()) {
       if (rpc.code(account).isEmpty()) continue
       rpc.call("anvil_setCode", account, "0x")
-      rt.console?.print("Cleared code that ${AbiCodec.checksum(account)} has on the forked network\n", ConsoleViewContentType.SYSTEM_OUTPUT)
+      rt.console?.print("Cleared code that ${checksumAddress(account)} has on the forked network\n", ConsoleViewContentType.SYSTEM_OUTPUT)
     }
   }
 
   private fun loadChainInfo(config: ChainConfig, rt: ChainRuntime, rpc: JsonRpcClient) {
     // Public RPCs hold no accounts: on a network the wallets added to the chain are the accounts.
     rt.accounts = if (config.isNetworkChain) config.wallets.map { it.address }.filter { it.isNotEmpty() }.distinct()
-    else rpc.accounts().map { AbiCodec.checksum(it) }
+    else rpc.accounts().map { checksumAddress(it) }
     val accounts = rt.accounts
     val deployments = deployments(config.id)
     val results = rpc.batch(listOf("eth_blockNumber" to emptyList<Any?>()) +

@@ -1,11 +1,12 @@
 package me.serce.solidity.chain.debug
 
+import me.serce.solidity.util.hexToBytes
+import me.serce.solidity.util.withoutHexPrefix
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.serce.solidity.chain.LinePositions
 import me.serce.solidity.chain.Offsets
-import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.foundry.compilationTarget
 import java.nio.file.Files
 import java.nio.file.Path
@@ -155,7 +156,7 @@ class CompiledSources(private val root: Path, private val outDir: Path, private 
   }
 
   private fun code(name: String, node: JsonNode?, paths: Map<Int, String>): CompiledCode? {
-    val hex = node?.get("object")?.asText()?.removePrefix("0x")?.takeIf { it.isNotEmpty() } ?: return null
+    val hex = node?.get("object")?.asText()?.withoutHexPrefix()?.takeIf { it.isNotEmpty() } ?: return null
     // unlinked library placeholders are 40 hex chars like `__$…$__`; they become wildcards via linkReferences
     val bytes = runCatching { hex.replace(PLACEHOLDER, "0".repeat(40)).hexToBytes() }.getOrNull() ?: return null
     val wildcards = ArrayList<IntRange>()

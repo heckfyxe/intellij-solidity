@@ -1,5 +1,10 @@
 package me.serce.solidity.chain.abi
 
+import me.serce.solidity.util.toHex
+import me.serce.solidity.util.hexToBytes
+import me.serce.solidity.util.checksumAddress
+import me.serce.solidity.util.isAddress
+import me.serce.solidity.util.withoutHexPrefix
 import java.math.BigDecimal
 import java.math.BigInteger
 
@@ -74,9 +79,9 @@ object AbiValueParser {
   }
 
   private fun parseAddress(s: String): String {
-    val hex = unquote(s).removePrefix("0x").removePrefix("0X")
-    if (hex.length != 40 || hex.any { Character.digit(it, 16) < 0 }) throw AbiInputException("Not an address: '$s'")
-    val expected = AbiCodec.checksum(hex)
+    val hex = unquote(s).withoutHexPrefix()
+    if (!isAddress(hex)) throw AbiInputException("Not an address: '$s'")
+    val expected = checksumAddress(hex)
     val mixed = hex.any { it.isUpperCase() } && hex.any { it.isLowerCase() }
     if (mixed && "0x$hex" != expected) throw AbiInputException("Address checksum mismatch, did you mean $expected?")
     return expected

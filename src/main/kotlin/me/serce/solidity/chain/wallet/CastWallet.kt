@@ -1,5 +1,8 @@
 package me.serce.solidity.chain.wallet
 
+import me.serce.solidity.util.toHex
+import me.serce.solidity.util.checksumAddress
+import me.serce.solidity.util.ADDRESS_REGEX
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.progress.ProgressIndicator
@@ -9,8 +12,6 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.EnvironmentUtil
 import me.serce.solidity.chain.WalletConfig
 import me.serce.solidity.chain.WalletKind
-import me.serce.solidity.chain.abi.AbiCodec
-import me.serce.solidity.chain.abi.toHex
 import me.serce.solidity.chain.foundry.FoundryProject
 import java.io.File
 import java.math.BigInteger
@@ -39,8 +40,8 @@ class CastWallet(private val cast: String) {
     val out = withPassword(password) { passwordFile ->
       run(listOf(cast, "wallet", "address") + walletArgs(wallet, passwordFile), env = emptyMap(), timeout = timeoutFor(wallet))
     }
-    val address = ADDRESS.find(out)?.value ?: throw CastException("cast printed no address: ${out.trim().take(200)}")
-    return AbiCodec.checksum(address)
+    val address = ADDRESS_REGEX.find(out)?.value ?: throw CastException("cast printed no address: ${out.trim().take(200)}")
+    return checksumAddress(address)
   }
 
   /** Signs [tx] for the chain at [rpcUrl] and returns the raw transaction for `eth_sendRawTransaction`. */
@@ -116,7 +117,6 @@ class CastWallet(private val cast: String) {
   }
 
   companion object {
-    private val ADDRESS = Regex("0x[0-9a-fA-F]{40}")
     private val RAW_TX = Regex("0x[0-9a-fA-F]{100,}")
     private val TX_HASH = Regex("0x[0-9a-fA-F]{64}\\b")
     /** Variables that would make cast or forge sign with something other than the wallet we pass. */

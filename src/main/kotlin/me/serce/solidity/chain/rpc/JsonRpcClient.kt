@@ -1,10 +1,12 @@
 package me.serce.solidity.chain.rpc
 
+import me.serce.solidity.util.toHex
+import me.serce.solidity.util.hexToBytes
+import me.serce.solidity.util.hexToBigInt
+import me.serce.solidity.util.toHexQuantity
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import me.serce.solidity.chain.abi.hexToBytes
-import me.serce.solidity.chain.abi.toHex
 import java.math.BigInteger
 import java.net.URI
 import java.net.http.HttpRequest
@@ -148,7 +150,3 @@ class JsonRpcClient(val url: String) {
   }
 }
 
-fun String.hexToBigInt(): BigInteger = removePrefix("0x").ifEmpty { "0" }.toBigInteger(16)
-
-/** A JSON-RPC quantity: `0x`-prefixed hex without leading zeros. */
-fun BigInteger.toHexQuantity(): String = "0x" + toString(16)

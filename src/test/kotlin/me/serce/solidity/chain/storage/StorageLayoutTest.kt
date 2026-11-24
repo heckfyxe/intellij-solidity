@@ -1,12 +1,12 @@
 package me.serce.solidity.chain.storage
 
+import me.serce.solidity.util.hexToBytes
+import me.serce.solidity.util.checksumAddress
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.SystemProperties
-import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiInputException
-import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.abi.toWord
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.chain.rpc.JsonRpcClient
@@ -44,7 +44,7 @@ class StorageLayoutTest : BasePlatformTestCase() {
     val slot1 = BigInteger.valueOf(42).toWord()
     val reader = StorageReader { if (it.signum() == 0) slot0 else slot1 }
     assertEquals(
-      listOf("slot 0  int8: -3", "slot 0 +1  bool: true", "slot 0 +2  address: ${AbiCodec.checksum("0x000000000000000000000000000000000000dead")}"),
+      listOf("slot 0  int8: -3", "slot 0 +1  bool: true", "slot 0 +2  address: ${checksumAddress("0x000000000000000000000000000000000000dead")}"),
       StorageLayout.decodePacked("int8, bool, address", BigInteger.ZERO, reader),
     )
     // a uint256 doesn't fit after the int8, so it is read from the next slot
@@ -112,7 +112,7 @@ class StorageLayoutTest : BasePlatformTestCase() {
     assertEquals("31", at("small", "[34]"))
     assertEquals("6", at("fixedArr", "2"))
     assertEquals("10", at("packedFixed", "[3]"))
-    assertEquals("{a: 8, b: ${AbiCodec.checksum("0x000000000000000000000000000000000000beef")}}", at("ps", "1"))
+    assertEquals("{a: 8, b: ${checksumAddress("0x000000000000000000000000000000000000beef")}}", at("ps", "1"))
     assertEquals("7", at("ps", "[0].a"))
     assertEquals("length 2: [11, 12]", at("grid", "1"))
     assertEquals("12", at("grid", "[1][1]"))
@@ -157,7 +157,7 @@ class StorageLayoutTest : BasePlatformTestCase() {
     val rpc = JsonRpcClient("http://127.0.0.1:$port")
     for (i in 1..50) if (runCatching { rpc.chainId() }.isSuccess) break else Thread.sleep(200)
     val hash = rpc.sendTransaction(rpc.accounts().first(), null, artifact.bytecode.hexToBytes(), BigInteger.ZERO)
-    val address = AbiCodec.checksum(rpc.waitForReceipt(hash)["contractAddress"].asText())
+    val address = checksumAddress(rpc.waitForReceipt(hash)["contractAddress"].asText())
     return layout to StorageReader { slot -> rpc.storageAt(address, slot.toHex32()) }
   }
 
@@ -203,20 +203,20 @@ class StorageLayoutTest : BasePlatformTestCase() {
     val rpc = JsonRpcClient("http://127.0.0.1:$port")
     for (i in 1..50) if (runCatching { rpc.chainId() }.isSuccess) break else Thread.sleep(200)
     val hash = rpc.sendTransaction(rpc.accounts().first(), null, artifact.bytecode.hexToBytes(), BigInteger.ZERO)
-    val address = AbiCodec.checksum(rpc.waitForReceipt(hash)["contractAddress"].asText())
+    val address = checksumAddress(rpc.waitForReceipt(hash)["contractAddress"].asText())
     val reader = StorageReader { slot -> rpc.storageAt(address, slot.toHex32()) }
 
     val rows = layout.rows().associateBy { it.name }
     fun value(name: String) = layout.read(rows.getValue(name), reader)
     assertEquals("-3", value("small"))
     assertEquals("true", value("flag"))
-    assertEquals(AbiCodec.checksum("0x000000000000000000000000000000000000dead"), value("owner"))
+    assertEquals(checksumAddress("0x000000000000000000000000000000000000dead"), value("owner"))
     assertEquals("42", value("big"))
     assertTrue(value("arr"), value("arr").startsWith("length 2"))
     assertEquals("\"hi\"", value("name"))
     assertEquals("\"a string that is longer than thirty-one bytes\"", value("long"))
     assertEquals("7", value("p.a"))
-    assertEquals(AbiCodec.checksum("0x000000000000000000000000000000000000cafe"), value("p.b"))
+    assertEquals(checksumAddress("0x000000000000000000000000000000000000cafe"), value("p.b"))
     assertEquals("1", value("e"))
     assertEquals("5", layout.readMapping(rows.getValue("bal"), "0x000000000000000000000000000000000000BEEF", reader))
     assertEquals("0", layout.readMapping(rows.getValue("bal"), "0x0000000000000000000000000000000000000001", reader))

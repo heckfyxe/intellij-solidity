@@ -1,11 +1,12 @@
 package me.serce.solidity.chain.debug
 
+import me.serce.solidity.util.hexToBytes
+import me.serce.solidity.util.hexToBigInt
+import me.serce.solidity.util.toHexQuantity
+import me.serce.solidity.util.checksumAddress
+import me.serce.solidity.util.withoutHexPrefix
 import com.fasterxml.jackson.databind.JsonNode
-import me.serce.solidity.chain.abi.AbiCodec
-import me.serce.solidity.chain.abi.hexToBytes
 import me.serce.solidity.chain.rpc.JsonRpcClient
-import me.serce.solidity.chain.rpc.hexToBigInt
-import me.serce.solidity.chain.rpc.toHexQuantity
 import java.math.BigInteger
 
 /** What failed: a call simulated against the latest block, or a transaction that was mined and reverted. */
@@ -67,10 +68,10 @@ class RevertTracer(private val rpc: JsonRpcClient, private val sources: Compiled
     val to = call["to"]?.asText()
     val input = call["input"]?.asText().orEmpty()
     if (!isRoot && type in CALL_OPS && to != null && input.length > 2 && !isPrecompile(to) && code(to).isEmpty()) {
-      missing += AbiCodec.checksum(to)
+      missing += checksumAddress(to)
     }
     call["error"]?.asText()?.takeIf { it.isNotEmpty() && !it.contains("revert", ignoreCase = true) }?.let { error ->
-      val who = to?.let { address -> sources?.runtime(code(address))?.contract ?: AbiCodec.checksum(address) }
+      val who = to?.let { address -> sources?.runtime(code(address))?.contract ?: checksumAddress(address) }
       notes += if (who != null) "$who failed: $error" else "Failed: $error"
     }
     call["calls"]?.forEach { collectCallNotes(it, isRoot = false, missing, notes) }
@@ -89,7 +90,7 @@ class RevertTracer(private val rpc: JsonRpcClient, private val sources: Compiled
         data = tx["input"]?.asText()?.hexToBytes() ?: ByteArray(0),
         value = tx["value"]?.asText()?.hexToBigInt() ?: BigInteger.ZERO,
       )
-      val parent = tx["blockNumber"]?.asText()?.removePrefix("0x")?.toBigIntegerOrNull(16)?.minus(BigInteger.ONE)?.max(BigInteger.ZERO)
+      val parent = tx["blockNumber"]?.asText()?.withoutHexPrefix()?.toBigIntegerOrNull(16)?.minus(BigInteger.ONE)?.max(BigInteger.ZERO)
       Replay(call, parent?.toHexQuantity() ?: "latest", tx["gas"]?.asText())
     }
   }
@@ -109,7 +110,7 @@ class RevertTracer(private val rpc: JsonRpcClient, private val sources: Compiled
 
     /** Precompiles (ecrecover, sha256, …, p256verify at 0x100) run without code. */
     fun isPrecompile(address: String): Boolean =
-      runCatching { BigInteger(address.removePrefix("0x"), 16) <= BigInteger.valueOf(0x1ff) }.getOrDefault(false)
+      runCatching { address.hexToBigInt() <= BigInteger.valueOf(0x1ff) }.getOrDefault(false)
 
     fun parseSteps(logs: JsonNode?): List<Step> = logs?.map { log ->
       val stack = log["stack"]
@@ -156,7 +157,7 @@ object FrameAnalysis {
 
   /** Splits the [steps] of a failed transaction into frames by call depth; [rootAddress] is null when it creates a contract. */
   fun build(steps: List<Step>, rootAddress: String?): Frame {
-    val root = Frame(rootAddress?.let { AbiCodec.checksum(it) })
+    val root = Frame(rootAddress?.let { checksumAddress(it) })
     val open = arrayListOf(root)
     var previous: Step? = null
     for (step in steps) {
@@ -183,10 +184,10 @@ object FrameAnalysis {
     failed = lastOp !in ENDS_NORMALLY
   }
 
-  private fun isZero(word: String) = word.removePrefix("0x").all { it == '0' }
+  private fun isZero(word: String) = word.withoutHexPrefix().all { it == '0' }
 
   private fun address(word: String): String? {
-    val hex = word.removePrefix("0x").trimStart('0').padStart(40, '0')
-    return if (hex.length > 40) null else AbiCodec.checksum("0x$hex")
+    val hex = word.withoutHexPrefix().trimStart('0').padStart(40, '0')
+    return if (hex.length > 40) null else checksumAddress("0x$hex")
   }
 }
