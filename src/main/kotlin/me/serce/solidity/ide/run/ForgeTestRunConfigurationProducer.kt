@@ -17,10 +17,7 @@ class ForgeTestRunConfigurationProducer : LazyRunConfigurationProducer<ForgeTest
     configuration: ForgeTestRunConfiguration,
     context: ConfigurationContext
   ): Boolean {
-    val location = context.location ?: return false
-    val element = location.psiElement
-
-    return when (element) {
+    return when (val element = context.location?.psiElement) {
       is SolFunctionDefinition -> {
         element.isForgeTest() &&
           configuration.testName == element.name &&
@@ -40,32 +37,18 @@ class ForgeTestRunConfigurationProducer : LazyRunConfigurationProducer<ForgeTest
     context: ConfigurationContext,
     sourceElement: Ref<PsiElement>
   ): Boolean {
-    val location = context.location ?: return false
-    val element = location.psiElement
-    val project = context.project
-
-    when (element) {
-      is SolFunctionDefinition -> {
-        if (element.isForgeTest()) {
-          configuration.name = "${element.contract?.name}.${element.name}"
-          configuration.testName = element.name ?: ""
-          configuration.contractName = element.contract?.name ?: ""
-          configuration.workingDirectory = forgeWorkingDirectory(element)
-          sourceElement.set(element)
-          return true
-        }
-      }
-
-      is SolContractDefinition -> {
-        configuration.name = element.name ?: ""
-        configuration.contractName = element.name ?: ""
-        configuration.workingDirectory = forgeWorkingDirectory(element)
-        sourceElement.set(element)
-        return true
-      }
+    val element = context.location?.psiElement ?: return false
+    val (contract, test) = when (element) {
+      is SolFunctionDefinition -> if (element.isForgeTest()) element.contract?.name.orEmpty() to element.name.orEmpty() else return false
+      is SolContractDefinition -> element.name.orEmpty() to ""
+      else -> return false
     }
-
-    return false
+    configuration.name = listOf(contract, test).filter { it.isNotEmpty() }.joinToString(".")
+    configuration.contractName = contract
+    configuration.testName = test
+    configuration.workingDirectory = forgeWorkingDirectory(element)
+    sourceElement.set(element)
+    return true
   }
 
   /** Runs the tests of [contract], or only [test] when given, from the Foundry project of [element]. */

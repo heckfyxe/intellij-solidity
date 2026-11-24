@@ -22,25 +22,21 @@ class SolBlockCommentEnterHandler : EnterHandlerDelegateAdapter() {
       return Result.Continue
     }
 
-    val lineStart = document.getLineStartOffset(lineNumber)
     val prevLineStart = document.getLineStartOffset(lineNumber - 1)
     val prevLineEnd = document.getLineEndOffset(lineNumber - 1)
     val prevLine = document.charsSequence.subSequence(prevLineStart, prevLineEnd).toString()
     val trimmedPrev = prevLine.trim()
-
-    val lineEnd = document.getLineEndOffset(lineNumber)
-    val currentLine = document.charsSequence.subSequence(lineStart, lineEnd).toString()
-    val trimmedCurrent = currentLine.trim()
-
-    val indent = document.charsSequence.subSequence(lineStart, offset).toString()
-    val prevLineContainsCommentEnd = trimmedPrev.contains("*/")
-
-    if (prevLineContainsCommentEnd) {
+    if (trimmedPrev.contains("*/") || !trimmedPrev.startsWith("*") && !trimmedPrev.startsWith("/*")) {
       return Result.Continue
     }
 
+    val lineStart = document.getLineStartOffset(lineNumber)
+    val lineEnd = document.getLineEndOffset(lineNumber)
+    val trimmedCurrent = document.charsSequence.subSequence(lineStart, lineEnd).trim()
+    val indent = document.charsSequence.subSequence(lineStart, offset).toString()
+
     return when {
-      trimmedPrev.startsWith("/*") && trimmedCurrent == "*/" -> {
+      trimmedPrev.startsWith("/*") && trimmedCurrent.contentEquals("*/") -> {
         document.replaceString(lineStart, lineEnd, "$indent * ")
         val insertionOffset = document.getLineEndOffset(lineNumber)
         document.insertString(insertionOffset, "\n$indent */")

@@ -10,7 +10,6 @@ import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
 import me.serce.solidity.lang.SolidityLanguage
 import me.serce.solidity.loadCodeSampleResource
-import org.jdom.Element
 import javax.swing.JCheckBox
 
 class SolCodeStyleSettingsProvider : CodeStyleSettingsProvider() {
@@ -36,16 +35,8 @@ class SolCodeStyleSettingsProvider : CodeStyleSettingsProvider() {
   }
 }
 
-class SolCodeStyleSettings(@JvmField var specificSymbolImports: Boolean, container: CodeStyleSettings) : CustomCodeStyleSettings("SolCodeStyleSettings", container) {
-
-  override fun readExternal(parentElement: Element?) {
-    super.readExternal(parentElement)
-  }
-
-  override fun writeExternal(parentElement: Element?, parentSettings: CustomCodeStyleSettings) {
-    super.writeExternal(parentElement, parentSettings)
-  }
-}
+class SolCodeStyleSettings(@JvmField var specificSymbolImports: Boolean, container: CodeStyleSettings) :
+  CustomCodeStyleSettings("SolCodeStyleSettings", container)
 
 val CodeStyleSettings.solidityCustomSettings: SolCodeStyleSettings
     get() = getCustomSettings(SolCodeStyleSettings::class.java)
@@ -59,19 +50,12 @@ class SolLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvider()
       else -> ""
     }
 
-  override fun customizeDefaults(
-    commonSettings: CommonCodeStyleSettings,
-    indentOptions: CommonCodeStyleSettings.IndentOptions
-  ) {
-  }
-
-  override fun getIndentOptionsEditor(): IndentOptionsEditor? = SmartIndentOptionsEditor()
+  override fun getIndentOptionsEditor(): IndentOptionsEditor = SmartIndentOptionsEditor()
 
   private val INDENT_SAMPLE: String by lazy {
     loadCodeSampleResource(this, "me/serce/solidity/ide/formatting/indent_sample.sol")
   }
 }
-
 
 class ImportSettingsPanelWrapper(settings: CodeStyleSettings) : CodeStyleAbstractPanel(SolidityLanguage, null, settings) {
 
@@ -86,17 +70,14 @@ class ImportSettingsPanelWrapper(settings: CodeStyleSettings) : CodeStyleAbstrac
 
   override fun getPreviewText(): String? = null
 
-  override fun apply(settings: CodeStyleSettings) = importsPanel.apply(settings.solCodeStyleSettings())
+  override fun apply(settings: CodeStyleSettings) = importsPanel.apply(settings.solidityCustomSettings)
 
-  private fun CodeStyleSettings.solCodeStyleSettings() =
-    getCustomSettings(SolCodeStyleSettings::class.java)
-
-  override fun isModified(settings: CodeStyleSettings) = importsPanel.isModified(settings.solCodeStyleSettings())
+  override fun isModified(settings: CodeStyleSettings) = importsPanel.isModified(settings.solidityCustomSettings)
 
   override fun getPanel() = content
 
   override fun resetImpl(settings: CodeStyleSettings) {
-    importsPanel.reset(settings.solCodeStyleSettings())
+    importsPanel.reset(settings.solidityCustomSettings)
   }
 
   override fun getTabTitle() = ApplicationBundle.message("title.imports")
@@ -105,41 +86,21 @@ class ImportSettingsPanelWrapper(settings: CodeStyleSettings) : CodeStyleAbstrac
 private class ImportSettingsPanel {
   private lateinit var addSpecificImports: JCheckBox
 
-
   val panel = panel {
-      row {
-        addSpecificImports = checkBox("Add specific symbol names on auto-importing")
-          .component
-      }
-
-
+    row {
+      addSpecificImports = checkBox("Add specific symbol names on auto-importing").component
+    }
   }.apply {
     border = JBUI.Borders.empty(0, 10, 10, 10)
   }
 
   fun reset(settings: SolCodeStyleSettings) {
     addSpecificImports.isSelected = settings.specificSymbolImports
-
   }
 
   fun apply(settings: SolCodeStyleSettings) {
     settings.specificSymbolImports = addSpecificImports.isSelected
   }
 
-  fun isModified(settings: SolCodeStyleSettings): Boolean {
-    return with(settings) {
-      var isModified = false
-      isModified = isModified || isModified(addSpecificImports, specificSymbolImports)
-      isModified
-    }
-  }
-
-  companion object {
-    private fun isModified(checkBox: JCheckBox, value: Boolean): Boolean {
-      return checkBox.isSelected != value
-    }
-
-
-  }
-
+  fun isModified(settings: SolCodeStyleSettings) = addSpecificImports.isSelected != settings.specificSymbolImports
 }
