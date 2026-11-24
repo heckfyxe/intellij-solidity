@@ -8,7 +8,6 @@ import com.intellij.psi.util.CachedValuesManager
 import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.childrenOfType
-import me.serce.solidity.firstOrElse
 import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.core.solidityVersionRange
 import me.serce.solidity.lang.psi.*
@@ -102,8 +101,7 @@ private fun getSolTypeFromUserDefinedTypeName(type: SolUserDefinedTypeName): Sol
         else -> null
       }
     }
-    .filterNotNull()
-    .firstOrElse(SolUnknown)
+    .firstOrNull { it != null } ?: SolUnknown
 }
 
 fun inferDeclType(decl: SolNamedElement): SolType {
@@ -151,8 +149,7 @@ fun inferRefType(ref: SolVarLiteral): SolType {
       val declarations = SolResolver.resolveVarLiteral(ref)
       return declarations.asSequence()
         .map { inferDeclType(it) }
-        .filter { it != SolUnknown }
-        .firstOrElse(SolUnknown)
+        .firstOrNull { it != SolUnknown } ?: SolUnknown
     }
   }
 }

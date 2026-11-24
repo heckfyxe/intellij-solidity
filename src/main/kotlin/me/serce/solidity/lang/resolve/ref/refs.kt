@@ -17,7 +17,6 @@ import me.serce.solidity.lang.resolve.canBeApplied
 import me.serce.solidity.lang.resolve.findBest
 import me.serce.solidity.lang.resolve.function.SolFunctionResolver
 import me.serce.solidity.lang.types.*
-import me.serce.solidity.wrap
 
 class SolUserDefinedTypeNameReference(element: SolUserDefinedTypeName) : SolReferenceBase<SolUserDefinedTypeName>(element), SolReference {
   override fun multiResolve(): Collection<PsiElement> {
@@ -200,7 +199,7 @@ class SolFunctionCallReference(element: SolFunctionCallExpression) : SolReferenc
   }
 
   private fun resolveElementaryTypeCasts(expr: SolPrimaryExpression): Collection<SolCallable> {
-    return expr.elementaryTypeName
+    return listOfNotNull(expr.elementaryTypeName
       ?.let {
         val type = getSolType(it)
         object : SolCallable {
@@ -210,8 +209,7 @@ class SolFunctionCallReference(element: SolFunctionCallExpression) : SolReferenc
           override val callablePriority: Int = 1000
           override fun getName(): String? = null
         }
-      }
-      .wrap()
+      })
   }
 
   override fun multiResolve(): Collection<PsiElement> {

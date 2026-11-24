@@ -6,10 +6,6 @@ import me.serce.solidity.settings.ConfigurationMode
 import java.io.InputStreamReader
 import java.nio.file.Paths
 
-fun <T> Sequence<T>.firstOrElse(el: T): T {
-  return firstOrNull() ?: el
-}
-
 inline fun <reified R> Sequence<Any?>.firstInstance(): R {
   return first { it is R } as R
 }
@@ -24,8 +20,6 @@ fun loadCodeSampleResource(ctx: Any, resource: String): String {
   // while on Windows the resource file will be read with \r\n as line separator.
   return StreamUtil.convertSeparators(StreamUtil.readText(InputStreamReader(stream)))
 }
-
-fun <T> T?.wrap(): List<T> = if (this == null) emptyList() else listOf(this)
 
 fun <T> nullIfError(action: () -> T): T? {
   return try {

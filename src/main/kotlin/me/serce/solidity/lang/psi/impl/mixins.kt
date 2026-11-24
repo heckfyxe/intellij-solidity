@@ -16,7 +16,6 @@ import me.serce.solidity.lang.resolve.SolResolver
 import me.serce.solidity.lang.resolve.ref.*
 import me.serce.solidity.lang.stubs.*
 import me.serce.solidity.lang.types.*
-import me.serce.solidity.wrap
 import javax.naming.OperationNotSupportedException
 import javax.swing.Icon
 
@@ -512,7 +511,7 @@ abstract class SolMemberAccessElement(node: ASTNode) : SolNamedElementImpl(node)
       .flatMap {
         when (it) {
           is SolContractDefinition -> it.functionDefinitionList
-          is SolFunctionDefinition -> it.wrap()
+          is SolFunctionDefinition -> listOf(it)
           else -> emptyList()
         }
       }

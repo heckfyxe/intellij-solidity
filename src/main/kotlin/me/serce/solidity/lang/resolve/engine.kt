@@ -20,7 +20,6 @@ import me.serce.solidity.lang.resolve.ref.SolReference
 import me.serce.solidity.lang.stubs.SolGotoClassIndex
 import me.serce.solidity.lang.stubs.SolNamedElementIndex
 import me.serce.solidity.lang.types.*
-import me.serce.solidity.wrap
 
 object SolResolver {
   fun resolveTypeNameUsingImports(element: PsiElement): Set<SolNamedElement> {
@@ -445,8 +444,7 @@ object SolResolver {
 
   fun resolveVarLiteral(element: SolNamedElement): List<SolNamedElement> {
     return when (element.name) {
-      "this" -> element.findContract()
-        .wrap()
+      "this" -> listOfNotNull(element.findContract())
       "super" -> element.findContract()
         ?.supers
         ?.flatMap { resolveTypeNameUsingImports(it) }
