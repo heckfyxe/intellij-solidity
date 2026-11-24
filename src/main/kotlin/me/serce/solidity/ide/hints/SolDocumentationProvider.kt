@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.hints
 
+import com.intellij.psi.tree.TokenSet
 import me.serce.solidity.lang.types.SolInternalTypeFactory
 import com.intellij.lang.documentation.AbstractDocumentationProvider
 import com.intellij.lang.documentation.DocumentationMarkup.*
@@ -66,7 +67,7 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
     return builder.toString()
   }
 
-  private val keywordColors = SolHighlighter.keywords().plus(SolHighlighter.types()).minus(SolidityTokenTypes.RETURN).map { it.toString() }
+  private val keywordColors = (SolHighlighter.keywords.types + SolHighlighter.types.types).filter { it != SolidityTokenTypes.RETURN }.map { it.toString() }
     .plus(setOf("u?int(\\d+)", "u?fixed(\\d+)", "bytes?(\\d+)", "error"))
     .joinToString("|", "\\b(", ")\\b").toRegex()
   private val col = SolColor.TYPE.textAttributesKey.defaultAttributes.foregroundColor
@@ -210,7 +211,7 @@ class SolDocumentationProvider : AbstractDocumentationProvider() {
 
   private fun PsiElement?.idName() = this?.text ?: "<no_name>"
 
-  private val colorizedTypes = SolHighlighter.types() + SolidityTokenTypes.CONTRACT_DEFINITION + SolidityTokenTypes.STRUCT
+  private val colorizedTypes = TokenSet.orSet(SolHighlighter.types, TokenSet.create(SolidityTokenTypes.CONTRACT_DEFINITION, SolidityTokenTypes.STRUCT))
   private fun PsiElement.colorizedTypeText() = descendantsOfType<LeafPsiElement>().joinToString("") { el -> el.text.let { if (el.elementType in colorizedTypes || el.parent.elementType == SolidityTokenTypes.USER_DEFINED_TYPE_NAME) it.colorizeKeyword() else it } }
 
   private fun List<PsiElement>?.doc(separator: String = ", ", prefix: String = "", postfix : String = ""): String {

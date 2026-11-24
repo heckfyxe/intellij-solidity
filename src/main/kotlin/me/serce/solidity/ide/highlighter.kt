@@ -1,5 +1,6 @@
 package me.serce.solidity.ide
 
+import com.intellij.psi.tree.TokenSet
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.fileTypes.SingleLazyInstanceSyntaxHighlighterFactory
 import com.intellij.openapi.fileTypes.SyntaxHighlighterBase
@@ -19,7 +20,9 @@ object SolHighlighter : SyntaxHighlighterBase() {
     return pack(tokenMapping[tokenType])
   }
 
-  private val tokenMapping: Map<IElementType, TextAttributesKey> = mapOf(
+  // lazy: the token sets below are initialised after it
+  private val tokenMapping: Map<IElementType, TextAttributesKey> by lazy {
+    mapOf(
     COMMENT to SolColor.LINE_COMMENT,
     NAT_SPEC_TAG to SolColor.NAT_SPEC_TAG,
 
@@ -40,16 +43,17 @@ object SolHighlighter : SyntaxHighlighterBase() {
     STRINGLITERAL to SolColor.STRING,
     HEXLITERAL to SolColor.STRING
   ).plus(
-    keywords().map { it to SolColor.KEYWORD }
+    keywords.types.map { it to SolColor.KEYWORD }
   ).plus(
-    literals().map { it to SolColor.KEYWORD }
+    literals.types.map { it to SolColor.KEYWORD }
   ).plus(
-    operators().map { it to SolColor.OPERATION_SIGN }
+    operators.types.map { it to SolColor.OPERATION_SIGN }
   ).plus(
-    types().map { it to SolColor.TYPE }
+    types.types.map { it to SolColor.TYPE }
   ).mapValues { it.value.textAttributesKey }
+  }
 
-  fun keywords() = setOf<IElementType>(
+  val keywords: TokenSet = TokenSet.create(
     // Note, the ERROR/REVERT are not keywords and are excluded
     IMPORT, AS, PRAGMA, NEW, DELETE, EMIT, /*REVERT,*/ CONSTRUCTOR,
     CONTRACT, LIBRARY, INTERFACE, ABSTRACT, IS, STRUCT, FUNCTION, ENUM,
@@ -61,14 +65,14 @@ object SolHighlighter : SyntaxHighlighterBase() {
     PAYABLE, FALLBACK, RECEIVE
   )
 
-  fun types() = setOf<IElementType>(
+  val types: TokenSet = TokenSet.create(
     BYTENUMTYPE, BYTESNUMTYPE, FIXEDNUMTYPE, INTNUMTYPE, UFIXEDNUMTYPE, UINTNUMTYPE,
     STRING, BOOL, ADDRESS,
   )
 
-  private fun literals() = setOf<IElementType>(BOOLEANLITERAL)
+  private val literals = TokenSet.create(BOOLEANLITERAL)
 
-  private fun operators() = setOf<IElementType>(
+  private val operators = TokenSet.create(
     NOT, ASSIGN, PLUS_ASSIGN, MINUS_ASSIGN, MULT_ASSIGN, DIV_ASSIGN, PERCENT_ASSIGN,
     OR_ASSIGN, XOR_ASSIGN, AND_ASSIGN, LSHIFT_ASSIGN, RSHIFT_ASSIGN, QUESTION,
     PLUS, MINUS, MULT, DIV, EXPONENT, CARET,
