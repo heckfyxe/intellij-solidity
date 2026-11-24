@@ -114,7 +114,7 @@
         <lang.namesValidator language="Solidity" implementationClass="me.serce.solidity.ide.refactoring.SolNamesValidator"/>
         <refactoring.moveHandler implementation="me.serce.solidity.ide.refactoring.SolMoveHandler" order="first"/>
         <inlineActionHandler implementation="me.serce.solidity.ide.refactoring.SolInlineVariableHandler"/>
-        <lang.refactoringSupport language="Solidity" implementationClass="me.serce.solidity.ide.refactoring.SolRenameFileRefactoringSupportProvider"/>
+        <lang.refactoringSupport language="Solidity" implementationClass="me.serce.solidity.ide.refactoring.SolRefactoringSupportProvider"/>
 
         <lang.importOptimizer language="Solidity" implementationClass="me.serce.solidity.ide.formatting.SolImportOptimizer"/>
 

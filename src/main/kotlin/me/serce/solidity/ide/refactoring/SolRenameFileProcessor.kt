@@ -1,6 +1,5 @@
 package me.serce.solidity.ide.refactoring
 
-import com.intellij.lang.refactoring.RefactoringSupportProvider
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.psi.PsiElement
 import com.intellij.psi.search.SearchScope
@@ -14,7 +13,7 @@ class SolRenameFileProcessor : RenamePsiFileProcessor() {
       val contract = file.children.find { it is SolContractOrLibElement && it.name == file.virtualFile.nameWithoutExtension && it.name != newName } as? SolContractOrLibElement
       if (contract != null) {
         val description = contract.contractType.docName
-        val renameContract = /*!RefactoringSettings.getInstance().ASK_FOR_RENAME_DECLARATION_WHEN_RENAME_FILE ||*/ MessageDialogBuilder.yesNo("Rename $description", "Do you also want to rename the $description").ask(element.getProject())
+        val renameContract = MessageDialogBuilder.yesNo("Rename $description", "Do you also want to rename the $description").ask(element.getProject())
         if (renameContract) {
           allRenames[contract] = newName
         }
@@ -26,13 +25,3 @@ class SolRenameFileProcessor : RenamePsiFileProcessor() {
   override fun isInplaceRenameSupported(): Boolean = true
 }
 
-
-class SolRenameFileRefactoringSupportProvider : RefactoringSupportProvider() {
-  override fun isMemberInplaceRenameAvailable(element: PsiElement, context: PsiElement?): Boolean {
-    return true
-  }
-
-  override fun getIntroduceVariableHandler() = SolIntroduceVariableHandler()
-
-  override fun getExtractMethodHandler() = SolExtractFunctionHandler()
-}
