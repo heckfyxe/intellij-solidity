@@ -28,9 +28,11 @@ class ForgeTestCommandLineState(
 ) : CommandLineState(environment) {
 
   @Throws(ExecutionException::class)
-  public override fun startProcess(): ProcessHandler = ForgeTestTransformingProcessHandler(generateCommandLine())
+  public override fun startProcess(): ProcessHandler =
+    ForgeTestTransformingProcessHandler(generateCommandLine(fork = configuration.fork.resolve(configuration.project)))
 
-  fun generateCommandLine(isWindows: Boolean = SystemInfo.isWindows): GeneralCommandLine {
+  /** [fork]: the resolved [ForgeTestRunConfiguration.fork]; when null, only a typed URL is passed. */
+  fun generateCommandLine(isWindows: Boolean = SystemInfo.isWindows, fork: ResolvedTarget? = null): GeneralCommandLine {
     val settings = SoliditySettings.getInstance(configuration.project)
     val foundryExePath =
       resolveForgeExecutable(settings.testFoundryExecutablePath, settings.testFoundryConfigurationMode, isWindows)
@@ -49,7 +51,11 @@ class ForgeTestCommandLineState(
     val contracts = failedTests?.keys ?: setOfNotNull(configuration.contractName.ifBlank { null })
     if (tests.isNotEmpty()) cmd.addParameters("--match-test", "^${alternatives(tests)}\\(")
     if (contracts.isNotEmpty()) cmd.addParameters("--match-contract", "^${alternatives(contracts)}$")
-    configuration.forkUrl.trim().takeIf { it.isNotEmpty() }?.let { cmd.addParameters("--fork-url", it) }
+    if (fork != null) fork.applyTo(cmd, "--fork-url")
+    else if (configuration.fork.kind == ForgeTargetKind.URL) configuration.forkUrl.trim().takeIf { it.isNotEmpty() }?.let { cmd.addParameters("--fork-url", it) }
+    if (configuration.fork.kind != ForgeTargetKind.LOCAL) {
+      configuration.forkBlock.trim().takeIf { it.isNotEmpty() }?.let { cmd.addParameters("--fork-block-number", it) }
+    }
     configuration.fuzzSeed.trim().takeIf { it.isNotEmpty() }?.let { cmd.addParameters("--fuzz-seed", it) }
     cmd.addParameters(ParametersListUtil.parse(configuration.additionalArguments))
     configuration.profile.trim().takeIf { it.isNotEmpty() }?.let { cmd.withEnvironment("FOUNDRY_PROFILE", it) }

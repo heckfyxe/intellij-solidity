@@ -2,6 +2,7 @@ package me.serce.solidity.ide.run
 
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.SettingsEditor
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.RawCommandLineEditor
 import com.intellij.ui.components.JBTextField
@@ -9,13 +10,14 @@ import com.intellij.util.ui.FormBuilder
 import javax.swing.JComponent
 import javax.swing.JPanel
 
-class ForgeTestRunConfigurationEditor : SettingsEditor<ForgeTestRunConfiguration>() {
+class ForgeTestRunConfigurationEditor(private val project: Project) : SettingsEditor<ForgeTestRunConfiguration>() {
   private lateinit var mainPanel: JPanel
   private lateinit var contractNameField: RawCommandLineEditor
   private lateinit var testNameField: RawCommandLineEditor
   private lateinit var workingDirectoryField: TextFieldWithBrowseButton
   private val profileField = JBTextField()
-  private val forkUrlField = JBTextField()
+  private val fork = ForgeTargetEditor(project, "Fork URL or endpoint alias (--fork-url):")
+  private val forkBlockField = JBTextField()
   private val fuzzSeedField = JBTextField()
   private val argumentsField = RawCommandLineEditor()
 
@@ -40,7 +42,8 @@ class ForgeTestRunConfigurationEditor : SettingsEditor<ForgeTestRunConfiguration
       .addLabeledComponent("Test name (leave empty for all tests):", testNameField)
       .addLabeledComponent("Working directory:", workingDirectoryField)
       .addLabeledComponent("Profile (FOUNDRY_PROFILE):", profileField)
-      .addLabeledComponent("Fork URL (--fork-url):", forkUrlField)
+      .let(fork::addTo)
+      .addLabeledComponent("Fork block (--fork-block-number, empty for the latest):", forkBlockField)
       .addLabeledComponent("Fuzz seed (--fuzz-seed):", fuzzSeedField)
       .addLabeledComponent("Additional arguments:", argumentsField)
       .addComponentFillVertically(JPanel(), 0)
@@ -52,7 +55,8 @@ class ForgeTestRunConfigurationEditor : SettingsEditor<ForgeTestRunConfiguration
     testNameField.text = configuration.testName
     workingDirectoryField.text = configuration.workingDirectory
     profileField.text = configuration.profile
-    forkUrlField.text = configuration.forkUrl
+    fork.reset(configuration.fork)
+    forkBlockField.text = configuration.forkBlock
     fuzzSeedField.text = configuration.fuzzSeed
     argumentsField.text = configuration.additionalArguments
   }
@@ -62,7 +66,8 @@ class ForgeTestRunConfigurationEditor : SettingsEditor<ForgeTestRunConfiguration
     configuration.testName = testNameField.text
     configuration.workingDirectory = workingDirectoryField.text
     configuration.profile = profileField.text
-    configuration.forkUrl = forkUrlField.text
+    fork.apply(configuration.fork)
+    configuration.forkBlock = forkBlockField.text.trim()
     configuration.fuzzSeed = fuzzSeedField.text
     configuration.additionalArguments = argumentsField.text
   }

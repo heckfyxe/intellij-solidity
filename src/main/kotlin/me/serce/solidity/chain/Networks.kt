@@ -61,6 +61,9 @@ class Networks : PersistentStateComponent<Networks.State> {
 
   fun find(name: String): Network? = resolved().firstOrNull { it.name == name }?.copy()
 
+  /** The names, without reading any secret URL. */
+  fun names(): List<String> = state.networks.map { it.name }
+
   fun nameOf(url: String): String? = resolved().firstOrNull { Network.sameUrl(it.url, url) }?.name
 
   companion object {

@@ -221,6 +221,19 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 * Generate Solidity Interface runs `cast interface` on the ABI; tuples without `internalType` are given struct names
   first (`AbiText.withStructNames`), since cast prints anonymous tuples that don't parse.
 
+## Forge Tests and Scripts on Networks
+
+* Forge Test and Forge Script run configurations have a target (`ide/run/ForgeTarget.kt`): local, a `Networks` entry,
+  a chain of the Chains tool window (must be running), or a typed URL / `[rpc_endpoints]` alias. Only a typed one goes
+  on the command line; the others go in `FOUNDRY_ETH_RPC_URL`, which both `forge test` (fork) and `forge script` read,
+  so `ps` never shows an API key. Old configurations with only `forkUrl`/`rpcUrl` load as URL targets.
+* A broadcast to a Chains tool window chain is signed like its transactions: anvil/external nodes with
+  `--unlocked --sender <selected account>`, network chains with one of their `WalletConfig`s (`ScriptSigner`; keystore
+  passwords in a 0600 file deleted when forge exits, the parent environment dropped minus `CastWallet.WALLET_ENV`).
+  forge script names the hardware wallet path option `--mnemonic-derivation-paths` (cast: `--mnemonic-derivation-path`).
+  Broadcasts to anything but a local dev chain ask first (mainnets with a real-funds warning); the chain is refreshed
+  when forge exits.
+
 ## Contract Storage
 
 * Read Storage (`storage/StorageDialog`) reads any slot with `eth_getStorageAt`, and for contracts compiled in the

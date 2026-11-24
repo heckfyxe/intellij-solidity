@@ -241,6 +241,33 @@ class ForgeTestSettingsTest : BasePlatformTestCase() {
         assertThrows(com.intellij.execution.configurations.RuntimeConfigurationError::class.java) { configuration.checkConfiguration() }
     }
 
+    fun testForkOfANetworkPassesTheUrlInTheEnvironment() {
+        val configuration = ForgeTestRunConfiguration(project, ForgeTestRunConfigurationFactory(ForgeTestRunConfigurationType()), "t")
+        configuration.workingDirectory = myFixture.tempDirPath
+        configuration.fork.kind = ForgeTargetKind.NETWORK
+        configuration.fork.network = "Ethereum Mainnet"
+        configuration.forkBlock = "19000000"
+        val settings = RunManager.getInstance(project).createConfiguration(configuration, configuration.factory!!)
+        val env = ExecutionEnvironmentBuilder.create(DefaultRunExecutor.getRunExecutorInstance(), settings).build()
+        val target = ResolvedTarget("https://rpc.example/key", "Ethereum Mainnet", 1L, chain = null, onCommandLine = false)
+        val cmd = ForgeTestCommandLineState(configuration, env).generateCommandLine(fork = target)
+        val parameters = cmd.parametersList.parameters
+        assertFalse(parameters.contains("--fork-url"))
+        assertFalse(parameters.any { it.contains("rpc.example") })
+        assertEquals("https://rpc.example/key", cmd.environment[ResolvedTarget.RPC_ENV])
+        assertEquals("19000000", parameters[parameters.indexOf("--fork-block-number") + 1])
+        configuration.checkConfiguration()
+
+        val element = org.jdom.Element("configuration")
+        configuration.writeExternal(element)
+        val loaded = ForgeTestRunConfiguration(project, ForgeTestRunConfigurationFactory(ForgeTestRunConfigurationType()), "t")
+        loaded.readExternal(element)
+        assertEquals(listOf("NETWORK", "Ethereum Mainnet", "19000000"), listOf(loaded.fork.kind.name, loaded.fork.network, loaded.forkBlock))
+
+        configuration.fork.kind = ForgeTargetKind.LOCAL
+        assertThrows(com.intellij.execution.configurations.RuntimeConfigurationError::class.java) { configuration.checkConfiguration() }
+    }
+
     private fun withUserHome(fakeHome: String, block: () -> Unit) {
         val old = System.getProperty("user.home")
         try {

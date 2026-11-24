@@ -35,7 +35,6 @@ import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.execution.ParametersListUtil
 import com.intellij.util.ui.FormBuilder
-import com.intellij.util.xmlb.Constants
 import me.serce.solidity.chain.foundry.FoundryProject
 import me.serce.solidity.ide.SolidityIcons
 import me.serce.solidity.lang.core.SolidityTokenTypes
@@ -46,6 +45,24 @@ import me.serce.solidity.lang.psi.Visibility
 import me.serce.solidity.resolveForgeExecutable
 import me.serce.solidity.settings.SoliditySettings
 import org.jdom.Element
+import com.intellij.execution.configurations.RuntimeConfigurationError
+import com.intellij.execution.process.ProcessEvent
+import com.intellij.execution.process.ProcessListener
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.ui.ComboBox
+import com.intellij.openapi.ui.Messages
+import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.EnvironmentUtil
+import me.serce.solidity.chain.ChainService
+import me.serce.solidity.chain.KnownChains
+import me.serce.solidity.chain.WalletConfig
+import me.serce.solidity.chain.WalletKind
+import me.serce.solidity.chain.wallet.CastWallet
+import me.serce.solidity.chain.wallet.DefaultWalletPrompts
+import java.nio.file.Path
+import javax.swing.JLabel
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -104,19 +121,34 @@ class ForgeScriptRunConfiguration(project: Project, factory: ConfigurationFactor
   var signature = ""
   /** The function's arguments, as forge expects them after the script path. */
   var arguments = ""
-  /** An RPC URL, or the name of an `[rpc_endpoints]` entry; empty runs on a local in-memory chain. */
-  var rpcUrl = ""
+  /** Where the script runs; [ForgeTargetKind.LOCAL] is a local in-memory chain. */
+  val target = ForgeTarget()
+  /** An RPC URL, or the name of an `[rpc_endpoints]` entry, for [ForgeTargetKind.URL]. */
+  var rpcUrl: String
+    get() = target.url
+    set(value) {
+      target.url = value
+      if (value.isNotBlank() && target.kind == ForgeTargetKind.LOCAL) target.kind = ForgeTargetKind.URL
+    }
   /** Sends the transactions: off by default, so a run is a simulation unless asked otherwise. */
   var broadcast = false
+  /** On a network chain of the Chains tool window: the address of the chain's wallet that signs. Empty for its first. */
+  var wallet = ""
   var additionalOptions = ""
   var workingDirectory = project.basePath ?: ""
 
-  override fun getConfigurationEditor() = ForgeScriptRunConfigurationEditor()
+  override fun getConfigurationEditor() = ForgeScriptRunConfigurationEditor(project)
 
   override fun getState(executor: Executor, environment: ExecutionEnvironment) = ForgeScriptCommandLineState(this, environment)
 
   override fun suggestedName() = listOf(contractName, signature.takeIf { it.isNotEmpty() && it != "run()" })
     .filterNotNull().filter { it.isNotEmpty() }.joinToString(".").ifEmpty { "Forge Script" }
+
+  override fun checkConfiguration() {
+    if (broadcast && target.kind == ForgeTargetKind.LOCAL) {
+      throw RuntimeConfigurationError("Broadcasting needs a target: pick a network, a chain or an RPC URL")
+    }
+  }
 
   override fun readExternal(element: Element) {
     super.readExternal(element)
@@ -124,8 +156,9 @@ class ForgeScriptRunConfiguration(project: Project, factory: ConfigurationFactor
     contractName = element.value("contractName")
     signature = element.value("signature")
     arguments = element.value("arguments")
-    rpcUrl = element.value("rpcUrl")
+    target.read(element, "rpc", legacyUrl = element.value("rpcUrl"))
     broadcast = element.value("broadcast") == "true"
+    wallet = element.value("wallet")
     additionalOptions = element.value("additionalOptions")
     workingDirectory = element.value("workingDirectory")
   }
@@ -136,15 +169,37 @@ class ForgeScriptRunConfiguration(project: Project, factory: ConfigurationFactor
     element.put("contractName", contractName)
     element.put("signature", signature)
     element.put("arguments", arguments)
-    element.put("rpcUrl", rpcUrl)
+    element.put("rpcUrl", target.url)
+    target.write(element, "rpc")
     element.put("broadcast", broadcast.toString())
+    element.put("wallet", wallet)
     element.put("additionalOptions", additionalOptions)
     element.put("workingDirectory", workingDirectory)
   }
+}
 
-  private fun Element.value(name: String) = getChild(name)?.getAttributeValue(Constants.VALUE) ?: ""
-  private fun Element.put(name: String, value: String) {
-    addContent(Element(name).setAttribute(Constants.VALUE, value))
+/** Who signs a broadcast to a chain of the Chains tool window. */
+sealed class ScriptSigner {
+  abstract val address: String
+  abstract fun args(): List<String>
+
+  /** anvil, or a node of your own: it holds the keys and signs `eth_sendTransaction`. */
+  class Unlocked(override val address: String) : ScriptSigner() {
+    override fun args() = listOf("--unlocked", "--sender", address)
+  }
+
+  /** A wallet of a network chain; forge signs with it like cast does, so no key material enters the IDE. */
+  class Wallet(val wallet: WalletConfig, val passwordFile: Path?) : ScriptSigner() {
+    override val address get() = wallet.address
+    override fun args(): List<String> = when (wallet.kind) {
+      WalletKind.KEYSTORE -> listOf("--keystore", wallet.keystorePath) + (passwordFile?.let { listOf("--password-file", it.toString()) } ?: emptyList())
+      WalletKind.LEDGER -> listOf("--ledger") + derivation()
+      WalletKind.TREZOR -> listOf("--trezor") + derivation()
+      WalletKind.BROWSER -> listOf("--browser")
+    } + listOf("--sender", wallet.address)
+
+    private fun derivation() =
+      wallet.derivationPath.trim().takeIf { it.isNotEmpty() }?.let { listOf("--mnemonic-derivation-paths", it) } ?: emptyList()
   }
 }
 
@@ -161,33 +216,99 @@ class ForgeScriptCommandLineState(private val configuration: ForgeScriptRunConfi
 
   @Throws(ExecutionException::class)
   override fun startProcess(): ProcessHandler {
-    val handler = KillableColoredProcessHandler(generateCommandLine())
-    ProcessTerminatedListener.attach(handler)
-    return handler
+    val project = configuration.project
+    val target = configuration.target.resolve(project)
+    val signer = if (configuration.broadcast && target != null) signer(target) else null
+    try {
+      if (configuration.broadcast && target != null) confirmBroadcast(target, signer)
+      val handler = KillableColoredProcessHandler(generateCommandLine(target = target, signer = signer))
+      ProcessTerminatedListener.attach(handler)
+      handler.addProcessListener(object : ProcessListener {
+        override fun processTerminated(event: ProcessEvent) {
+          (signer as? ScriptSigner.Wallet)?.passwordFile?.let(CastWallet::deletePasswordFile)
+          // balances, block number and code at deployed addresses changed
+          if (configuration.broadcast) target?.chain?.let { ChainService.getInstance(project).refresh(it) }
+        }
+      })
+      return handler
+    } catch (e: Throwable) {
+      (signer as? ScriptSigner.Wallet)?.passwordFile?.let(CastWallet::deletePasswordFile)
+      throw e
+    }
   }
 
-  fun generateCommandLine(isWindows: Boolean = SystemInfo.isWindows): GeneralCommandLine {
+  private fun signer(target: ResolvedTarget): ScriptSigner? {
+    val chain = target.chain ?: return null // a network or URL: the user's own wallet options, if any
+    val service = ChainService.getInstance(configuration.project)
+    if (!chain.isNetworkChain) {
+      return ScriptSigner.Unlocked(service.selectedAccount(chain.id) ?: throw ExecutionException("Chain \"${chain.name}\" has no accounts"))
+    }
+    val wallet = chain.wallets.firstOrNull { it.address.equals(configuration.wallet, ignoreCase = true) }
+      ?: chain.wallets.firstOrNull()
+      ?: throw ExecutionException("Chain \"${chain.name}\" has no wallets. Add one in the Chains tool window.")
+    val password = if (wallet.kind == WalletKind.KEYSTORE) {
+      DefaultWalletPrompts.password(configuration.project, wallet, null) ?: throw ExecutionException("Cancelled")
+    } else null
+    return ScriptSigner.Wallet(wallet, password?.let(CastWallet::writePasswordFile))
+  }
+
+  /** Anything but a local dev chain asks first, mainnets with a warning: the script can spend real funds. */
+  private fun confirmBroadcast(target: ResolvedTarget, signer: ScriptSigner?) {
+    val chain = target.chain
+    if (chain != null && !chain.isNetworkChain) return
+    if (target.chainId == 31337L || target.chainId == 1337L) return
+    val mainnet = KnownChains.isMainnet(target.chainId)
+    val script = configuration.contractName.ifEmpty { configuration.scriptPath } +
+      (configuration.signature.takeIf { it.isNotBlank() && it != "run()" }?.let { ".$it" } ?: "")
+    val message = buildString {
+      append("Broadcast the transactions of $script to ${target.name} (chain id ${target.chainId ?: "unknown"})")
+      append(signer?.let { " from ${it.address}" } ?: "")
+      append("?")
+      if (mainnet) append("\n\nThis is a real network: the transactions are paid with real funds.")
+    }
+    var ok = false
+    ApplicationManager.getApplication().invokeAndWait({
+      ok = Messages.showOkCancelDialog(
+        configuration.project, message, if (mainnet) "Broadcast to ${target.name} (Real Funds)" else "Broadcast to ${target.name}",
+        "Broadcast", Messages.getCancelButton(), if (mainnet) Messages.getWarningIcon() else Messages.getQuestionIcon(),
+      ) == Messages.OK
+    }, ModalityState.any())
+    if (!ok) throw ExecutionException("Cancelled")
+  }
+
+  fun generateCommandLine(isWindows: Boolean = SystemInfo.isWindows, target: ResolvedTarget? = null, signer: ScriptSigner? = null): GeneralCommandLine {
     val settings = SoliditySettings.getInstance(configuration.project)
     val forge = resolveForgeExecutable(settings.testFoundryExecutablePath, settings.testFoundryConfigurationMode, isWindows)
-    val target = configuration.scriptPath + (configuration.contractName.takeIf { it.isNotBlank() }?.let { ":$it" } ?: "")
-    val cmd = GeneralCommandLine().withExePath(forge).withParameters("script", target)
+    val scriptTarget = configuration.scriptPath + (configuration.contractName.takeIf { it.isNotBlank() }?.let { ":$it" } ?: "")
+    val cmd = GeneralCommandLine().withExePath(forge).withParameters("script", scriptTarget)
     if (configuration.workingDirectory.isNotBlank()) cmd.withWorkDirectory(configuration.workingDirectory)
     configuration.signature.takeIf { it.isNotBlank() && it != "run()" }?.let { cmd.addParameters("--sig", it) }
     cmd.addParameters(ParametersListUtil.parse(configuration.arguments))
-    configuration.rpcUrl.takeIf { it.isNotBlank() }?.let { cmd.addParameters("--rpc-url", it) }
+    if (target != null) target.applyTo(cmd, "--rpc-url")
+    else if (configuration.target.kind == ForgeTargetKind.URL) configuration.rpcUrl.takeIf { it.isNotBlank() }?.let { cmd.addParameters("--rpc-url", it) }
     if (configuration.broadcast) cmd.addParameter("--broadcast")
+    signer?.let { cmd.addParameters(it.args()) }
     cmd.addParameters(ParametersListUtil.parse(configuration.additionalOptions))
+    if (signer != null) {
+      // forge must sign with the wallet we pass, not one the user's environment names
+      cmd.withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.NONE)
+        .withEnvironment(EnvironmentUtil.getEnvironmentMap() - CastWallet.WALLET_ENV.toSet() - cmd.environment.keys)
+    }
     return cmd.withEnvironment("NO_COLOR", "1")
   }
 }
 
-class ForgeScriptRunConfigurationEditor : SettingsEditor<ForgeScriptRunConfiguration>() {
+class ForgeScriptRunConfigurationEditor(private val project: Project) : SettingsEditor<ForgeScriptRunConfiguration>() {
   private val scriptPath = JBTextField()
   private val contractName = JBTextField()
   private val signature = JBTextField()
   private val arguments = RawCommandLineEditor()
-  private val rpcUrl = JBTextField()
+  private val target = ForgeTargetEditor(project, "RPC URL or endpoint alias:")
   private val broadcast = JBCheckBox("Broadcast transactions (--broadcast)")
+  private val wallet = ComboBox<WalletConfig>().apply {
+    renderer = SimpleListCellRenderer.create("") { "${it.address}  ${it.label}" }
+  }
+  private val signerNote = JBLabel()
   private val additionalOptions = RawCommandLineEditor()
   private val workingDirectory = TextFieldWithBrowseButton().apply {
     addBrowseFolderListener(
@@ -201,20 +322,52 @@ class ForgeScriptRunConfigurationEditor : SettingsEditor<ForgeScriptRunConfigura
     .addLabeledComponent("Contract (when the file has several):", contractName)
     .addLabeledComponent("Function signature (empty for run()):", signature)
     .addLabeledComponent("Function arguments:", arguments)
-    .addLabeledComponent("RPC URL or endpoint name (empty for a local simulation):", rpcUrl)
+    .let(target::addTo)
     .addComponent(broadcast)
+    .addLabeledComponent("Sign with:", wallet)
+    .addComponent(signerNote)
     .addLabeledComponent("Additional options:", additionalOptions)
     .addLabeledComponent("Working directory:", workingDirectory)
     .addComponentFillVertically(JPanel(), 0)
     .panel
+
+  init {
+    target.onChange = ::updateSigner
+    broadcast.addActionListener { updateSigner() }
+  }
+
+  private var savedWallet = ""
+
+  private fun updateSigner() {
+    val chain = target.selectedChain
+    val wallets = chain?.takeIf { it.isNetworkChain }?.wallets.orEmpty()
+    val previous = wallet.item?.address ?: savedWallet
+    wallet.removeAllItems()
+    wallets.forEach(wallet::addItem)
+    wallet.item = wallets.firstOrNull { it.address.equals(previous, ignoreCase = true) } ?: wallets.firstOrNull()
+    val showWallets = broadcast.isSelected && wallets.isNotEmpty()
+    wallet.isVisible = showWallets
+    panel.components.filterIsInstance<JLabel>().filter { it.labelFor === wallet }.forEach { it.isVisible = showWallets }
+    signerNote.text = when {
+      !broadcast.isSelected -> ""
+      chain == null && target.kind.item != ForgeTargetKind.LOCAL -> "Signs with the wallet options you add below, e.g. --account or --ledger."
+      chain != null && !chain.isNetworkChain -> "Signs with the chain's selected account (--unlocked)."
+      chain != null && wallets.isEmpty() -> "This chain has no wallets: add one in the Chains tool window."
+      else -> ""
+    }
+    signerNote.isVisible = signerNote.text.isNotEmpty()
+  }
 
   override fun resetEditorFrom(c: ForgeScriptRunConfiguration) {
     scriptPath.text = c.scriptPath
     contractName.text = c.contractName
     signature.text = c.signature
     arguments.text = c.arguments
-    rpcUrl.text = c.rpcUrl
+    target.reset(c.target)
     broadcast.isSelected = c.broadcast
+    savedWallet = c.wallet
+    wallet.item = null
+    updateSigner()
     additionalOptions.text = c.additionalOptions
     workingDirectory.text = c.workingDirectory
   }
@@ -224,8 +377,9 @@ class ForgeScriptRunConfigurationEditor : SettingsEditor<ForgeScriptRunConfigura
     c.contractName = contractName.text
     c.signature = signature.text
     c.arguments = arguments.text
-    c.rpcUrl = rpcUrl.text
+    target.apply(c.target)
     c.broadcast = broadcast.isSelected
+    c.wallet = wallet.item?.address ?: savedWallet
     c.additionalOptions = additionalOptions.text
     c.workingDirectory = workingDirectory.text
   }

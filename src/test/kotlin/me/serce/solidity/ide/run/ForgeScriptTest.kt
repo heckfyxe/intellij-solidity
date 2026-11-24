@@ -86,6 +86,106 @@ class ForgeScriptTest : SolLightPlatformCodeInsightFixtureTestCase() {
     assertEquals(listOf("script", "script/Deploy.s.sol"), cmd.parametersList.list)
   }
 
+  private fun configuration(): Pair<ForgeScriptRunConfiguration, com.intellij.execution.runners.ExecutionEnvironment> {
+    val factory = ForgeScriptRunConfigurationFactory(ForgeScriptRunConfigurationType())
+    val configuration = ForgeScriptRunConfiguration(project, factory, "s")
+    configuration.workingDirectory = "/work"
+    configuration.scriptPath = "script/Deploy.s.sol"
+    val settings = RunManager.getInstance(project).createConfiguration(configuration, factory)
+    return configuration to ExecutionEnvironmentBuilder.create(DefaultRunExecutor.getRunExecutorInstance(), settings).build()
+  }
+
+  fun testNetworkUrlGoesInTheEnvironmentNotTheCommandLine() {
+    val (configuration, env) = configuration()
+    configuration.target.kind = ForgeTargetKind.NETWORK
+    configuration.target.network = "Sepolia"
+    val target = ResolvedTarget("https://rpc.example/secret-key", "Sepolia", 11155111L, chain = null, onCommandLine = false)
+
+    val cmd = ForgeScriptCommandLineState(configuration, env).generateCommandLine(false, target)
+
+    assertEquals(listOf("script", "script/Deploy.s.sol"), cmd.parametersList.list)
+    assertEquals("https://rpc.example/secret-key", cmd.environment[ResolvedTarget.RPC_ENV])
+  }
+
+  fun testKeystoreSignerOfANetworkChain() {
+    val (configuration, env) = configuration()
+    configuration.broadcast = true
+    val wallet = me.serce.solidity.chain.WalletConfig().apply {
+      kind = me.serce.solidity.chain.WalletKind.KEYSTORE
+      keystorePath = "/keys/dev"
+      address = "0x0000000000000000000000000000000000000001"
+    }
+    val target = ResolvedTarget("https://rpc.example/k", "Sepolia", 11155111L, chain = null, onCommandLine = false)
+    val signer = ScriptSigner.Wallet(wallet, java.nio.file.Path.of("/tmp/p"))
+
+    val cmd = ForgeScriptCommandLineState(configuration, env).generateCommandLine(false, target, signer)
+
+    assertEquals(
+      listOf("script", "script/Deploy.s.sol", "--broadcast", "--keystore", "/keys/dev", "--password-file", "/tmp/p",
+        "--sender", "0x0000000000000000000000000000000000000001"),
+      cmd.parametersList.list
+    )
+    // forge must not sign with a wallet the user's environment names
+    assertEquals(com.intellij.execution.configurations.GeneralCommandLine.ParentEnvironmentType.NONE, cmd.parentEnvironmentType)
+    assertFalse(me.serce.solidity.chain.wallet.CastWallet.WALLET_ENV.any { it in cmd.environment })
+    assertEquals("https://rpc.example/k", cmd.environment[ResolvedTarget.RPC_ENV])
+  }
+
+  fun testUnlockedSignerOfALocalChain() {
+    val (configuration, env) = configuration()
+    configuration.broadcast = true
+    val target = ResolvedTarget("http://127.0.0.1:8545", "Local chain", 31337L, chain = null, onCommandLine = false)
+    val cmd = ForgeScriptCommandLineState(configuration, env)
+      .generateCommandLine(false, target, ScriptSigner.Unlocked("0x00000000000000000000000000000000000000aa"))
+    assertEquals(
+      listOf("script", "script/Deploy.s.sol", "--broadcast", "--unlocked", "--sender", "0x00000000000000000000000000000000000000aa"),
+      cmd.parametersList.list
+    )
+  }
+
+  fun testTargetIsSavedAndOldRpcUrlLoadsAsUrlTarget() {
+    val (configuration, _) = configuration()
+    configuration.target.kind = ForgeTargetKind.CHAIN
+    configuration.target.chain = "chain-id"
+    configuration.wallet = "0x0000000000000000000000000000000000000002"
+    val element = org.jdom.Element("configuration")
+    configuration.writeExternal(element)
+    val (loaded, _) = configuration()
+    loaded.readExternal(element)
+    assertEquals(ForgeTargetKind.CHAIN, loaded.target.kind)
+    assertEquals("chain-id", loaded.target.chain)
+    assertEquals("0x0000000000000000000000000000000000000002", loaded.wallet)
+
+    val legacy = org.jdom.Element("configuration")
+    legacy.addContent(org.jdom.Element("rpcUrl").setAttribute("value", "sepolia"))
+    val (old, _) = configuration()
+    old.readExternal(legacy)
+    assertEquals(ForgeTargetKind.URL, old.target.kind)
+    assertEquals("sepolia", old.rpcUrl)
+  }
+
+  fun testBroadcastNeedsATarget() {
+    val (configuration, _) = configuration()
+    configuration.broadcast = true
+    assertThrows(com.intellij.execution.configurations.RuntimeConfigurationError::class.java) { configuration.checkConfiguration() }
+  }
+
+  fun testChainTargetMustBeRunning() {
+    val chain = me.serce.solidity.chain.ChainConfig().apply { name = "Dev" }
+    me.serce.solidity.chain.ChainService.getInstance(project).addChain(chain)
+    try {
+      val target = ForgeTarget().apply { kind = ForgeTargetKind.CHAIN; this.chain = chain.id }
+      try {
+        target.resolve(project)
+        fail("a stopped chain must not resolve")
+      } catch (e: com.intellij.execution.ExecutionException) {
+        assertTrue(e.message!!.contains("not running"))
+      }
+    } finally {
+      me.serce.solidity.chain.ChainService.getInstance(project).removeChain(chain)
+    }
+  }
+
   fun testGutterOnRunOnly() {
     myFixture.configureByText("Deploy.s.sol", script)
     val contributor = ForgeScriptRunLineMarkerContributor()

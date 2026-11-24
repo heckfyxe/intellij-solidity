@@ -88,16 +88,11 @@ class CastWallet(private val cast: String) {
 
   private fun <T> withPassword(password: String?, body: (Path?) -> T): T {
     if (password == null) return body(null)
-    val dir = if (SystemInfo.isUnix) Files.createTempDirectory("sol-cast", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
-    else Files.createTempDirectory("sol-cast")
-    val file = dir.resolve("p")
+    val file = writePasswordFile(password)
     try {
-      if (SystemInfo.isUnix) Files.createFile(file, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
-      Files.writeString(file, password)
       return body(file)
     } finally {
-      Files.deleteIfExists(file)
-      Files.deleteIfExists(dir)
+      deletePasswordFile(file)
     }
   }
 
@@ -124,8 +119,27 @@ class CastWallet(private val cast: String) {
     private val ADDRESS = Regex("0x[0-9a-fA-F]{40}")
     private val RAW_TX = Regex("0x[0-9a-fA-F]{100,}")
     private val TX_HASH = Regex("0x[0-9a-fA-F]{64}\\b")
-    /** Variables that would make cast sign with something other than the wallet we pass. */
-    private val WALLET_ENV = listOf("ETH_PASSWORD", "ETH_KEYSTORE", "ETH_KEYSTORE_ACCOUNT", "ETH_FROM", "ETH_PRIVATE_KEY", "ETH_MNEMONIC", "CAST_ASYNC")
+    /** Variables that would make cast or forge sign with something other than the wallet we pass. */
+    val WALLET_ENV = listOf("ETH_PASSWORD", "ETH_KEYSTORE", "ETH_KEYSTORE_ACCOUNT", "ETH_FROM", "ETH_PRIVATE_KEY", "ETH_MNEMONIC", "CAST_ASYNC")
+
+    /**
+     * Writes [password] to a file only the user can read, in a directory only the user can open: cast and forge read
+     * keystore passwords from a file (FIFOs are rejected) or the command line, which `ps` shows. Delete it with
+     * [deletePasswordFile] as soon as the process exits.
+     */
+    fun writePasswordFile(password: String): Path {
+      val dir = if (SystemInfo.isUnix) Files.createTempDirectory("sol-cast", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
+      else Files.createTempDirectory("sol-cast")
+      val file = dir.resolve("p")
+      if (SystemInfo.isUnix) Files.createFile(file, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+      Files.writeString(file, password)
+      return file
+    }
+
+    fun deletePasswordFile(file: Path) {
+      Files.deleteIfExists(file)
+      Files.deleteIfExists(file.parent)
+    }
 
     fun castPath(project: Project): String =
       Path.of(FoundryProject.forgePath(project)).resolveSibling(if (SystemInfo.isWindows) "cast.exe" else "cast").toString()
