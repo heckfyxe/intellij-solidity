@@ -6,11 +6,9 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiParserFacade
 import com.intellij.psi.PsiWhiteSpace
-import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.PsiRecursiveElementVisitor
 import com.intellij.psi.util.PsiTreeUtil
 import me.serce.solidity.lang.core.SolidityTokenTypes
-import com.intellij.psi.util.childrenOfType
 import com.intellij.psi.util.descendantsOfType
 import me.serce.solidity.ide.inspections.fixes.ImportFileAction
 import me.serce.solidity.lang.SolidityFileType
@@ -19,11 +17,9 @@ import me.serce.solidity.lang.resolve.SolResolver
 import me.serce.solidity.lang.types.outerContract
 
 class SolImportOptimizer : ImportOptimizer {
-    override fun supports(file: PsiFile) = file.fileType == SolidityFileType
+  override fun supports(file: PsiFile) = file.fileType == SolidityFileType
 
-    override fun processFile(file: PsiFile): Runnable {
-        return processFile(file, true)
-    }
+  override fun processFile(file: PsiFile): Runnable = processFile(file, true)
 
   fun processFile(file: PsiFile, fullOptimization: Boolean): Runnable {
     val list = file.descendantsOfType<SolImportDirective>().toList().takeIf { it.isNotEmpty() }
@@ -38,31 +34,31 @@ class SolImportOptimizer : ImportOptimizer {
     val addSpecificSymbols = CodeStyle.getSettings(file).solidityCustomSettings.specificSymbolImports
     val (usedNames, unqualifiedNames) = identifiersOutsideImports(file)
     // aliased imports can't be rebuilt from the names they bring in: keep them, minus the aliases nobody uses
-    val aliased = list.filter { it.isAliased() }.mapNotNull { pruneAliased(it, usedNames) }
-    val allTypes = SolResolver.collectImportedNames(file)
-      .mapNotNull { it.target.let { if (it is SolUserDefinedTypeName) SolResolver.resolveTypeNameUsingImports(it).firstOrNull() else it } }
     val solFactory = SolPsiFactory(file.project)
-    val imports = allTypes
-      .mapNotNull {
-        it.outerContract()?.let { parentContract ->
-          if (it is SolFunctionDefinition) return@mapNotNull null
-          return@mapNotNull Pair(it, parentContract.name)
-        }
-        Pair(it, it.name)
+    val aliased = list.filter { it.isAliased() }.mapNotNull { pruneAliased(it, usedNames, solFactory) }
+    val imported = SolResolver.collectImportedNames(file).mapNotNull { name ->
+      name.target.let { if (it is SolUserDefinedTypeName) SolResolver.resolveTypeNameUsingImports(it).firstOrNull() else it }
+    }
+    // each declaration with the name it is imported by: a member of a contract (except functions) by the contract's
+    val namedDeclarations = imported.mapNotNull { declaration ->
+      val contract = declaration.outerContract()
+      when {
+        contract == null -> declaration to declaration.name
+        declaration is SolFunctionDefinition -> null
+        else -> declaration to contract.name
       }
+    }
+    val imports = namedDeclarations
       // a name only used through an alias (`Base`, `Lib.L`) needs no import of its own
       .filter { (_, name) -> name in unqualifiedNames }
-      .groupBy { it.first.containingFile }
-      .mapNotNull {
-        val file1 = it.key.containingFile?.virtualFile ?: return@mapNotNull null
-        val solUserDefinedTypeName = if (addSpecificSymbols) it.value.mapNotNull { it.second }.distinct() else emptyList()
-        val to = file.virtualFile
-        ImportFileAction.createImport(solFactory, solUserDefinedTypeName, file1, to)
+      .groupBy({ it.first.containingFile }, { it.second })
+      .mapNotNull { (declaringFile, names) ->
+        val from = declaringFile?.virtualFile ?: return@mapNotNull null
+        val symbols = if (addSpecificSymbols) names.filterNotNull().distinct() else emptyList()
+        ImportFileAction.createImport(solFactory, symbols, from, file.virtualFile)
       }
 
-    return Runnable {
-      extracted(list, imports, aliased)
-    }
+    return Runnable { replaceImports(list, imports, aliased) }
   }
 
   private fun SolImportDirective.isAliased() = importAlias != null || importAliasedPairList.any { it.importAlias != null }
@@ -71,16 +67,14 @@ class SolImportOptimizer : ImportOptimizer {
    * [directive] without the names [used] doesn't contain, as a new directive, or null when none of them is used.
    * `import "x" as X` and `import * as X from "x"` are kept whole when `X` is used.
    */
-  private fun pruneAliased(directive: SolImportDirective, used: Set<String>): SolImportDirective? {
+  private fun pruneAliased(directive: SolImportDirective, used: Set<String>, factory: SolPsiFactory): SolImportDirective? {
     directive.importAlias?.let { alias -> return if (alias.text in used) directive.copy() as SolImportDirective else null }
     val pairs = directive.importAliasedPairList
     val kept = pairs.filter { pair -> (pair.importAlias?.text ?: pair.userDefinedTypeName.text) in used }
     if (kept.isEmpty()) return null
     if (kept.size == pairs.size) return directive.copy() as SolImportDirective
     val path = directive.importPath?.text ?: return directive.copy() as SolImportDirective
-    val text = "import {${kept.joinToString(", ") { it.text }}} from $path;"
-    return PsiFileFactory.getInstance(directive.project).createFileFromText("DUMMY.sol", SolidityFileType, text).childOfType()
-      ?: directive.copy() as SolImportDirective
+    return factory.createImportDirective("{${kept.joinToString(", ") { it.text }}} from $path", addQuotes = false)
   }
 
   /** The identifiers used outside import directives: all of them, and those not after a `.` (not `X.name`). */
@@ -101,7 +95,8 @@ class SolImportOptimizer : ImportOptimizer {
     return all to unqualified
   }
 
-  private fun extracted(list: List<SolImportDirective>, imports: List<SolImportDirective>, aliased: List<SolImportDirective>) {
+  /** Replaces the directives in [list] with [imports] and [aliased], dropping the rebuilt ones nothing uses. */
+  private fun replaceImports(list: List<SolImportDirective>, imports: List<SolImportDirective>, aliased: List<SolImportDirective>) {
     val first = list.first().containingFile.let { it.children.filterIsInstance<SolPragmaDirective>().firstOrNull() ?: it.firstChild }
     val parent = first.parent
     list.forEach { it.delete() }
@@ -112,23 +107,15 @@ class SolImportOptimizer : ImportOptimizer {
     layoutImports(first.containingFile)
   }
 
+  /** Sorts the directives by text, in place. */
   private fun processLight(file: PsiFile, list: List<SolImportDirective>): Runnable {
-        val factory = PsiFileFactory.getInstance(file.project)
-
-        val sorted = list.sortedBy { it.text }.zip(list).map {
-            if (it.first != it.second) {
-                factory.createFileFromText("DUMMY.tsol", SolidityFileType, it.first.text).childOfType() ?: it.first
-            } else it.first
-        }
-        return Runnable {
-            list.zip(sorted).forEach {
-                if (it.first != it.second) {
-                    it.first.replace(it.second)
-                }
-            }
-            layoutImports(file)
-        }
+    // copies, since replacing one directive invalidates it as the source of another
+    val sorted = list.sortedBy { it.text }.zip(list).map { (wanted, current) -> if (wanted != current) wanted.copy() else wanted }
+    return Runnable {
+      list.zip(sorted).forEach { (current, wanted) -> if (current != wanted) current.replace(wanted) }
+      layoutImports(file)
     }
+  }
 }
 
 /**
