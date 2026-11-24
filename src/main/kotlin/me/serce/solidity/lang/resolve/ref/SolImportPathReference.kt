@@ -29,25 +29,18 @@ class SolImportPathReference(element: SolImportPathElement) : SolReferenceBase<S
       if (!file.isValid) {
         return null
       }
-      val directFile = file.findFileByRelativePath("../$path")
-      val resolved = directFile
-        ?: findFoundryRemapping(project, file, path)
+      val config = SolImportConfigService.getInstance(project)
+      // a remapping wins over node_modules and installed_contracts, which win over a plain lookup up the tree
+      val resolved = file.findFileByRelativePath("../$path")
+        ?: config.resolveRemapping(path, file)
         ?: findNpmImportFile(file, path)
         ?: findEthPMImportFile(file, path)
-        ?: findFoundryImportFile(project, file, path)
+        ?: config.resolve(path, file)
       return resolved?.takeIf { it.isValid }
-    }
-
-    private fun findFoundryRemapping(project: Project, file: VirtualFile, path: String): VirtualFile? {
-      return SolImportConfigService.getInstance(project).resolveRemapping(path, file)
     }
 
     private fun findNpmImportFile(file: VirtualFile, path: String): VirtualFile? =
       findInSelfOrAncestors(file, "node_modules/$path")
-
-    private fun findFoundryImportFile(project: Project, file: VirtualFile, path: String): VirtualFile? {
-      return SolImportConfigService.getInstance(project).resolve(path, file)
-    }
 
     private fun findEthPMImportFile(file: VirtualFile, path: String): VirtualFile? =
       findInSelfOrAncestors(file, "installed_contracts/" + path.replaceFirst("/", "/contracts/"))

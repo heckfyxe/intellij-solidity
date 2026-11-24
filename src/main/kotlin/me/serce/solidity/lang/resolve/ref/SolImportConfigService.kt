@@ -52,46 +52,24 @@ class SolImportConfigService(val project: Project) {
   private val emptyConfig = FoundryImportConfig(emptyList(), emptyMap())
   private val tomlMapper by lazy { TomlMapper() }
 
-  fun resolve(path: String, fromFile: VirtualFile): VirtualFile? {
-    if (!fromFile.isValid) {
-      return null
-    }
-    var current: VirtualFile? = when {
-        fromFile.isDirectory -> fromFile
-        else -> fromFile.parent
-    }
-    while (current != null) {
-      if (!current.isValid) return null
-      val config = when {
-        hasFoundryConfig(current) -> getOrLoadConfig(current)
-        else -> emptyConfig
-      }
+  /** [path] remapped, as given, or in a dependency directory, from the nearest directory of [fromFile] up. */
+  fun resolve(path: String, fromFile: VirtualFile): VirtualFile? = walkUp(path, fromFile, remappedOnly = false)
 
-      val remappedPath = applyRemappings(config.remappings, path, relativeTo(fromFile, current))
-      val remappedFile = findFile(current, remappedPath)
-      if (remappedFile != null) {
-        return remappedFile
-      }
+  /** [path] looked up only where a remapping applies to it. */
+  fun resolveRemapping(path: String, fromFile: VirtualFile): VirtualFile? = walkUp(path, fromFile, remappedOnly = true)
 
-      val fallbackFile = foundryDefaultFallback(current, path, config.libs)
-      if (fallbackFile != null) {
-        return fallbackFile
-      }
-
-      current = current.parent
-    }
-    return null
-  }
-
-  fun resolveRemapping(path: String, fromFile: VirtualFile): VirtualFile? {
+  private fun walkUp(path: String, fromFile: VirtualFile, remappedOnly: Boolean): VirtualFile? {
     if (!fromFile.isValid) return null
     var current: VirtualFile? = if (fromFile.isDirectory) fromFile else fromFile.parent
     while (current != null) {
-      if (hasFoundryConfig(current)) {
-        val remappedPath = applyRemappings(getOrLoadConfig(current).remappings, path, relativeTo(fromFile, current))
-        if (remappedPath != path) {
-          findFile(current, remappedPath)?.let { return it }
-        }
+      if (!current.isValid) return null
+      val config = if (hasFoundryConfig(current)) getOrLoadConfig(current) else emptyConfig
+      val remappedPath = applyRemappings(config.remappings, path, relativeTo(fromFile, current))
+      if (!remappedOnly || remappedPath != path) {
+        findFile(current, remappedPath)?.let { return it }
+      }
+      if (!remappedOnly) {
+        foundryDefaultFallback(current, path, config.libs)?.let { return it }
       }
       current = current.parent
     }
