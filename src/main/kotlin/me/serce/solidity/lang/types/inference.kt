@@ -160,9 +160,7 @@ inline fun <reified T : PsiElement> PsiElement.findParent(): T? {
     .firstOrNull()
 }
 
-inline fun <reified T : PsiElement> PsiElement.findParentOrNull(): T? = findParent()
-
-fun PsiElement.findContract(): SolContractDefinition? = this.findParentOrNull()
+fun PsiElement.findContract(): SolContractDefinition? = findParent()
 
 fun SolNamedElement.outerContract() = parent?.takeIf { it is SolContractDefinition || it is SolEnumDefinition || it is SolStructDefinition }?.findContract()
 

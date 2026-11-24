@@ -411,7 +411,7 @@ object SolResolver {
   fun resolveVarLiteralReference(element: SolNamedElement): List<SolNamedElement> {
     return when {
         element.parent?.parent is SolFunctionCallExpression -> {
-          val functionCall = element.findParentOrNull<SolFunctionCallElement>()!!
+          val functionCall = element.findParent<SolFunctionCallElement>()!!
           val resolved = functionCall.reference?.multiResolve() ?: emptyList()
           if (resolved.isNotEmpty()) {
             resolved.filterIsInstance<SolNamedElement>()
@@ -542,7 +542,7 @@ object SolResolver {
 
   private fun computeMemberAccess(element: SolMemberAccessExpression): List<SolMember> {
     if (element.parent is SolFunctionCallExpression) {
-      val functionCall = element.findParentOrNull<SolFunctionCallElement>()!!
+      val functionCall = element.findParent<SolFunctionCallElement>()!!
       val resolved = (functionCall.reference as SolFunctionCallReference)
         .resolveFunctionCallAndFilter()
         .filterIsInstance<SolMember>()

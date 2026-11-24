@@ -393,7 +393,7 @@ data class SolContract(val ref: SolContractDefinition, val builtin: Boolean = fa
   override fun toString() = ref.name ?: ref.text ?: "$ref"
 }
 
-data class SolStruct(val ref: SolStructDefinition, val builtin : Boolean = false) : SolUserType, SolMember {
+data class SolStruct(val ref: SolStructDefinition) : SolUserType, SolMember {
   override fun isAssignableFrom(other: SolType): Boolean =
     other is SolStruct && ref == other.ref
 
@@ -405,7 +405,7 @@ data class SolStruct(val ref: SolStructDefinition, val builtin : Boolean = false
   }
 
   override val isBuiltin: Boolean
-    get() = builtin
+    get() = false
 
   override fun getName(): String? = ref.name
 

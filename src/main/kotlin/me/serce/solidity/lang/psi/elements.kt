@@ -130,7 +130,6 @@ interface SolHasModifiersElement : SolReferenceElement
 interface SolUsingForElement : PsiElement {
   /** The target type, or `null` for `using L for *`. */
   val type: SolType?
-  val usingElementList: List<SolCallableElement>
   /** Libraries and functions attached as members: `{f as +}` binds an operator, not a member function. */
   val memberBindingList: List<SolCallableElement>
   /** `using ... for T global;` */

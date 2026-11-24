@@ -5,12 +5,9 @@ import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.project.DumbAware
-import com.intellij.patterns.StandardPatterns.and
-import com.intellij.patterns.StandardPatterns.not
 import com.intellij.psi.TokenType
 import com.intellij.psi.util.PsiTreeUtil.findElementOfClassAtOffset
 import com.intellij.psi.util.PsiTreeUtil.getParentOfType
-import com.intellij.util.ProcessingContext
 import me.serce.solidity.ide.SolidityIcons
 import me.serce.solidity.lang.core.SolidityFile
 import me.serce.solidity.lang.core.SolidityTokenTypes
@@ -19,12 +16,8 @@ import me.serce.solidity.ide.hints.varargsText
 import me.serce.solidity.lang.types.SolInternalTypeFactory
 import me.serce.solidity.lang.types.SolType
 
+/** Chooses the dummy identifier; function completion itself comes from the references' variants. */
 class SolFunctionCompletionContributor : CompletionContributor(), DumbAware {
-
-  init {
-    extend(CompletionType.BASIC, and(expression(), not(mapExpression())), FunctionCompletionProvider)
-  }
-
   override fun beforeCompletion(context: CompletionInitializationContext) {
     val file = context.file
     if (file is SolidityFile) {
@@ -105,16 +98,6 @@ private fun isMemberAccessEndingLine(file: SolidityFile, offset: Int): Boolean {
   }
   val element = file.findElementAt(dot - 1) ?: return false
   return getParentOfType(element, SolBlock::class.java, SolYulBlock::class.java) is SolBlock
-}
-
-object FunctionCompletionProvider : CompletionProvider<CompletionParameters>() {
-  override fun addCompletions(
-    parameters: CompletionParameters,
-    context: ProcessingContext,
-    result: CompletionResultSet
-  ) {
-    // actual completion is performed via com.intellij.psi.PsiReference#getVariants
-  }
 }
 
 fun SolCallable.toFunctionLookup(): LookupElementBuilder? {

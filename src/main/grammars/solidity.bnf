@@ -128,7 +128,6 @@ private PragmaPart ::= pragma Identifier pragmaAll? {
 }
 PragmaDirective ::= PragmaPart ';'
 
-private ClosedBracketRecover ::= !('}')
 ImportAlias ::= Identifier {
     implements = "me.serce.solidity.lang.psi.SolNamedElement"
     mixin = "me.serce.solidity.lang.psi.impl.SolImportAliasMixin"
@@ -137,7 +136,7 @@ ImportAlias ::= Identifier {
 }
 ImportAliasedPair ::= UserDefinedTypeName (as ImportAlias)?
 private ImportRuleSet ::= ImportAliasedPair ( ',' ImportAliasedPair )* {
-    recoverWhile = ClosedBracketRecover
+    recoverWhile = UntilBraceRecover
 }
 ImportPath ::= stringLiteral {
     implements = "me.serce.solidity.lang.psi.SolNamedElement"
@@ -612,8 +611,6 @@ private HexNumber ::= hexNumber
 private FixedNumber ::= fixedNumber
 private DecimalNumber ::= decimalNumber
 private ScientificNumber ::= scientificNumber
-
-private PrimitiveLiteral ::= intNumType | uIntNumType | byteNumType | bytesNumType | fixedNumType | uFixedNumType | booleanLiteral | ( address 'payable' ) | address | payable | string | bool
 
 private ElementaryTypeNameExpression ::= ElementaryTypeName
 

@@ -596,9 +596,6 @@ abstract class SolUsingForMixin(node: ASTNode) : SolElementImpl(node), SolUsingF
       return libraries.filterIsInstance<SolUserDefinedTypeName>()
     }
 
-  override val usingElementList: List<SolCallableElement>
-    get() = boundNames.mapNotNull { SolResolver.resolveUsingForElement(it) }
-
   /** Resolved on every member access the declaration applies to, so it is cached. */
   override val memberBindingList: List<SolCallableElement>
     get() = CachedValuesManager.getCachedValue(this) {
