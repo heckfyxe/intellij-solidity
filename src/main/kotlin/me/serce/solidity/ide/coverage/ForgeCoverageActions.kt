@@ -2,77 +2,46 @@ package me.serce.solidity.ide.coverage
 
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationAction
-import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
-import me.serce.solidity.chain.foundry.FoundryException
 import me.serce.solidity.chain.foundry.FoundryProject
+import me.serce.solidity.ide.foundry.ForgeAction
 
 /** Runs `forge coverage --report lcov` in the Foundry root and shows the result in the editors. */
-class RunForgeCoverageAction : DumbAwareAction() {
-  override fun getActionUpdateThread() = ActionUpdateThread.BGT
+class RunForgeCoverageAction : ForgeAction("Forge coverage") {
+  override fun taskTitle() = "Running forge coverage"
 
-  override fun update(e: AnActionEvent) {
-    val project = e.project
-    e.presentation.isEnabledAndVisible = project != null && FoundryProject.find(project, e.getData(CommonDataKeys.VIRTUAL_FILE)) != null
-  }
-
-  override fun actionPerformed(e: AnActionEvent) {
-    val project = e.project ?: return
-    val foundry = FoundryProject.find(project, e.getData(CommonDataKeys.VIRTUAL_FILE)) ?: return
-    FileDocumentManager.getInstance().saveAllDocuments()
-    object : Task.Backgroundable(project, "Running forge coverage", true) {
-      override fun run(indicator: ProgressIndicator) {
-        val report = foundry.root.resolve("lcov.info").toFile()
-        val started = System.currentTimeMillis()
-        val output = try {
-          foundry.exec(listOf(FoundryProject.forgePath(project), "coverage", "--report", "lcov"), timeoutMs = 30 * 60_000)
-        } catch (ex: FoundryException) {
-          notify(project, ex.message ?: "forge coverage failed", NotificationType.ERROR)
-          return
-        }
-        // forge writes no report when a test fails: don't show a stale one
-        if (!report.isFile || report.lastModified() < started - 2_000) {
-          val text = (output.stdout + output.stderr).trim().lines().takeLast(15).joinToString("\n")
-          notify(project, "forge coverage wrote no lcov.info (exit code ${output.exitCode})\n$text", NotificationType.ERROR)
-          return
-        }
-        val lcov = Lcov.parse(report.readText())
-        LocalFileSystem.getInstance().refreshIoFiles(listOf(report), true, false, null)
-        ApplicationManager.getApplication().invokeLater({
-          ForgeCoverageService.getInstance(project).setReport(foundry.root.toString(), lcov, started)
-        }, project.disposed)
-        val summary = CoverageSummary.of(lcov).toString()
-        val (content, type) = if (output.exitCode != 0) {
-          "$summary<br>forge coverage exited with code ${output.exitCode} (a test failed?); showing the report it wrote" to NotificationType.WARNING
-        } else {
-          summary to NotificationType.INFORMATION
-        }
-        notification(content, type).addAction(object : NotificationAction("Hide") {
-          override fun actionPerformed(e: AnActionEvent, notification: Notification) {
-            ForgeCoverageService.getInstance(project).clear()
-            notification.expire()
-          }
-        }).notify(project)
+  override fun runInBackground(project: Project, foundry: FoundryProject) {
+    val report = foundry.root.resolve("lcov.info").toFile()
+    val started = System.currentTimeMillis()
+    val output = forge(project, foundry, listOf("coverage", "--report", "lcov")) ?: return
+    // forge writes no report when a test fails: don't show a stale one
+    if (!report.isFile || report.lastModified() < started - 2_000) {
+      notify(project, "forge coverage wrote no lcov.info (exit code ${output.exitCode})\n${tail(output)}", NotificationType.ERROR)
+      return
+    }
+    val lcov = Lcov.parse(report.readText())
+    LocalFileSystem.getInstance().refreshIoFiles(listOf(report), true, false, null)
+    ApplicationManager.getApplication().invokeLater({
+      ForgeCoverageService.getInstance(project).setReport(foundry.root.toString(), lcov, started)
+    }, project.disposed)
+    val summary = CoverageSummary.of(lcov).toString()
+    val (content, type) = if (output.exitCode != 0) {
+      "$summary<br>forge coverage exited with code ${output.exitCode} (a test failed?); showing the report it wrote" to NotificationType.WARNING
+    } else {
+      summary to NotificationType.INFORMATION
+    }
+    notification(content, type).addAction(object : NotificationAction("Hide") {
+      override fun actionPerformed(e: AnActionEvent, notification: Notification) {
+        ForgeCoverageService.getInstance(project).clear()
+        notification.expire()
       }
-    }.queue()
-  }
-
-  private fun notification(content: String, type: NotificationType): Notification =
-    NotificationGroupManager.getInstance().getNotificationGroup("Solidity Foundry")
-      .createNotification("Forge coverage", content, type)
-
-  private fun notify(project: Project, content: String, type: NotificationType) {
-    notification(content, type).notify(project)
+    }).notify(project)
   }
 }
 
