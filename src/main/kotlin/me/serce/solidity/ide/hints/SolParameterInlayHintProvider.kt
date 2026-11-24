@@ -51,7 +51,7 @@ fun provideArgumentNameHints(element: SolFunctionCallElement): List<InlayInfo> {
   if (args.firstOrNull() is SolMapExpression) return emptyList()
 
   // the arguments a variadic parameter takes have no names to show
-  val params = element.resolveDefinitions()?.singleOrNull()?.parseParameters()
+  val params = element.resolveDefinitions().singleOrNull()?.parseParameters()
     ?.filter { it.first != SolInternalTypeFactory.varargsId } ?: return emptyList()
   return params.zip(args).map { (param, arg) -> InlayInfo(param.first ?: param.second.toString(), arg.startOffset) }
 }

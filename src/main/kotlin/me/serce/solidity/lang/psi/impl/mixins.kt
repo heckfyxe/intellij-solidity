@@ -402,13 +402,13 @@ abstract class SolFunctionCallMixin(node: ASTNode) : SolNamedElementImpl(node), 
   override val functionCallArguments: SolFunctionCallArguments
     get() = functionInvocation.functionCallArguments!!
 
-  override fun resolveDefinitions(): List<SolCallable>? {
-
-    return when (val it = children.firstOrNull()) {
-      is SolMemberAccessExpression -> SolResolver.resolveMemberAccess(it)
-      is SolNewExpression -> it.reference?.multiResolve() ?: emptyList()
-      else -> SolResolver.resolveVarLiteralReference(this)
-    }.filterIsInstance<SolCallable>()
+  /** The callables of the call (constructors for `new C(...)`); among overloads, those accepting the arguments. */
+  override fun resolveDefinitions(): List<SolCallable> {
+    val expr = expression
+    if (expr is SolNewExpression) return expr.reference?.multiResolve().orEmpty().filterIsInstance<SolCallable>()
+    val reference = reference as SolFunctionCallReference
+    val all = reference.resolveFunctionCall()
+    return if (all.size <= 1) all.toList() else reference.resolveFunctionCallAndFilter()
   }
 }
 
