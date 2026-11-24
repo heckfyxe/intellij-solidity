@@ -1,7 +1,8 @@
 package me.serce.solidity.chain.compile
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.ExternalAnnotator
 import com.intellij.lang.annotation.HighlightSeverity
@@ -48,26 +49,26 @@ class SolcExternalAnnotator : ExternalAnnotator<SolcExternalAnnotator.Input, Lis
       val command = listOf(solc.path, "--standard-json", "--base-path", root.path, "--allow-paths", allowed)
       fun compile(withEvmVersion: Boolean): JsonNode? {
         val request = SolcRequest.build(input.relativePath, input.text, input.unsaved, config, solcVersion, withEvmVersion)
-        val output = input.foundry.exec(command, timeoutMs = 15_000, stdin = mapper.writeValueAsBytes(request))
-        return if (output.stdout.isBlank()) null else mapper.readTree(output.stdout)
+        val output = input.foundry.exec(command, timeoutMs = 15_000, stdin = Json.mapper.writeValueAsBytes(request))
+        return if (output.stdout.isBlank()) null else Json.mapper.readTree(output.stdout)
       }
       var json = compile(withEvmVersion = true) ?: return emptyList()
       // a solc whose version we couldn't tell may reject the configured EVM version: fall back to its default
-      if (json["errors"]?.any { it["type"]?.asText() == "JSONError" && it["message"]?.asText().orEmpty().contains("EVM version") } == true) {
+      if (json["errors"]?.any { it.text("type") == "JSONError" && it.text("message").orEmpty().contains("EVM version") } == true) {
         json = compile(withEvmVersion = false) ?: return emptyList()
       }
       json["errors"]?.mapNotNull { err ->
         val loc = err["sourceLocation"] ?: return@mapNotNull null
-        if (loc["file"]?.asText() != input.relativePath) return@mapNotNull null
-        val severity = when (err["severity"]?.asText()) {
+        if (loc.text("file") != input.relativePath) return@mapNotNull null
+        val severity = when (err.text("severity")) {
           "error" -> HighlightSeverity.ERROR
           "warning" -> HighlightSeverity.WARNING
           else -> HighlightSeverity.WEAK_WARNING
         }
         val start = Offsets.byteToChar(input.text, loc["start"]?.asInt() ?: return@mapNotNull null)
         val end = Offsets.byteToChar(input.text, loc["end"]?.asInt() ?: return@mapNotNull null)
-        val message = err["message"]?.asText().orEmpty()
-        val type = err["type"]?.asText().orEmpty()
+        val message = err.text("message").orEmpty()
+        val type = err.text("type").orEmpty()
         Problem(start, end, severity, message, "$type: $message")
       } ?: emptyList()
     } catch (e: Exception) { // no forge, bad foundry.toml, solc timeout: just no annotations
@@ -91,6 +92,5 @@ class SolcExternalAnnotator : ExternalAnnotator<SolcExternalAnnotator.Input, Lis
 
   companion object {
     private val LOG = logger<SolcExternalAnnotator>()
-    private val mapper = ObjectMapper()
   }
 }

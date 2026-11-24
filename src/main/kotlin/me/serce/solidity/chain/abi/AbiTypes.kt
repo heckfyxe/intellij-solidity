@@ -1,8 +1,9 @@
 package me.serce.solidity.chain.abi
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import me.serce.solidity.util.Keccak
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 
 sealed class AbiType {
   abstract val canonical: String
@@ -114,16 +115,15 @@ class ContractAbi(val entries: List<AbiEntry>) {
   val constructor = entries.filterIsInstance<AbiEntry.Constructor>().firstOrNull()
 
   companion object {
-    private val mapper = ObjectMapper()
 
-    fun parse(json: String): ContractAbi = parse(mapper.readTree(json))
+    fun parse(json: String): ContractAbi = parse(Json.mapper.readTree(json))
 
     fun parse(node: JsonNode): ContractAbi = ContractAbi(node.mapNotNull { entry(it) })
 
     private fun entry(n: JsonNode): AbiEntry? {
       val inputs = params(n["inputs"])
       val mutability = mutability(n)
-      return when (n["type"]?.asText() ?: "function") {
+      return when (n.text("type") ?: "function") {
         "function" -> AbiEntry.Function(n["name"].asText(), inputs, params(n["outputs"]), mutability)
         "constructor" -> AbiEntry.Constructor(inputs, mutability)
         "event" -> AbiEntry.Event(n["name"].asText(), inputs, n["anonymous"]?.asBoolean() ?: false)
@@ -132,7 +132,7 @@ class ContractAbi(val entries: List<AbiEntry>) {
       }
     }
 
-    private fun mutability(n: JsonNode): Mutability = when (n["stateMutability"]?.asText()) {
+    private fun mutability(n: JsonNode): Mutability = when (n.text("stateMutability")) {
       "pure" -> Mutability.PURE
       "view" -> Mutability.VIEW
       "payable" -> Mutability.PAYABLE
@@ -146,9 +146,9 @@ class ContractAbi(val entries: List<AbiEntry>) {
 
     private fun params(n: JsonNode?): List<AbiParam> = n?.map { p ->
       AbiParam(
-        name = p["name"]?.asText().orEmpty(),
+        name = p.text("name").orEmpty(),
         type = AbiType.parse(p["type"].asText(), params(p["components"])),
-        internalType = p["internalType"]?.asText(),
+        internalType = p.text("internalType"),
         indexed = p["indexed"]?.asBoolean() ?: false,
       )
     } ?: emptyList()

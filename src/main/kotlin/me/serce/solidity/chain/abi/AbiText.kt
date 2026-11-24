@@ -1,8 +1,9 @@
 package me.serce.solidity.chain.abi
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 
@@ -14,8 +15,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 object AbiText {
   /** [json] is a normalized ABI array; [name] is the contract name when the text says it. */
   class Parsed(val json: String, val name: String?)
-
-  private val mapper = ObjectMapper()
 
   /** @throws AbiInputException when [text] is none of the above, or describes nothing callable. */
   fun parse(text: String): Parsed {
@@ -36,7 +35,7 @@ object AbiText {
    * `cast interface` declares them instead of printing tuples Solidity can't parse.
    */
   fun withStructNames(abiJson: String, interfaceName: String): String {
-    val abi = mapper.readTree(abiJson) as? ArrayNode ?: return abiJson
+    val abi = Json.mapper.readTree(abiJson) as? ArrayNode ?: return abiJson
     val used = HashSet<String>()
     fun unique(base: String): String {
       var name = base
@@ -46,31 +45,31 @@ object AbiText {
     }
     fun name(params: JsonNode?, owner: String, role: String) {
       params?.forEachIndexed { i, p ->
-        val type = p["type"]?.asText() ?: return@forEachIndexed
+        val type = p.text("type") ?: return@forEachIndexed
         if (!type.startsWith("tuple")) return@forEachIndexed
-        val paramName = p["name"]?.asText().orEmpty()
+        val paramName = p.text("name").orEmpty()
         val struct = unique(owner + (paramName.ifEmpty { "$role$i" }).replaceFirstChar { it.uppercase() })
-        if (p["internalType"]?.asText().isNullOrEmpty()) (p as ObjectNode).put("internalType", "struct $interfaceName.$struct${type.removePrefix("tuple")}")
+        if (p.text("internalType").isNullOrEmpty()) (p as ObjectNode).put("internalType", "struct $interfaceName.$struct${type.removePrefix("tuple")}")
         name(p["components"], struct, "Field")
       }
     }
     for (entry in abi) {
-      val owner = entry["name"]?.asText().orEmpty().replaceFirstChar { it.uppercase() }
+      val owner = entry.text("name").orEmpty().replaceFirstChar { it.uppercase() }
       name(entry["inputs"], owner, "Arg")
       name(entry["outputs"], owner, "Result")
     }
-    return mapper.writeValueAsString(abi)
+    return Json.mapper.writeValueAsString(abi)
   }
 
   private fun fromJson(text: String): Parsed {
     val node = try {
-      mapper.readTree(text)
+      Json.mapper.readTree(text)
     } catch (e: JsonProcessingException) {
       throw AbiInputException("Not valid JSON: ${e.originalMessage}")
     }
     val (abi, name) = findAbi(node) ?: throw AbiInputException("No ABI in this JSON: expected an array, or an object with an \"abi\" field")
     abi.forEach { if (!it.isObject || (it["type"] == null && it["name"] == null)) throw AbiInputException("Not an ABI entry: $it") }
-    return Parsed(mapper.writeValueAsString(abi), name)
+    return Parsed(Json.mapper.writeValueAsString(abi), name)
   }
 
   /** The ABI array in [node] and the contract name next to it, if any. */
@@ -78,11 +77,11 @@ object AbiText {
     if (node is ArrayNode) return node to null
     if (!node.isObject) return null
     val name = listOf("contractName", "ContractName", "name").firstNotNullOfOrNull { node[it]?.takeIf { n -> n.isTextual }?.asText() }
-      ?: node["compilation"]?.get("name")?.asText()
+      ?: node["compilation"]?.text("name")
     for (field in listOf("abi", "ABI")) {
       val v = node[field] ?: continue
       if (v is ArrayNode) return v to name
-      if (v.isTextual) (runCatching { mapper.readTree(v.asText()) }.getOrNull() as? ArrayNode)?.let { return it to name }
+      if (v.isTextual) (runCatching { Json.mapper.readTree(v.asText()) }.getOrNull() as? ArrayNode)?.let { return it to name }
     }
     // Etherscan: {"status":"1","result":[{"ABI":"[…]","ContractName":"…"}]}
     node["result"]?.let { r -> (if (r is ArrayNode) r.firstOrNull() else r)?.let { findAbi(it) }?.let { return it } }
@@ -94,13 +93,13 @@ object AbiText {
   private class HumanReadable(text: String) {
     private val tokens = tokenize(text)
     private var pos = 0
-    private val entries = mapper.createArrayNode()
+    private val entries = Json.mapper.createArrayNode()
     private var name: String? = null
 
     fun parse(): Parsed {
       while (pos < tokens.size) statement()
       if (entries.isEmpty) throw AbiInputException("No function, event or error signatures found")
-      return Parsed(mapper.writeValueAsString(entries), name)
+      return Parsed(Json.mapper.writeValueAsString(entries), name)
     }
 
     private fun peek(offset: Int = 0) = tokens.getOrNull(pos + offset)
@@ -139,7 +138,7 @@ object AbiText {
       val fnName = next()
       val inputs = params()
       val (mutability, _) = modifiers()
-      val outputs = if (peek() == "returns") { next(); params() } else mapper.createArrayNode()
+      val outputs = if (peek() == "returns") { next(); params() } else Json.mapper.createArrayNode()
       skipBody()
       entries.addObject().apply {
         put("type", "function"); put("name", fnName)
@@ -200,7 +199,7 @@ object AbiText {
     }
 
     private fun params(allowIndexed: Boolean = false): ArrayNode {
-      val list = mapper.createArrayNode()
+      val list = Json.mapper.createArrayNode()
       expect("(")
       if (peek() == ")") { next(); return list }
       while (true) {
@@ -215,7 +214,7 @@ object AbiText {
 
     private fun param(allowIndexed: Boolean): ObjectNode {
       // name and type first, as solc writes them
-      val node = mapper.createObjectNode().put("name", "").put("type", "")
+      val node = Json.mapper.createObjectNode().put("name", "").put("type", "")
       var type: String
       if (peek() == "tuple" || peek() == "(") {
         if (peek() == "tuple") next()

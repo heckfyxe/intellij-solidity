@@ -1,10 +1,11 @@
 package me.serce.solidity.chain.abi
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import me.serce.solidity.util.toHex
 import me.serce.solidity.util.Keccak
 import me.serce.solidity.util.checksumAddress
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
 import me.serce.solidity.chain.rpc.ChainHttp
 import me.serce.solidity.chain.rpc.JsonRpcClient
@@ -41,13 +42,13 @@ class AbiFetcher(
     if (implementation != null && !implementation.equals(address, ignoreCase = true)) {
       val impl = find(chainId, implementation, key)
       if (impl != null) {
-        val merged = mapper.createArrayNode().addAll(impl.abi)
+        val merged = Json.mapper.createArrayNode().addAll(impl.abi)
         val seen = impl.abi.map(::key).toHashSet()
         own?.abi?.filter { key(it) !in seen }?.forEach { merged.add(it) }
-        return FetchedAbi(mapper.writeValueAsString(merged), impl.name ?: own?.name, impl.source, checksumAddress(implementation))
+        return FetchedAbi(Json.mapper.writeValueAsString(merged), impl.name ?: own?.name, impl.source, checksumAddress(implementation))
       }
     }
-    if (own != null) return FetchedAbi(mapper.writeValueAsString(own.abi), own.name, own.source)
+    if (own != null) return FetchedAbi(Json.mapper.writeValueAsString(own.abi), own.name, own.source)
     val where = if (key == null) "Sourcify (add an Etherscan API key to search Etherscan too)" else "Sourcify or Etherscan"
     throw AbiFetchException("No verified contract at $address on $where" +
       (implementation?.let { ", nor at its implementation $it" } ?: "") + ". Paste its ABI instead.")
@@ -62,7 +63,7 @@ class AbiFetcher(
     if (status !in 200..299) throw AbiFetchException("Sourcify answered HTTP $status")
     val node = parse(body, "Sourcify")
     val abi = node["abi"] as? ArrayNode ?: return null
-    return Found(abi, node["compilation"]?.get("name")?.asText(), "Sourcify", null)
+    return Found(abi, node["compilation"]?.text("name"), "Sourcify", null)
   }
 
   private fun etherscan(chainId: Long, address: String, key: String): Found? {
@@ -72,15 +73,15 @@ class AbiFetcher(
     if (status !in 200..299) throw AbiFetchException("Etherscan answered HTTP $status")
     val node = parse(body, "Etherscan")
     val result = node["result"]
-    if (node["status"]?.asText() != "1" || result !is ArrayNode) {
+    if (node.text("status") != "1" || result !is ArrayNode) {
       // e.g. "Invalid API Key", rate limits; drop the key in case the message echoes it
-      val reason = (result?.takeIf { it.isTextual }?.asText() ?: node["message"]?.asText() ?: "no result").replace(key, "…").take(200)
+      val reason = (result?.takeIf { it.isTextual }?.asText() ?: node.text("message") ?: "no result").replace(key, "…").take(200)
       throw AbiFetchException("Etherscan: $reason")
     }
     val entry = result.firstOrNull() ?: return null
-    val abi = runCatching { mapper.readTree(entry["ABI"]?.asText().orEmpty()) }.getOrNull() as? ArrayNode ?: return null // "Contract source code not verified"
-    val implementation = entry["Implementation"]?.asText()?.takeIf { entry["Proxy"]?.asText() == "1" && it.length == 42 }
-    return Found(abi, entry["ContractName"]?.asText()?.takeIf { it.isNotEmpty() }, "Etherscan", implementation)
+    val abi = runCatching { Json.mapper.readTree(entry.text("ABI").orEmpty()) }.getOrNull() as? ArrayNode ?: return null // "Contract source code not verified"
+    val implementation = entry.text("Implementation")?.takeIf { entry.text("Proxy") == "1" && it.length == 42 }
+    return Found(abi, entry.text("ContractName")?.takeIf { it.isNotEmpty() }, "Etherscan", implementation)
   }
 
   private fun request(url: String, service: String): Pair<Int, String> = try {
@@ -90,13 +91,12 @@ class AbiFetcher(
   }
 
   private fun parse(body: String, service: String): JsonNode = try {
-    mapper.readTree(body)
+    Json.mapper.readTree(body)
   } catch (e: IOException) {
     throw AbiFetchException("$service answered something that is not JSON")
   }
 
   companion object {
-    private val mapper = ObjectMapper()
     /** `bytes32(uint256(keccak256("eip1967.proxy.implementation")) - 1)` */
     const val IMPLEMENTATION_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
     /** `bytes32(uint256(keccak256("eip1967.proxy.beacon")) - 1)` */
@@ -119,7 +119,7 @@ class AbiFetcher(
 
     /** Identifies an ABI entry by kind, name and parameter types, to merge a proxy's ABI with its implementation's. */
     private fun key(entry: JsonNode): String =
-      "${entry["type"]?.asText()}:${entry["name"]?.asText()}(${entry["inputs"]?.joinToString(",") { it["type"]?.asText().orEmpty() }})"
+      "${entry.text("type")}:${entry.text("name")}(${entry["inputs"]?.joinToString(",") { it.text("type").orEmpty() }})"
 
     private val http by lazy { ChainHttp.client(connectTimeout = Duration.ofSeconds(10), redirect = HttpClient.Redirect.NORMAL) }
 

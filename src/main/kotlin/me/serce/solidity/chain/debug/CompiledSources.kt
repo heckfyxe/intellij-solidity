@@ -1,10 +1,11 @@
 package me.serce.solidity.chain.debug
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import me.serce.solidity.util.hexToBytes
 import me.serce.solidity.util.withoutHexPrefix
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import me.serce.solidity.chain.LinePositions
 import me.serce.solidity.chain.Offsets
 import me.serce.solidity.chain.foundry.compilationTarget
@@ -156,13 +157,13 @@ class CompiledSources(private val root: Path, private val outDir: Path, private 
   }
 
   private fun code(name: String, node: JsonNode?, paths: Map<Int, String>): CompiledCode? {
-    val hex = node?.get("object")?.asText()?.withoutHexPrefix()?.takeIf { it.isNotEmpty() } ?: return null
+    val hex = node?.text("object")?.withoutHexPrefix()?.takeIf { it.isNotEmpty() } ?: return null
     // unlinked library placeholders are 40 hex chars like `__$…$__`; they become wildcards via linkReferences
     val bytes = runCatching { hex.replace(PLACEHOLDER, "0".repeat(40)).hexToBytes() }.getOrNull() ?: return null
     val wildcards = ArrayList<IntRange>()
     node["linkReferences"]?.forEach { file -> file.forEach { lib -> lib.forEach { wildcards += it.range() } } }
     node["immutableReferences"]?.forEach { refs -> refs.forEach { wildcards += it.range() } }
-    return CompiledCode(name, bytes, wildcards, node["sourceMap"]?.asText().orEmpty(), paths, readSource)
+    return CompiledCode(name, bytes, wildcards, node.text("sourceMap").orEmpty(), paths, readSource)
   }
 
   private fun JsonNode.range(): IntRange {
@@ -172,13 +173,13 @@ class CompiledSources(private val root: Path, private val outDir: Path, private 
 
   /** Only `source_id_to_path`: older forge versions put the whole compiler input and output in the same file. */
   private fun readSourceIds(file: Path): Map<Int, String>? = try {
-    mapper.factory.createParser(file.toFile()).use { p ->
+    Json.mapper.factory.createParser(file.toFile()).use { p ->
       if (p.nextToken() != JsonToken.START_OBJECT) return null
       while (p.nextToken() == JsonToken.FIELD_NAME) {
         val field = p.currentName()
         p.nextToken()
         if (field == "source_id_to_path") {
-          val node: JsonNode = mapper.readTree(p)
+          val node: JsonNode = Json.mapper.readTree(p)
           return node.fields().asSequence().mapNotNull { (k, v) -> k.toIntOrNull()?.let { it to v.asText() } }.toMap()
         }
         p.skipChildren()
@@ -190,7 +191,6 @@ class CompiledSources(private val root: Path, private val outDir: Path, private 
   }
 
   companion object {
-    private val mapper = ObjectMapper()
     private val PLACEHOLDER = Regex("__[$][0-9a-fA-F]{34}[$]__")
   }
 }

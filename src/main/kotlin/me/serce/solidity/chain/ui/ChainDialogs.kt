@@ -1,5 +1,6 @@
 package me.serce.solidity.chain.ui
 
+import me.serce.solidity.util.Json
 import me.serce.solidity.util.checksumAddress
 import me.serce.solidity.util.isAddress
 import com.intellij.openapi.project.Project
@@ -32,8 +33,6 @@ import me.serce.solidity.chain.abi.FetchedAbi
 import me.serce.solidity.chain.Secrets
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.ui.Messages
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
 import com.intellij.openapi.editor.ex.util.EditorUtil
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
@@ -52,7 +51,6 @@ import javax.swing.event.DocumentEvent
 
 private val URL_REGEX = Regex("^(https?|wss?)://.+")
 
-private val PRETTY = ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
 
 /** A network's URL as the UI shows it: secret ones (they may hold an API key) only up to the host. */
 fun displayUrl(n: Network): String = if (n.secret) JsonRpcClient.redact(n.url) + "/…" else n.url
@@ -352,7 +350,7 @@ class AttachDialog(
       setErrorText(e.message)
       return
     }
-    abiArea.text = PRETTY.writeValueAsString(PRETTY.readTree(result.json))
+    abiArea.text = Json.pretty.writeValueAsString(Json.mapper.readTree(result.json))
     abiArea.caretPosition = 0
     abiOrigin = result.source + (result.implementation?.let { ", proxy of $it" } ?: "")
     result.name?.let { nameField.text = if (result.implementation != null) "$it (proxy)" else it }

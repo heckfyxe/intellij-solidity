@@ -1,10 +1,11 @@
 package me.serce.solidity.ide.foundry
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import me.serce.solidity.chain.foundry.ForgeConfig
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.util.DocumentUtil
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.intellij.codeInsight.completion.CompletionContributor
 import com.intellij.codeInsight.completion.CompletionParameters
 import com.intellij.codeInsight.completion.CompletionResultSet
@@ -64,7 +65,7 @@ object RemappingsFile {
 
   private fun packageName(dir: VirtualFile): String? {
     val json = dir.findChild("package.json") ?: return null
-    return runCatching { ObjectMapper().readTree(VfsUtilCore.loadText(json))["name"]?.asText() }.getOrNull()?.takeIf { it.isNotBlank() }
+    return runCatching { Json.mapper.readTree(VfsUtilCore.loadText(json)).text("name") }.getOrNull()?.takeIf { it.isNotBlank() }
   }
 }
 

@@ -1,10 +1,11 @@
 package me.serce.solidity.chain.storage
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import me.serce.solidity.util.toHex
 import me.serce.solidity.util.Keccak
 import me.serce.solidity.util.checksumAddress
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import me.serce.solidity.chain.abi.AbiCodec
 import me.serce.solidity.chain.abi.AbiInputException
 import me.serce.solidity.chain.abi.AbiType
@@ -249,19 +250,18 @@ class StorageLayout(val variables: List<Variable>, private val types: Map<String
       }
       return steps
     }
-    private val mapper = ObjectMapper()
 
     fun parse(json: String): StorageLayout {
-      val node = mapper.readTree(json)
+      val node = Json.mapper.readTree(json)
       val types = node["types"]?.fields()?.asSequence()?.associate { (id, t) ->
         id to Type(
           id = id,
-          label = t["label"]?.asText() ?: id,
-          encoding = t["encoding"]?.asText() ?: "inplace",
-          size = t["numberOfBytes"]?.asText()?.toIntOrNull() ?: 32,
-          key = t["key"]?.asText(),
-          value = t["value"]?.asText(),
-          base = t["base"]?.asText(),
+          label = t.text("label") ?: id,
+          encoding = t.text("encoding") ?: "inplace",
+          size = t.text("numberOfBytes")?.toIntOrNull() ?: 32,
+          key = t.text("key"),
+          value = t.text("value"),
+          base = t.text("base"),
           members = variables(t["members"]),
         )
       }.orEmpty()

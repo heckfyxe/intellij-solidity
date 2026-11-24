@@ -1,5 +1,6 @@
 package me.serce.solidity.chain
 
+import me.serce.solidity.util.text
 import me.serce.solidity.util.toHex
 import me.serce.solidity.util.hexToBytes
 import me.serce.solidity.util.hexToBigInt
@@ -287,10 +288,10 @@ class ChainExecutor(
   }
 
   private fun applyReceipt(rpc: JsonRpcClient, record: TxRecord, receipt: JsonNode, abi: ContractAbi) {
-    record.txHash = receipt["transactionHash"]?.asText().orEmpty()
+    record.txHash = receipt.text("transactionHash").orEmpty()
     record.blockNumber = receipt.quantity("blockNumber")
     record.gasUsed = receipt.quantity("gasUsed")
-    if (receipt["status"]?.asText() == "0x0") {
+    if (receipt.text("status") == "0x0") {
       record.status = TxStatus.REVERTED
       if (record.error.isEmpty()) record.error = "transaction reverted"
       explain(rpc, record, abi, TraceTarget.Mined(record.txHash))
@@ -303,9 +304,9 @@ class ChainExecutor(
 
   /** Decodes a log with the ABI of whichever known contract emitted it, falling back to [abi]. */
   private fun decodeLog(log: JsonNode, abi: ContractAbi, known: List<Deployment>): String {
-    val address = log["address"]?.asText().orEmpty()
+    val address = log.text("address").orEmpty()
     val topics = log["topics"]?.map { it.asText() } ?: emptyList()
-    val data = log["data"]?.asText()?.hexToBytes() ?: ByteArray(0)
+    val data = log.text("data")?.hexToBytes() ?: ByteArray(0)
     val emitterAbi = known.firstOrNull { it.address.equals(address, ignoreCase = true) }?.abi()
     val candidates = listOfNotNull(emitterAbi, abi).flatMap { it.events }
     val event = candidates.firstOrNull { !it.anonymous && topics.firstOrNull() == it.topic.toHex() }

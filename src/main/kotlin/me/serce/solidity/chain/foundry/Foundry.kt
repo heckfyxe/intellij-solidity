@@ -1,7 +1,8 @@
 package me.serce.solidity.chain.foundry
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.execution.process.ProcessOutput
@@ -124,7 +125,7 @@ class FoundryProject(val root: Path, private val forge: String) {
     val code = output.exitCode
     val out = output.stdout + output.stderr
     val jsonStart = out.indexOf("{\n").takeIf { it >= 0 } ?: out.indexOf('{')
-    val json = if (jsonStart >= 0) runCatching { mapper.readTree(out.substring(jsonStart)) }.getOrNull() else null
+    val json = if (jsonStart >= 0) runCatching { Json.mapper.readTree(out.substring(jsonStart)) }.getOrNull() else null
     val messages = json?.get("errors")?.map { it.toCompilerMessage() } ?: emptyList()
     val success = code == 0 && messages.none { it.severity == "error" }
     if (!success && messages.isEmpty()) {
@@ -167,29 +168,27 @@ class FoundryProject(val root: Path, private val forge: String) {
   private fun JsonNode.toCompilerMessage(): CompilerMessage {
     val loc = this["sourceLocation"]
     return CompilerMessage(
-      file = loc?.get("file")?.asText(),
+      file = loc?.text("file"),
       start = loc?.get("start")?.asInt() ?: -1,
       end = loc?.get("end")?.asInt() ?: -1,
-      severity = this["severity"]?.asText() ?: "error",
-      type = this["type"]?.asText() ?: "Error",
-      message = this["message"]?.asText() ?: "",
-      formatted = this["formattedMessage"]?.asText() ?: this["message"]?.asText() ?: "",
+      severity = text("severity") ?: "error",
+      type = text("type") ?: "Error",
+      message = text("message") ?: "",
+      formatted = text("formattedMessage") ?: text("message") ?: "",
     )
   }
 
   companion object {
     const val CONFIG_FILE = "foundry.toml"
-
-    private val mapper = ObjectMapper()
     private val configCache = ConcurrentHashMap<Path, Pair<List<Long>, Result<ForgeConfig>>>()
     private val loading = ConcurrentHashMap.newKeySet<Path>()
 
     /** Parses `forge config --json` output. */
     fun parseConfig(jsonText: String): ForgeConfig {
-      val json = mapper.readTree(jsonText)
+      val json = Json.mapper.readTree(jsonText)
       return ForgeConfig(
-        src = json["src"]?.asText() ?: "src",
-        out = json["out"]?.asText() ?: "out",
+        src = json.text("src") ?: "src",
+        out = json.text("out") ?: "out",
         libs = json["libs"]?.map { it.asText() } ?: listOf("lib"),
         remappings = json["remappings"]?.map { it.asText() } ?: emptyList(),
         solc = (json["solc"]?.takeIf { !it.isNull } ?: json["solc_version"]?.takeIf { !it.isNull })?.asText(),

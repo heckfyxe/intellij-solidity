@@ -1,9 +1,10 @@
 package me.serce.solidity.chain.foundry
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import me.serce.solidity.chain.debug.CompiledSources
@@ -26,7 +27,6 @@ class ForgeOutput private constructor(private val root: Path, private val outDir
   val sources: CompiledSources by lazy { CompiledSources(root, outDir, artifactJsons) }
 
   companion object {
-    private val mapper = ObjectMapper()
     private val cache = ConcurrentHashMap<Pair<Path, Path>, Pair<List<Long>, SoftReference<ForgeOutput>>>()
 
     /** The fields read from an artifact: null takes the whole value, a map only the listed fields of an object. */
@@ -55,14 +55,14 @@ class ForgeOutput private constructor(private val root: Path, private val outDir
       return Artifact(
         name = target.value.asText(),
         sourcePath = target.key,
-        abiJson = mapper.writeValueAsString(abi),
-        bytecode = bytecode?.get("object")?.asText() ?: "0x",
+        abiJson = Json.mapper.writeValueAsString(abi),
+        bytecode = bytecode?.text("object") ?: "0x",
         hasLinkReferences = (bytecode?.get("linkReferences")?.size() ?: 0) > 0,
       )
     }
 
     private fun readPruned(file: Path): JsonNode? = try {
-      mapper.factory.createParser(file.toFile()).use { p -> if (p.nextToken() == JsonToken.START_OBJECT) readObject(p, KEEP) else null }
+      Json.mapper.factory.createParser(file.toFile()).use { p -> if (p.nextToken() == JsonToken.START_OBJECT) readObject(p, KEEP) else null }
     } catch (e: Exception) {
       null
     }
@@ -70,14 +70,14 @@ class ForgeOutput private constructor(private val root: Path, private val outDir
     /** With [p] on an object's start: the fields in [keep], skipping the others without building them. */
     @Suppress("UNCHECKED_CAST")
     private fun readObject(p: JsonParser, keep: Map<String, Any?>): ObjectNode {
-      val node = mapper.createObjectNode()
+      val node = Json.mapper.createObjectNode()
       while (p.nextToken() == JsonToken.FIELD_NAME) {
         val name = p.currentName()
         val token = p.nextToken()
         val nested = keep[name]
         when {
           name !in keep -> p.skipChildren()
-          nested == null -> node.set<JsonNode>(name, mapper.readTree<JsonNode>(p) ?: NullNode.instance)
+          nested == null -> node.set<JsonNode>(name, Json.mapper.readTree<JsonNode>(p) ?: NullNode.instance)
           token == JsonToken.START_OBJECT -> node.set<JsonNode>(name, readObject(p, nested as Map<String, Any?>))
           else -> p.skipChildren()
         }

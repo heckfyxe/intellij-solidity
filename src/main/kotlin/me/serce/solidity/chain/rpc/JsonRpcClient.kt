@@ -1,11 +1,12 @@
 package me.serce.solidity.chain.rpc
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import me.serce.solidity.util.toHex
 import me.serce.solidity.util.hexToBytes
 import me.serce.solidity.util.hexToBigInt
 import me.serce.solidity.util.toHexQuantity
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import java.math.BigInteger
 import java.net.URI
@@ -35,23 +36,23 @@ class JsonRpcClient(val url: String) {
   fun batch(calls: List<Pair<String, List<Any?>>>): List<JsonNode> = calls.chunked(MAX_BATCH).flatMap { chunk ->
     if (chunk.size == 1) return@flatMap listOf(call(chunk[0].first, *chunk[0].second.toTypedArray()))
     val requests = chunk.map { (method, params) -> request(method, params) }
-    val responses = post(mapper.createArrayNode().addAll(requests))
+    val responses = post(Json.mapper.createArrayNode().addAll(requests))
     if (!responses.isArray || responses.size() != chunk.size) return@flatMap chunk.map { (method, params) -> call(method, *params.toTypedArray()) }
     val byId = responses.associateBy { it["id"]?.asLong() }
     requests.map { r -> result(byId[r["id"].asLong()] ?: throw RpcException("$displayUrl left out a batched answer")) }
   }
 
-  private fun request(method: String, params: List<Any?>): JsonNode = mapper.createObjectNode().apply {
+  private fun request(method: String, params: List<Any?>): JsonNode = Json.mapper.createObjectNode().apply {
     put("jsonrpc", "2.0")
     put("id", ids.incrementAndGet())
     put("method", method)
-    set<JsonNode>("params", mapper.valueToTree(params))
+    set<JsonNode>("params", Json.mapper.valueToTree(params))
   }
 
   private fun result(json: JsonNode): JsonNode {
     json["error"]?.takeIf { !it.isNull }?.let { err ->
-      val data = err["data"]?.let { d -> if (d.isTextual) d.asText() else d["data"]?.asText() }
-      throw RpcException(err["message"]?.asText() ?: err.toString(), err["code"]?.asInt(), data)
+      val data = err["data"]?.let { d -> if (d.isTextual) d.asText() else d.text("data") }
+      throw RpcException(err.text("message") ?: err.toString(), err["code"]?.asInt(), data)
     }
     return json["result"] ?: JsonNodeFactory.instance.nullNode()
   }
@@ -66,7 +67,7 @@ class JsonRpcClient(val url: String) {
     val request = builder
       .timeout(Duration.ofSeconds(60))
       .header("Content-Type", "application/json")
-      .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
+      .POST(HttpRequest.BodyPublishers.ofString(Json.mapper.writeValueAsString(body)))
       .build()
     val response = try {
       http.send(request, HttpResponse.BodyHandlers.ofString())
@@ -79,7 +80,7 @@ class JsonRpcClient(val url: String) {
     }
     if (response.statusCode() !in 200..299) throw RpcException("HTTP ${response.statusCode()} from $displayUrl")
     return try {
-      mapper.readTree(response.body())
+      Json.mapper.readTree(response.body())
     } catch (e: java.io.IOException) {
       throw RpcException("$displayUrl is not a JSON-RPC node")
     }
@@ -128,8 +129,6 @@ class JsonRpcClient(val url: String) {
     fun tx(from: String?, to: String?, data: ByteArray, value: BigInteger, gas: String? = null): Map<String, String> = mapOf(
       "from" to from, "to" to to, "data" to data.toHex(), "value" to value.toHexQuantity(), "gas" to gas,
     ).filterValues { it != null }.mapValues { it.value!! }
-
-    private val mapper = ObjectMapper()
     /** Public RPCs cap batches; some at 10 calls. */
     private const val MAX_BATCH = 10
     /** One client for all chains: each HttpClient owns a selector thread. */

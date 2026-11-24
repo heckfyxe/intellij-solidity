@@ -1,14 +1,13 @@
 package me.serce.solidity.chain.compile
 
+import me.serce.solidity.util.Json
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
 import me.serce.solidity.chain.foundry.ForgeConfig
 import me.serce.solidity.chain.foundry.SolcLocator.Version
 
 /** Builds the solc standard-json input the live annotator sends, with the compiler settings forge would use. */
 object SolcRequest {
-  private val mapper = ObjectMapper()
 
   /** The first solc release that accepts each `evmVersion`, as in foundry-compilers' normalization. */
   private val EVM_VERSIONS = listOf(
@@ -48,10 +47,10 @@ object SolcRequest {
     solcVersion: Version?,
     withEvmVersion: Boolean = true,
   ): ObjectNode {
-    val sources = mapper.createObjectNode()
+    val sources = Json.mapper.createObjectNode()
     sources.putObject(relativePath).put("content", text)
     unsaved.forEach { (path, content) -> sources.putObject(path).put("content", content) }
-    return mapper.createObjectNode().apply {
+    return Json.mapper.createObjectNode().apply {
       put("language", "Solidity")
       set<JsonNode>("sources", sources)
       putObject("settings").apply {

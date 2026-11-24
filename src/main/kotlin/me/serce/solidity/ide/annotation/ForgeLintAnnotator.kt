@@ -1,8 +1,9 @@
 package me.serce.solidity.ide.annotation
 
+import me.serce.solidity.util.text
+import me.serce.solidity.util.Json
 import com.intellij.util.DocumentUtil
 import me.serce.solidity.ide.indentAt
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.intention.LowPriorityAction
@@ -127,7 +128,6 @@ class ForgeLintAnnotator : ExternalAnnotator<ForgeLintAnnotator.Input, ForgeLint
 
   companion object {
     private val LOG = logger<ForgeLintAnnotator>()
-    private val mapper = ObjectMapper()
     private val CACHE = Key.create<List<Pair<RangeMarker, ForgeLintIssue>>>("solidity.forge.lint.results")
     private val LIB_DIRS = listOf("lib/", "dependencies/", "node_modules/")
 
@@ -138,21 +138,21 @@ class ForgeLintAnnotator : ExternalAnnotator<ForgeLintAnnotator.Input, ForgeLint
      */
     fun parse(output: String, relativePath: String, text: String): List<ForgeLintIssue> =
       output.lineSequence().map { it.trim() }.filter { it.startsWith("{") }.mapNotNull { line ->
-        val json = runCatching { mapper.readTree(line) }.getOrNull() ?: return@mapNotNull null
-        val code = json["code"]?.get("code")?.asText()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val json = runCatching { Json.mapper.readTree(line) }.getOrNull() ?: return@mapNotNull null
+        val code = json["code"]?.text("code")?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
         val span = json["spans"]?.firstOrNull { it["is_primary"]?.asBoolean() != false } ?: return@mapNotNull null
-        if (span["file_name"]?.asText()?.removePrefix("./") != relativePath) return@mapNotNull null
-        val severity = when (json["level"]?.asText()) {
+        if (span.text("file_name")?.removePrefix("./") != relativePath) return@mapNotNull null
+        val severity = when (json.text("level")) {
           "error" -> HighlightSeverity.ERROR
           "warning" -> HighlightSeverity.WARNING
           else -> HighlightSeverity.WEAK_WARNING
         }
-        val helpUrl = json["children"]?.map { it["message"]?.asText().orEmpty() }?.firstOrNull { it.startsWith("http") }
+        val helpUrl = json["children"]?.map { it.text("message").orEmpty() }?.firstOrNull { it.startsWith("http") }
         ForgeLintIssue(
           start = Offsets.byteToChar(text, span["byte_start"]?.asInt() ?: return@mapNotNull null),
           end = Offsets.byteToChar(text, span["byte_end"]?.asInt() ?: return@mapNotNull null),
           code = code,
-          message = json["message"]?.asText().orEmpty(),
+          message = json.text("message").orEmpty(),
           severity = severity,
           helpUrl = helpUrl,
         )

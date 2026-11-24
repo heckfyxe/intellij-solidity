@@ -1,5 +1,6 @@
 package me.serce.solidity.chain.debug
 
+import me.serce.solidity.util.text
 import me.serce.solidity.util.hexToBytes
 import me.serce.solidity.util.hexToBigInt
 import me.serce.solidity.util.toHexQuantity
@@ -40,7 +41,7 @@ class RevertTracer(private val rpc: JsonRpcClient, private val sources: Compiled
     // anvil keeps the steps of mined transactions only with --steps-tracing; replaying on the parent block is the same run
     if (target is TraceTarget.Mined && steps["structLogs"]?.isEmpty != false) steps = traceCall(replay, STEP_OPTIONS)
     if (steps["failed"]?.asBoolean() != true) return null // not an EVM failure: a bad nonce, no funds, a node error
-    val revertData = steps["returnValue"]?.asText()?.let { runCatching { it.hexToBytes() }.getOrNull() }
+    val revertData = steps.text("returnValue")?.let { runCatching { it.hexToBytes() }.getOrNull() }
     val to = replay.call.to
     val initCode = replay.call.data.takeIf { to == null }
     val root = FrameAnalysis.build(parseSteps(steps["structLogs"]), to)
@@ -64,13 +65,13 @@ class RevertTracer(private val rpc: JsonRpcClient, private val sources: Compiled
   }
 
   private fun collectCallNotes(call: JsonNode, isRoot: Boolean, missing: MutableSet<String>, notes: MutableSet<String>) {
-    val type = call["type"]?.asText().orEmpty()
-    val to = call["to"]?.asText()
-    val input = call["input"]?.asText().orEmpty()
+    val type = call.text("type").orEmpty()
+    val to = call.text("to")
+    val input = call.text("input").orEmpty()
     if (!isRoot && type in CALL_OPS && to != null && input.length > 2 && !isPrecompile(to) && code(to).isEmpty()) {
       missing += checksumAddress(to)
     }
-    call["error"]?.asText()?.takeIf { it.isNotEmpty() && !it.contains("revert", ignoreCase = true) }?.let { error ->
+    call.text("error")?.takeIf { it.isNotEmpty() && !it.contains("revert", ignoreCase = true) }?.let { error ->
       val who = to?.let { address -> sources?.runtime(code(address))?.contract ?: checksumAddress(address) }
       notes += if (who != null) "$who failed: $error" else "Failed: $error"
     }
@@ -87,11 +88,11 @@ class RevertTracer(private val rpc: JsonRpcClient, private val sources: Compiled
       val call = TraceTarget.Call(
         from = tx["from"].asText(),
         to = tx["to"]?.takeIf { !it.isNull }?.asText(),
-        data = tx["input"]?.asText()?.hexToBytes() ?: ByteArray(0),
-        value = tx["value"]?.asText()?.hexToBigInt() ?: BigInteger.ZERO,
+        data = tx.text("input")?.hexToBytes() ?: ByteArray(0),
+        value = tx.text("value")?.hexToBigInt() ?: BigInteger.ZERO,
       )
-      val parent = tx["blockNumber"]?.asText()?.withoutHexPrefix()?.toBigIntegerOrNull(16)?.minus(BigInteger.ONE)?.max(BigInteger.ZERO)
-      Replay(call, parent?.toHexQuantity() ?: "latest", tx["gas"]?.asText())
+      val parent = tx.text("blockNumber")?.withoutHexPrefix()?.toBigIntegerOrNull(16)?.minus(BigInteger.ONE)?.max(BigInteger.ZERO)
+      Replay(call, parent?.toHexQuantity() ?: "latest", tx.text("gas"))
     }
   }
 
