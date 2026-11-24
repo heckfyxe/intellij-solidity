@@ -98,15 +98,6 @@ class SolYulCompletionContributor : CompletionContributor() {
 
     /** Shows `(a, b)` and inserts `()`, with the caret inside when the function takes arguments. */
     private fun callLookup(lookup: LookupElementBuilder, params: List<String>): LookupElementBuilder =
-      lookup.withTailText(params.joinToString(", ", "(", ")"), true).withInsertHandler { ctx, _ ->
-        val text = ctx.document.charsSequence
-        val tail = ctx.tailOffset
-        if (tail < text.length && text[tail] == '(') {
-          ctx.editor.caretModel.moveToOffset(tail + 1)
-        } else {
-          ctx.document.insertString(tail, "()")
-          ctx.editor.caretModel.moveToOffset(if (params.isEmpty()) tail + 2 else tail + 1)
-        }
-      }
+      lookup.withTailText(params.joinToString(", ", "(", ")"), true).insertParenthesis(finish = false, hasParameters = params.isNotEmpty())
   }
 }
