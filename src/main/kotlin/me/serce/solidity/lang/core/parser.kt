@@ -1,6 +1,5 @@
 package me.serce.solidity.lang.core
 
-import com.intellij.extapi.psi.ASTWrapperPsiElement
 import com.intellij.lang.ASTNode
 import com.intellij.lang.LanguageUtil
 import com.intellij.lang.LightPsiParser
@@ -21,13 +20,13 @@ import me.serce.solidity.SolidityParser
 import me.serce.solidity.lang.core.SolidityTokenTypes.*
 import me.serce.solidity.lang.stubs.SolidityFileStub
 
-class SolidityParserDefinition : ParserDefinition {
+open class SolidityParserDefinition : ParserDefinition {
   override fun createParser(project: Project?): PsiParser = SolidityParser()
 
   override fun createFile(viewProvider: FileViewProvider): PsiFile = SolidityFile(viewProvider)
 
   override fun spaceExistenceTypeBetweenTokens(left: ASTNode, right: ASTNode): ParserDefinition.SpaceRequirements =
-    LanguageUtil.canStickTokensTogetherByLexer(left, right, SolidityLexer())
+    LanguageUtil.canStickTokensTogetherByLexer(left, right, createLexer(null))
 
   override fun getStringLiteralElements(): TokenSet = TokenSet.EMPTY
 
@@ -58,28 +57,15 @@ class SolidityParserDefinition : ParserDefinition {
 }
 
 
-class YulParserDefinition : ParserDefinition {
+/** Standalone `.yul` files: the Solidity PSI with a Yul root and a lexer starting in Yul. */
+class YulParserDefinition : SolidityParserDefinition() {
   override fun createParser(project: Project?): PsiParser = YulParser()
 
   override fun createFile(viewProvider: FileViewProvider): PsiFile = YulFile(viewProvider)
 
-  override fun spaceExistenceTypeBetweenTokens(left: ASTNode, right: ASTNode): ParserDefinition.SpaceRequirements =
-    LanguageUtil.canStickTokensTogetherByLexer(left, right, SolidityLexer(yul = true))
-
-  override fun getStringLiteralElements(): TokenSet = TokenSet.EMPTY
-
-  override fun getWhitespaceTokens(): TokenSet = SolidityParserDefinition.WHITE_SPACES
-
-  override fun getCommentTokens(): TokenSet = SolidityParserDefinition.COMMENTS
-
   override fun getFileNodeType(): IFileElementType = YulFileElementType
 
   override fun createLexer(project: Project?): Lexer = SolidityLexer(yul = true)
-
-  override fun createElement(node: ASTNode?): PsiElement {
-    val element = node?.let { SolidityTokenTypes.Factory.createElement(it) }
-    return element ?: ASTWrapperPsiElement(node!!)
-  }
 }
 
 class YulParser : PsiParser, LightPsiParser {
