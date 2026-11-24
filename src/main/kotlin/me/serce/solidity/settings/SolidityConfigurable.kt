@@ -1,5 +1,6 @@
 package me.serce.solidity.settings
 
+import me.serce.solidity.chain.foundry.FoundryProject
 import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.options.BoundSearchableConfigurable
 import com.intellij.openapi.options.ShowSettingsUtil
@@ -140,7 +141,7 @@ class SolidityConfigurable(internal val project: Project) : BoundSearchableConfi
 
   private fun validateFoundryTomlConfigDir(): ValidationInfoBuilder.(TextFieldWithBrowseButton) -> ValidationInfo? = {
     val selected = VfsUtil.findFile(Path(it.text), true)
-    if (selected == null || !selected.exists() || selected.name != "foundry.toml") {
+    if (selected == null || !selected.exists() || selected.name != FoundryProject.CONFIG_FILE) {
       ValidationInfo("Failed to locate foundry.toml configuration file", it)
     } else {
       null

@@ -108,7 +108,7 @@ class FoundryProject(val root: Path, private val forge: String) {
     }
   }
 
-  private fun stamp() = listOf("foundry.toml", "remappings.txt").map { root.resolve(it).toFile().lastModified() }
+  private fun stamp() = listOf(CONFIG_FILE, "remappings.txt").map { root.resolve(it).toFile().lastModified() }
 
   private fun readConfig(): ForgeConfig {
     val out = exec(listOf(forge, "config", "--json"), timeoutMs = 30_000).let { o ->
@@ -178,6 +178,8 @@ class FoundryProject(val root: Path, private val forge: String) {
   }
 
   companion object {
+    const val CONFIG_FILE = "foundry.toml"
+
     private val mapper = ObjectMapper()
     private val configCache = ConcurrentHashMap<Path, Pair<List<Long>, Result<ForgeConfig>>>()
     private val loading = ConcurrentHashMap.newKeySet<Path>()
@@ -219,7 +221,7 @@ class FoundryProject(val root: Path, private val forge: String) {
     fun rootOf(file: VirtualFile): VirtualFile? {
       var dir: VirtualFile? = if (file.isDirectory) file else file.parent
       while (dir != null) {
-        if (dir.findChild("foundry.toml") != null) return dir
+        if (dir.findChild(CONFIG_FILE) != null) return dir
         dir = dir.parent
       }
       return null
@@ -227,8 +229,8 @@ class FoundryProject(val root: Path, private val forge: String) {
 
     private fun projectRoot(project: Project): VirtualFile? {
       val base = project.guessProjectDir() ?: project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) } ?: return null
-      if (base.findChild("foundry.toml") != null) return base
-      return base.children.firstOrNull { it.isDirectory && it.findChild("foundry.toml") != null }
+      if (base.findChild(CONFIG_FILE) != null) return base
+      return base.children.firstOrNull { it.isDirectory && it.findChild(CONFIG_FILE) != null }
     }
   }
 }

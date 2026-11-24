@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.foundry.toml
 
+import me.serce.solidity.chain.foundry.FoundryProject
 import com.intellij.codeInsight.completion.CompletionContributor
 import com.intellij.codeInsight.completion.CompletionParameters
 import com.intellij.codeInsight.completion.CompletionResultSet
@@ -24,8 +25,6 @@ import org.toml.lang.psi.TomlTableHeader
  */
 object FoundryTomlSchema {
   enum class ValueType { BOOL, INT, STRING, ARRAY, TABLE, ANY }
-
-  const val FILE_NAME = "foundry.toml"
 
   val EVM_VERSIONS = listOf(
     "homestead", "tangerineWhistle", "spuriousDragon", "byzantium", "constantinople", "petersburg", "istanbul",
@@ -57,7 +56,7 @@ object FoundryTomlSchema {
     return type == ValueType.TABLE && first !in FoundryTomlKeys.TABLES || path.size > 2
   }
 
-  fun isFoundryToml(file: PsiFile) = file.originalFile.name == FILE_NAME
+  fun isFoundryToml(file: PsiFile) = file.originalFile.name == FoundryProject.CONFIG_FILE
 
   /**
    * The path of [table]'s header relative to a profile, or null when it isn't checked: `[profile.ci.fuzz]` and
