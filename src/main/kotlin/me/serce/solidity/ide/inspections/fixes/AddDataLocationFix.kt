@@ -3,7 +3,6 @@ package me.serce.solidity.ide.inspections.fixes
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.openapi.project.Project
-import com.intellij.psi.PsiDocumentManager
 import me.serce.solidity.lang.psi.SolParameterDef
 import me.serce.solidity.lang.psi.SolTypedDeclarationItem
 import me.serce.solidity.lang.psi.SolVariableDeclaration
@@ -20,7 +19,7 @@ class AddDataLocationFix(private val location: String) : LocalQuickFix {
       is SolTypedDeclarationItem -> declaration.typeName
       else -> null
     } ?: return
-    val document = PsiDocumentManager.getInstance(project).getDocument(declaration.containingFile) ?: return
-    document.insertString(typeName.textRange.endOffset, " $location")
+    val offset = typeName.textRange.endOffset
+    editDocument(declaration) { it.insertString(offset, " $location") }
   }
 }

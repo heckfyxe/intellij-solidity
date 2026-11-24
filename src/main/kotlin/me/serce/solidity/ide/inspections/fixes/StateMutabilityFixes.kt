@@ -2,9 +2,7 @@ package me.serce.solidity.ide.inspections.fixes
 
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
-import com.intellij.openapi.editor.Document
 import com.intellij.openapi.project.Project
-import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiWhiteSpace
 import me.serce.solidity.lang.psi.SolFunctionDefinition
@@ -17,9 +15,6 @@ private fun PsiElement.enclosingFunction(): SolFunctionDefinition? =
 private fun SolFunctionDefinition.specifier(keyword: String): SolStateMutabilitySpecifier? =
   stateMutabilitySpecifierList.firstOrNull { it.text == keyword }
 
-private fun PsiElement.document(project: Project): Document? =
-  PsiDocumentManager.getInstance(project).getDocument(containingFile)
-
 /** Removes `view`/`pure` from the enclosing function. */
 class RemoveStateMutabilityFix(private val keyword: String) : LocalQuickFix {
   override fun getFamilyName(): String = "Remove '$keyword'"
@@ -27,9 +22,9 @@ class RemoveStateMutabilityFix(private val keyword: String) : LocalQuickFix {
   override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
     val function = descriptor.psiElement.enclosingFunction() ?: return
     val specifier = function.specifier(keyword) ?: return
-    val document = specifier.document(project) ?: return
     val start = (specifier.prevSibling as? PsiWhiteSpace)?.textRange?.startOffset ?: specifier.textRange.startOffset
-    document.deleteString(start, specifier.textRange.endOffset)
+    val end = specifier.textRange.endOffset
+    editDocument(specifier) { it.deleteString(start, end) }
   }
 }
 
@@ -40,8 +35,8 @@ class ChangeStateMutabilityFix(private val from: String, private val to: String)
   override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
     val function = descriptor.psiElement.enclosingFunction() ?: return
     val specifier = function.specifier(from) ?: return
-    val document = specifier.document(project) ?: return
-    document.replaceString(specifier.textRange.startOffset, specifier.textRange.endOffset, to)
+    val range = specifier.textRange
+    editDocument(specifier) { it.replaceString(range.startOffset, range.endOffset, to) }
   }
 }
 
@@ -54,7 +49,7 @@ class AddStateMutabilityFix(private val keyword: String) : LocalQuickFix {
     val anchor = function.functionVisibilitySpecifierList.lastOrNull { it.visibilitySpecifier != null }
       ?: function.parameterListList.firstOrNull()
       ?: return
-    val document = function.document(project) ?: return
-    document.insertString(anchor.textRange.endOffset, " $keyword")
+    val offset = anchor.textRange.endOffset
+    editDocument(function) { it.insertString(offset, " $keyword") }
   }
 }

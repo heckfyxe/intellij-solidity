@@ -1,8 +1,5 @@
 package me.serce.solidity.ide.inspections.fixes
 
-import com.intellij.openapi.editor.Document
-import com.intellij.openapi.project.Project
-import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.SolModifierDefinition
@@ -19,27 +16,27 @@ object SolSpecifierEditor {
 
   fun overrideText(bases: List<String>) = if (bases.size > 1) "override(${bases.joinToString(", ")})" else "override"
 
-  fun setOverride(project: Project, member: SolNamedElement, bases: List<String>) {
+  fun setOverride(member: SolNamedElement, bases: List<String>) {
     val text = overrideText(bases)
     val existing = SolOverrideResolver.overrideSpecifier(member)
     if (existing != null) {
       val range = existing.textRange
-      edit(project, member) { it.replaceString(range.startOffset, range.endOffset, text) }
+      editDocument(member) { it.replaceString(range.startOffset, range.endOffset, text) }
     } else {
       val offset = anchor(member)?.textRange?.endOffset ?: return
-      edit(project, member) { it.insertString(offset, " $text") }
+      editDocument(member) { it.insertString(offset, " $text") }
     }
   }
 
-  fun addVirtual(project: Project, member: SolNamedElement) {
+  fun addVirtual(member: SolNamedElement) {
     if (SolOverrideResolver.virtualSpecifier(member) != null) return
     val override = SolOverrideResolver.overrideSpecifier(member)
     if (override != null) {
       val offset = override.textRange.startOffset
-      edit(project, member) { it.insertString(offset, "virtual ") }
+      editDocument(member) { it.insertString(offset, "virtual ") }
     } else {
       val offset = anchor(member)?.textRange?.endOffset ?: return
-      edit(project, member) { it.insertString(offset, " virtual") }
+      editDocument(member) { it.insertString(offset, " virtual") }
     }
   }
 
@@ -53,13 +50,5 @@ object SolSpecifierEditor {
         ?: member.parameterList
         ?: member.identifier
     else -> null
-  }
-
-  private fun edit(project: Project, member: SolNamedElement, action: (Document) -> Unit) {
-    val documentManager = PsiDocumentManager.getInstance(project)
-    val document = documentManager.getDocument(member.containingFile) ?: return
-    documentManager.doPostponedOperationsAndUnblockDocument(document)
-    action(document)
-    documentManager.commitDocument(document)
   }
 }

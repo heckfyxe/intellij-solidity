@@ -5,7 +5,6 @@ import com.intellij.codeInspection.LocalQuickFixOnPsiElement
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
-import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.elementType
@@ -41,23 +40,21 @@ class MemorySafeAssemblyFix(assembly: SolInlineAssemblyStatement) : LocalQuickFi
 
   override fun invoke(project: Project, file: PsiFile, startElement: PsiElement, endElement: PsiElement) {
     val assembly = startElement as? SolInlineAssemblyStatement ?: return
-    val documentManager = PsiDocumentManager.getInstance(project)
-    val document = documentManager.getDocument(file) ?: return
-    val commentRange = commentRange(assembly, document) ?: return
-
-    val flags = assembly.children.filterIsInstance<SolAssemblyFlags>().firstOrNull()
-    when {
-      flags == null -> {
-        val anchor = assembly.children.filterIsInstance<SolStringLiteral>().firstOrNull() ?: assembly.firstChild
-        document.insertString(anchor.textRange.endOffset, " (\"memory-safe\")")
+    editDocument(assembly) { document ->
+      val commentRange = commentRange(assembly, document) ?: return@editDocument
+      val flags = assembly.children.filterIsInstance<SolAssemblyFlags>().firstOrNull()
+      when {
+        flags == null -> {
+          val anchor = assembly.children.filterIsInstance<SolStringLiteral>().firstOrNull() ?: assembly.firstChild
+          document.insertString(anchor.textRange.endOffset, " (\"memory-safe\")")
+        }
+        !flags.text.contains("\"memory-safe\"") -> {
+          val closing = flags.lastChild.takeIf { it.text == ")" } ?: return@editDocument
+          document.insertString(closing.textRange.startOffset, ", \"memory-safe\"")
+        }
       }
-      !flags.text.contains("\"memory-safe\"") -> {
-        val closing = flags.lastChild.takeIf { it.text == ")" } ?: return
-        document.insertString(closing.textRange.startOffset, ", \"memory-safe\"")
-      }
+      document.deleteString(commentRange.startOffset, commentRange.endOffset)
     }
-    document.deleteString(commentRange.startOffset, commentRange.endOffset)
-    documentManager.commitDocument(document)
   }
 
   /** The `/** ... */` comment [tag] is in, or null for `///` comments. */

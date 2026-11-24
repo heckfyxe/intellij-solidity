@@ -180,7 +180,7 @@ abstract class SolOverrideImplementHandler : LanguageCodeInsightActionHandler {
     marker.dispose()
 
     for (pointer in toMakeVirtual) {
-      pointer.element?.let { SolSpecifierEditor.addVirtual(project, it) }
+      pointer.element?.let { SolSpecifierEditor.addVirtual(it) }
     }
   }
 

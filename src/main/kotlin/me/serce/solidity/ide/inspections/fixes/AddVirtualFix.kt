@@ -16,7 +16,7 @@ class AddVirtualFix(decl: SolNamedElement, private val label: String? = null) : 
   override fun getFamilyName() = "Add virtual specifier"
 
   override fun invoke(project: Project, file: PsiFile, startElement: PsiElement, endElement: PsiElement) {
-    SolSpecifierEditor.addVirtual(project, startElement as SolNamedElement)
+    SolSpecifierEditor.addVirtual(startElement as SolNamedElement)
   }
 
   // the declaration may live in another file than the one the problem is reported in

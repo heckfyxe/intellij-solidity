@@ -11,6 +11,6 @@ class AddOverrideFix(member: SolNamedElement, private val bases: List<String>) :
   override fun getFamilyName() = "Add override specifier"
 
   override fun invoke(project: Project, file: PsiFile, startElement: PsiElement, endElement: PsiElement) {
-    SolSpecifierEditor.setOverride(project, startElement as SolNamedElement, bases)
+    SolSpecifierEditor.setOverride(startElement as SolNamedElement, bases)
   }
 }

@@ -3,7 +3,6 @@ package me.serce.solidity.ide.inspections.fixes
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.openapi.project.Project
-import com.intellij.psi.PsiDocumentManager
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.parentOfType
 
@@ -16,7 +15,7 @@ class MakeContractAbstractFix : LocalQuickFix {
     if (contract.isAbstract) {
       return
     }
-    val document = PsiDocumentManager.getInstance(project).getDocument(contract.containingFile) ?: return
-    document.insertString(contract.firstChild.textRange.startOffset, "abstract ")
+    val offset = contract.firstChild.textRange.startOffset
+    editDocument(contract) { it.insertString(offset, "abstract ") }
   }
 }
