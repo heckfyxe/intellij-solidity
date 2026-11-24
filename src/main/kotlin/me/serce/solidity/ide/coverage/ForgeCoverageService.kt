@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.coverage
 
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -59,7 +60,7 @@ class ForgeCoverageService(private val project: Project) : Disposable {
   fun setReport(root: String, lcov: Map<String, FileCoverage>, startedAt: Long = Long.MAX_VALUE) {
     reportTime = startedAt
     val base = root.replace('\\', '/').trimEnd('/')
-    coverage = lcov.mapKeys { (path, _) -> if (path.startsWith("/") || path.matches(Regex("^[A-Za-z]:/.*"))) path else "$base/$path" }
+    coverage = lcov.mapKeys { (path, _) -> if (FileUtil.isAbsolute(path)) path else "$base/$path" }
     refreshEditors()
   }
 
@@ -73,11 +74,17 @@ class ForgeCoverageService(private val project: Project) : Disposable {
   /** Forgets [path]'s coverage and removes its markers: its lines no longer match the report. */
   private fun dropFile(path: String) {
     coverage = coverage - path
-    refreshEditors()
+    refreshEditors(path)
   }
 
-  private fun refreshEditors() {
-    val run = { EditorFactory.getInstance().allEditors.filter { it.project == project || it.project == null }.forEach { apply(it) } }
+  /** Repaints the editors of [path], or all of them. */
+  private fun refreshEditors(path: String? = null) {
+    val run = {
+      EditorFactory.getInstance().allEditors
+        .filter { it.project == project || it.project == null }
+        .filter { path == null || FileDocumentManager.getInstance().getFile(it.document)?.path == path }
+        .forEach { apply(it) }
+    }
     val app = ApplicationManager.getApplication()
     if (app.isDispatchThread) run() else app.invokeLater(run, project.disposed)
   }
