@@ -70,6 +70,36 @@ class SolConstantTypesTest : SolTestBase() {
     "-2 * 3 + 10" to "int_const 4",
   )
 
+  fun testBitwiseOperators() = checkTypes("""
+      contract C {
+        function f(uint8 u, uint16 u16, bytes32 b, bytes4 b4) public {
+          ~1 & 3;
+          5 | 2;
+          -1 ^ 1;
+          0.5 & 1;
+          u & 0xff;
+          u | 0x100;
+          u ^ u16;
+          b & b;
+          b4 | b;
+          b << 8;
+          b & u;
+        }
+      }
+    """,
+    "~1 & 3" to "int_const 2",
+    "5 | 2" to "int_const 7",
+    "-1 ^ 1" to "int_const -2",
+    "0.5 & 1" to "<unknown>",
+    "u & 0xff" to "uint8",
+    "u | 0x100" to "uint16",
+    "u ^ u16" to "uint16",
+    "b & b" to "bytes32",
+    "b4 | b" to "bytes32",
+    "b << 8" to "bytes32",
+    "b & u" to "<unknown>",
+  )
+
   // `**` is right associative: `2**3**2` is `2**(3**2)`
   fun testExponentIsRightAssociative() = checkTypes("""
       contract C {

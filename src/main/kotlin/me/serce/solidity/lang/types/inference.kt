@@ -187,7 +187,10 @@ fun inferExprType(expr: SolExpression?): SolType {
     is SolPlusMinExpression,
     is SolMultDivExpression,
     is SolExponentExpression,
-    is SolShiftExpression -> {
+    is SolShiftExpression,
+    is SolAndOpExpression,
+    is SolOrOpExpression,
+    is SolXorOpExpression -> {
       val operands = PsiTreeUtil.getChildrenOfTypeAsList(expr, SolExpression::class.java)
       getNumericExpressionType(
         operands.firstOrNull()?.let { PsiTreeUtil.skipWhitespacesAndCommentsForward(it) }?.text,
@@ -273,10 +276,20 @@ private fun getNumericExpressionType(op: String?, firstType: SolType, secondType
   if (first != null && second != null) {
     return foldConstants(op, first, second)?.let { SolRationalConstant.of(it) } ?: SolUnknown
   }
+  val isShift = op == "<<" || op == ">>"
+  if (firstType is SolFixedBytes) {
+    return when {
+      isShift -> firstType.takeIf { secondType is SolInteger } ?: SolUnknown
+      op != "&" && op != "|" && op != "^" || secondType !is SolFixedBytes -> SolUnknown
+      firstType.isAssignableFrom(secondType) -> firstType
+      secondType.isAssignableFrom(firstType) -> secondType
+      else -> SolUnknown
+    }
+  }
   if (firstType !is SolInteger || secondType !is SolInteger) {
     return SolUnknown
   }
-  val isShiftOrExp = op == "<<" || op == ">>" || op == "**"
+  val isShiftOrExp = isShift || op == "**"
   return when {
     isShiftOrExp -> if (first != null) SolInteger(first.numerator.signum() >= 0, 256) else firstType.withoutLiteral()
     first != null -> commonTypeWithConstant(secondType, first.numerator)
@@ -318,6 +331,10 @@ private fun foldConstants(op: String?, a: Rational, b: Rational): Rational? {
       else Rational.of(a.numerator.shiftLeft(b.numerator.toInt()))
     ">>" -> if (!a.isInteger || !b.isInteger || b.numerator.signum() < 0 || b.numerator.bitLength() > 31) null
       else Rational.of(a.numerator.shiftRight(b.numerator.toInt()))
+    // two's complement of unbounded width, like solc (`~1 & 3` is 2, `-1 ^ 1` is -2)
+    "&" -> if (a.isInteger && b.isInteger) Rational.of(a.numerator.and(b.numerator)) else null
+    "|" -> if (a.isInteger && b.isInteger) Rational.of(a.numerator.or(b.numerator)) else null
+    "^" -> if (a.isInteger && b.isInteger) Rational.of(a.numerator.xor(b.numerator)) else null
     else -> null
   }
   return result?.takeIf { it.numerator.bitLength() <= MAX_CONSTANT_BITS && it.denominator.bitLength() <= MAX_CONSTANT_BITS }

@@ -152,8 +152,9 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
 
 * Number constants fold like solc's rational constants: integral values are `SolInteger` with `literalValue`
   (assignable to every integer type that holds them), fractional ones are `SolRationalConstant` (assignable to
-  nothing). Literal units (`ether`, `days`) are applied. Messages name constants with `SolType.displayName()`
-  (`int_const 300`, `rational_const 1 / 2`), never with `toString()`.
+  nothing). Literal units (`ether`, `days`) are applied. `~`, `&`, `|` and `^` fold on integers only, in unbounded
+  two's complement (`~1 & 3` is 2). Messages name constants with `SolType.displayName()` (`int_const 300`,
+  `rational_const 1 / 2`), never with `toString()`.
 * A typed operand combined with a constant takes solc's common type: `uint8 x; x + 300` is `uint16`, `x + -1` is
   unknown (solc rejects it). Keep inference unknown rather than guessing wherever solc would reject.
 * `bytes.concat`/`string.concat` exist only on the type names (`elementaryTypeNameMembers`), not on values.
