@@ -567,15 +567,17 @@ FunctionCallExpression ::= Expression FunctionInvocation {
     mixin = "me.serce.solidity.lang.psi.impl.SolFunctionCallMixin"
 }
 
-FunctionInvocation ::= MapExpression? '(' (EmptyNamedArguments | FunctionCallArguments)? ')'
-// `f({})`: no named arguments, for a function without parameters; shaped like `f()`
+FunctionInvocation ::= MapExpression? '(' (FunctionCallArguments | EmptyNamedArguments)? ')'
+// `f({})`: no named arguments, for a function without parameters; shaped like `f()`. Tried after the arguments, so
+// its `'}'` isn't among the tokens expected in `f({: 1})`
 private EmptyNamedArguments ::= '{' '}'
-FunctionCallArguments ::= MapExpression | Expression? NextCallArgument*
+FunctionCallArguments ::= MapExpression | !'{' Expression? NextCallArgument*
 private NextCallArgument ::= ',' Expression {pin=1}
 MapExpressionClause ::= Identifier ':' (Expression | MapExpression) {pin=2}
 // pinned only after `{ name:` (or `{ :`, a missing name): a pinned `{` that turns out not to be call options (`if (x > 1 {`) is rolled back
-// but still hides the real error after it (`')' expected`)
-private UnfinishedMapExpression ::= '{' &(Identifier? ':') MapExpressionClause (',' MapExpressionClause )* {
+// but still hides the real error after it (`')' expected`). <<callOptionsStart>> looks ahead without adding expected
+// tokens, so `f({: 1})` reports only the missing name
+private UnfinishedMapExpression ::= '{' <<callOptionsStart>> MapExpressionClause (',' MapExpressionClause )* {
     pin=2
     recoverWhile = UntilBraceRecover
 }

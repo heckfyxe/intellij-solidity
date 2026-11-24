@@ -44,6 +44,10 @@ Error messages should name what solc expects, at the token solc points to:
 * A pinned rule that fails and is rolled back still hides the next real error (the frame remembers the error offset).
   Call options (`UnfinishedMapExpression`) are therefore pinned only after `{ name:`, otherwise `if (x > 1 {` lost its
   `')' expected`. Pin only where the construct can't be anything else.
+* A positive predicate (`&(Identifier? ':')`) adds its tokens to the expected list of an error at the same offset, so
+  lookahead that must stay out of messages is an external rule using `PsiBuilder.lookAhead` (`<<callOptionsStart>>`:
+  `f({: 1})` reports only `Identifier expected`). An external rule as the *first* element of a rule changes the
+  messages of unrelated errors (rule names like `<function invocation>` drop out), so put it after a token.
 Recovery tests for these are in `fixtures/parser/recovery` (`listErrors`, `stateVariableModifiersAfterName`).
 
 Expression rules (the alternatives of `Expression`) are parsed by Grammar-Kit's operator-precedence parser; later

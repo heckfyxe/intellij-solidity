@@ -40,6 +40,16 @@ object SolidityParserUtil : GeneratedParserUtilBase() {
     return true
   }
 
+  /**
+   * After the `{` of call options: `name:` or `:` (a name missing) follows. Looks ahead without recording expected
+   * tokens, which a `&(Identifier? ':')` predicate would add to the error at a missing name.
+   */
+  @JvmStatic
+  fun callOptionsStart(b: PsiBuilder, level: Int): Boolean {
+    val type = b.tokenType
+    return type == SolidityTokenTypes.COLON || type == SolidityTokenTypes.IDENTIFIER && b.lookAhead(1) == SolidityTokenTypes.COLON
+  }
+
   /** After `function`: `receive`/`fallback` are the function's name, remapped to `Identifier`. Always succeeds. */
   @JvmStatic
   fun keywordFunctionName(b: PsiBuilder, level: Int): Boolean {

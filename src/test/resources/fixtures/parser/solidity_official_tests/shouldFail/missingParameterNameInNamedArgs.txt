@@ -141,7 +141,7 @@ Solidity File
                 SolFunctionCallArgumentsImpl(FUNCTION_CALL_ARGUMENTS)
                   SolMapExpressionImpl(MAP_EXPRESSION)
                     PsiElement({)('{')
-                    PsiErrorElement:':', Identifier or '}' expected, got ':'
+                    PsiErrorElement:Identifier expected, got ':'
                       <empty list>
                     PsiElement(:)(':')
                     PsiWhiteSpace(' ')

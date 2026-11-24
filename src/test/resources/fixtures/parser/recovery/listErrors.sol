@@ -30,6 +30,8 @@ contract C is A, {
         }
         for (uint j = 0; j < x; j++ {
         }
+        i({: 1});
+        i({x: 1, : 2});
     }
 }
 
