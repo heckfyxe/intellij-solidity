@@ -42,6 +42,7 @@ import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.Visibility
 import me.serce.solidity.lang.psi.findContract
+import me.serce.solidity.lang.types.canonicalSignature
 import org.jdom.Element
 import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.execution.process.ProcessEvent
@@ -83,9 +84,9 @@ fun SolFunctionDefinition.isForgeScriptEntry(): Boolean {
   return contract?.isForgeScript() == true
 }
 
-/** The `--sig` of [this]: `run()`, `deploy(address,uint256)`. */
-fun SolFunctionDefinition.scriptSignature(): String =
-  "$name(" + parameters.joinToString(",") { it.typeName.text.replace(Regex("\\s+"), "") } + ")"
+/** The `--sig` of [this]: `run()`, `deploy(address,uint256)`; as written when a parameter type is unknown. */
+fun SolFunctionDefinition.scriptSignature(): String = canonicalSignature()
+  ?: ("$name(" + parameters.joinToString(",") { it.typeName.text.replace(Regex("\\s+"), "") } + ")")
 
 /** Where forge runs for [element], and the script's path relative to it. */
 private fun scriptLocation(element: PsiElement): Pair<String, String>? {

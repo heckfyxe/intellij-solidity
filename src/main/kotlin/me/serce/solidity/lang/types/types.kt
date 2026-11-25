@@ -47,7 +47,6 @@ interface SolUserType : SolType {
   override val isBuiltin: Boolean
     get() = false
 
-  val abiName: String
 }
 
 interface SolPrimitiveType : SolType
@@ -393,8 +392,6 @@ data class SolContract(val ref: SolContractDefinition, val builtin: Boolean = fa
   }
 
   override val isBuiltin get() = builtin
-  override val abiName: String
-    get() = "contract"
 
   override fun toString() = ref.name ?: ref.text ?: "$ref"
 }
@@ -420,8 +417,6 @@ data class SolStruct(val ref: SolStructDefinition) : SolUserType, SolMember {
   override fun resolveElement(): SolNamedElement? = ref
 
   override fun getPossibleUsage(contextType: ContextType): Usage? = null
-  override val abiName: String
-    get() = "struct"
 }
 
 data class SolStructVariableDeclaration(
@@ -451,8 +446,6 @@ data class SolMemberConstructor<T>(val ref: T) : SolMember, SolCallable where T 
 }
 
 data class SolEnum(val ref: SolEnumDefinition) : SolUserType, SolMember {
-  override val abiName: String
-    get() = "enum"
   override fun isAssignableFrom(other: SolType): Boolean =
     other is SolEnum && ref == other.ref
 

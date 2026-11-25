@@ -16,7 +16,7 @@ class ForgeScriptTest : SolLightPlatformCodeInsightFixtureTestCase() {
     contract Deploy is Script {
         function setUp() public {}
         function run() public {}
-        function deploy(address owner, uint256 amount) external {}
+        function deploy(address owner, uint amount) external {}
         function helper() internal {}
     }
     library L { function run() public {} }

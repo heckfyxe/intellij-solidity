@@ -9,10 +9,7 @@ import me.serce.solidity.lang.core.SolidityTokenTypes
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.LinearizationImpossibleException
 import me.serce.solidity.lang.types.SolContract
-import me.serce.solidity.lang.types.SolFunctionTypeType
-import me.serce.solidity.lang.types.SolType
-import me.serce.solidity.lang.types.SolUnknown
-import me.serce.solidity.lang.types.getSolType
+import me.serce.solidity.lang.types.canonicalSignature
 
 /**
  * Mirrors solc's "Contract should be marked as abstract" error: a non-abstract contract that declares or inherits
@@ -71,31 +68,13 @@ class ContractShouldBeAbstractInspection : LocalInspectionTool() {
       return functions
         .filter { it.isUnimplemented() }
         .filter { declaration ->
-          declaration.name !in getters && implemented.none { sameSignature(declaration, it) }
+          // without a known signature it can't be told whether it is implemented: don't report it
+          val signature = declaration.canonicalSignature() ?: return@filter false
+          declaration.name !in getters && implemented.none { it.canonicalSignature() == signature }
         }
     }
 
     private fun SolFunctionDefinition.isUnimplemented(): Boolean =
       block == null && node.lastChildNode?.elementType == SolidityTokenTypes.SEMICOLON
-
-    private fun sameSignature(f1: SolFunctionDefinition, f2: SolFunctionDefinition): Boolean {
-      if (f1.specialFunction != f2.specialFunction || f1.name != f2.name) {
-        return false
-      }
-      val p1 = f1.parameters
-      val p2 = f2.parameters
-      if (p1.size != p2.size) {
-        return false
-      }
-      return p1.zip(p2).all { (a, b) -> typesMatch(getSolType(a.typeName), getSolType(b.typeName)) }
-    }
-
-    /** Types that can't be compared reliably match anything, so that an implementation is never missed. */
-    private fun typesMatch(t1: SolType, t2: SolType): Boolean {
-      if (t1 == SolUnknown || t2 == SolUnknown || t1 is SolFunctionTypeType || t2 is SolFunctionTypeType) {
-        return true
-      }
-      return t1 == t2 || t1.toString() == t2.toString()
-    }
   }
 }

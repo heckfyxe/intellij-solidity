@@ -5,6 +5,7 @@ import me.serce.solidity.ide.navigation.findAllImplementations
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.psi.impl.LinearizationImpossibleException
 import me.serce.solidity.lang.types.SolContract
+import me.serce.solidity.lang.types.hasSameSignature
 
 /**
  * Override relations between functions/modifiers of contracts, following Solidity 0.8.x rules.
@@ -17,13 +18,7 @@ object SolOverrideResolver {
     contract.functionDefinitionList.filter { !it.isConstructor } + contract.modifierDefinitionList
 
   fun sameSignature(a: SolNamedElement, b: SolNamedElement): Boolean = when {
-    a is SolFunctionDefinition && b is SolFunctionDefinition -> {
-      if (a.specialFunction != null || b.specialFunction != null) {
-        a.specialFunction == b.specialFunction
-      } else {
-        SolFunctionResolver.signatureEquals(a, b)
-      }
-    }
+    a is SolFunctionDefinition && b is SolFunctionDefinition -> a.hasSameSignature(b)
     a is SolModifierDefinition && b is SolModifierDefinition -> a.name != null && a.name == b.name
     else -> false
   }
