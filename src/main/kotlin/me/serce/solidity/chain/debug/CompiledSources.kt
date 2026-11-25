@@ -6,7 +6,7 @@ import me.serce.solidity.util.hexToBytes
 import me.serce.solidity.util.withoutHexPrefix
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.JsonNode
-import me.serce.solidity.chain.LinePositions
+import com.intellij.openapi.util.text.StringUtil
 import me.serce.solidity.chain.Offsets
 import me.serce.solidity.chain.foundry.compilationTarget
 import java.nio.file.Files
@@ -58,8 +58,8 @@ class CompiledCode(
       val text = readSource(path) ?: continue
       val start = Offsets.byteToChar(text, entry.start)
       val end = Offsets.byteToChar(text, entry.start + entry.length)
-      val (line, column) = LinePositions(text).lineColAt(start)
-      return SourceLocation(path, line, column, snippet(text, start, end))
+      val position = StringUtil.offsetToLineColumn(text, start) ?: continue
+      return SourceLocation(path, position.line, position.column, snippet(text, start, end))
     }
     return null
   }

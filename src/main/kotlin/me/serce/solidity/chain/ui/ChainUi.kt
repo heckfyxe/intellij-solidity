@@ -34,7 +34,8 @@ import me.serce.solidity.chain.ChainConfig
 import me.serce.solidity.chain.ChainExecutor
 import me.serce.solidity.chain.ChainService
 import me.serce.solidity.chain.Deployment
-import me.serce.solidity.chain.LinePositions
+import me.serce.solidity.chain.Offsets
+import com.intellij.openapi.util.text.StringUtil
 import me.serce.solidity.chain.TxStatus
 import me.serce.solidity.chain.abi.AbiEntry
 import me.serce.solidity.chain.abi.AbiParam
@@ -87,7 +88,7 @@ object ChainUi {
       isActivateToolWindowWhenFailed = true
     }
     view.onEvent(id, StartBuildEventImpl(descriptor, "forge build"))
-    val positions = HashMap<File, LinePositions>()
+    val texts = HashMap<File, String>()
     for (m in result?.messages.orEmpty()) {
       val kind = when (m.severity) {
         "error" -> MessageEvent.Kind.ERROR
@@ -95,9 +96,12 @@ object ChainUi {
         else -> MessageEvent.Kind.INFO
       }
       val file = m.file?.let { foundry.root.resolve(it).toFile() }
-      if (file != null && file.exists() && m.start >= 0) {
-        val (line, col) = positions.getOrPut(file) { LinePositions(file.readText()) }.lineCol(m.start)
-        view.onEvent(id, FileMessageEventImpl(id, kind, m.type, m.message, m.formatted, FilePosition(file, line, col)))
+      val position = if (file != null && file.exists() && m.start >= 0) {
+        val text = texts.getOrPut(file) { file.readText() }
+        StringUtil.offsetToLineColumn(text, Offsets.byteToChar(text, m.start))
+      } else null
+      if (file != null && position != null) {
+        view.onEvent(id, FileMessageEventImpl(id, kind, m.type, m.message, m.formatted, FilePosition(file, position.line, position.column)))
       } else {
         view.onEvent(id, MessageEventImpl(id, kind, m.type, m.message.lines().first(), m.formatted))
       }

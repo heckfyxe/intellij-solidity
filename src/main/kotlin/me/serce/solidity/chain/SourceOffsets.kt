@@ -18,21 +18,3 @@ object Offsets {
     return i
   }
 }
-
-/** Zero-based line and column of offsets in one file's [text]. */
-class LinePositions(private val text: String) {
-  private val lineStarts: IntArray = run {
-    val starts = ArrayList<Int>().apply { add(0) }
-    text.forEachIndexed { i, c -> if (c == '\n') starts += i + 1 }
-    starts.toIntArray()
-  }
-
-  /** Of a solc byte offset. */
-  fun lineCol(byteOffset: Int): Pair<Int, Int> = lineColAt(Offsets.byteToChar(text, byteOffset))
-
-  /** Of a char offset. */
-  fun lineColAt(offset: Int): Pair<Int, Int> {
-    val line = lineStarts.binarySearch(offset).let { if (it >= 0) it else -it - 2 }
-    return line to (offset - lineStarts[line])
-  }
-}
