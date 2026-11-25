@@ -27,7 +27,7 @@ import java.nio.file.Path
  * directory).
  */
 object RemappingsFile {
-  const val NAME = "remappings.txt"
+  const val NAME = FoundryProject.REMAPPINGS_FILE
 
   fun isRemappingsFile(file: PsiFile): Boolean = file.originalFile.name == NAME
 
@@ -46,9 +46,9 @@ object RemappingsFile {
     }
   }
 
-  /** The library directories forge looks in (`libs`), `lib` until forge's config is known. */
+  /** The library directories forge looks in (`libs`), and Soldeer's `dependencies`. */
   fun libDirs(root: VirtualFile, config: ForgeConfig?): List<VirtualFile> =
-    (config?.libs ?: listOf("lib")).mapNotNull { root.findFileByRelativePath(it.trim('/')) }.filter { it.isDirectory }
+    FoundryProject.libraryDirs(config).mapNotNull { root.findFileByRelativePath(it.trim('/')) }.filter { it.isDirectory }
 
   /**
    * A remapping for each library: `name/=lib/name/src/` (or `contracts/`, or the library root), named after the

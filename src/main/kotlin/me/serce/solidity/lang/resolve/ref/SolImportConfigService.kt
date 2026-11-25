@@ -14,6 +14,7 @@ import com.intellij.openapi.vfs.readText
 import com.intellij.psi.PsiManager
 import me.serce.solidity.chain.foundry.ForgeConfig
 import me.serce.solidity.chain.foundry.FoundryProject
+import me.serce.solidity.util.resolvePath
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 
@@ -37,7 +38,7 @@ class SolImportConfigService(val project: Project) {
     val remappings: List<Remapping>,
     val reverseRemappings: Map<String, String>,
     /** Directories dependencies are installed in: forge's `libs`, and Soldeer's `dependencies`. */
-    val libs: List<String> = DEFAULT_LIBS,
+    val libs: List<String> = FoundryProject.libraryDirs(null),
   )
 
   private data class CachedConfig(
@@ -63,10 +64,10 @@ class SolImportConfigService(val project: Project) {
     var current: VirtualFile? = if (fromFile.isDirectory) fromFile else fromFile.parent
     while (current != null) {
       if (!current.isValid) return null
-      val config = if (hasFoundryConfig(current)) getOrLoadConfig(current) else emptyConfig
+      val config = if (FoundryProject.isRoot(current, orRemappings = true)) getOrLoadConfig(current) else emptyConfig
       val remappedPath = applyRemappings(config.remappings, path, relativeTo(fromFile, current))
       if (!remappedOnly || remappedPath != path) {
-        findFile(current, remappedPath)?.let { return it }
+        current.resolvePath(remappedPath)?.let { return it }
       }
       if (!remappedOnly) {
         foundryDefaultFallback(current, path, config.libs)?.let { return it }
@@ -84,7 +85,7 @@ class SolImportConfigService(val project: Project) {
   fun remappedImportPath(destination: VirtualFile, fromFile: VirtualFile): String? {
     if (!fromFile.isValid) return null
     val fromDir = if (fromFile.isDirectory) fromFile else fromFile.parent ?: return null
-    val foundryRoot = findFoundryRoot(fromDir) ?: return null
+    val foundryRoot = FoundryProject.rootOf(fromDir, orRemappings = true) ?: return null
     val path = VfsUtilCore.getRelativePath(destination, foundryRoot) ?: return null
     for ((target, prefix) in getOrLoadConfig(foundryRoot).reverseRemappings) {
       val dir = target.trimEnd('/') + "/"
@@ -94,8 +95,8 @@ class SolImportConfigService(val project: Project) {
   }
 
   private fun getOrLoadConfig(foundryRoot: VirtualFile): FoundryImportConfig {
-    val remappingsFile = foundryRoot.findChild("remappings.txt")
-    val foundryFile = foundryRoot.findChild("foundry.toml")
+    val remappingsFile = foundryRoot.findChild(FoundryProject.REMAPPINGS_FILE)
+    val foundryFile = foundryRoot.findChild(FoundryProject.CONFIG_FILE)
     val remappingsStamp = remappingsFile?.modificationStamp
     val foundryStamp = foundryFile?.modificationStamp
     val rootPath = foundryRoot.path
@@ -123,7 +124,7 @@ class SolImportConfigService(val project: Project) {
         config = FoundryImportConfig(
           remappings = remappings,
           reverseRemappings = buildReverseRemappings(remappings),
-          libs = (forgeConfig?.libs.orEmpty() + DEFAULT_LIBS).distinct(),
+          libs = FoundryProject.libraryDirs(forgeConfig),
         ),
       )
     }!!.config
@@ -134,9 +135,8 @@ class SolImportConfigService(val project: Project) {
    * background (never under the read action resolve runs in) and refreshes resolve results once it arrives.
    */
   private fun forgeConfig(foundryRoot: VirtualFile): ForgeConfig? {
-    if (ApplicationManager.getApplication().isUnitTestMode || foundryRoot.findChild("foundry.toml") == null) return null
-    if (foundryRoot.fileSystem !is LocalFileSystem) return null
-    val foundry = FoundryProject(Path.of(foundryRoot.path), FoundryProject.forgePath(project))
+    if (ApplicationManager.getApplication().isUnitTestMode || foundryRoot.fileSystem !is LocalFileSystem) return null
+    val foundry = FoundryProject.find(project, foundryRoot)?.takeIf { it.root == Path.of(foundryRoot.path) } ?: return null
     foundry.cachedConfig()?.let { return it.getOrNull() }
     foundry.loadConfigInBackground {
       ApplicationManager.getApplication().invokeLater({
@@ -149,25 +149,6 @@ class SolImportConfigService(val project: Project) {
 
   private fun relativeTo(file: VirtualFile, root: VirtualFile): String =
     VfsUtilCore.getRelativePath(file, root) ?: ""
-
-  private fun findFile(root: VirtualFile, path: String): VirtualFile? =
-    if (path.startsWith("/")) root.fileSystem.findFileByPath(path) else root.findFileByRelativePath(path)
-
-  private fun findFoundryRoot(fromDir: VirtualFile): VirtualFile? {
-    var current: VirtualFile? = fromDir
-    while (current != null) {
-      if (!current.isValid) return null
-      if (hasFoundryConfig(current)) {
-        return current
-      }
-      current = current.parent
-    }
-    return null
-  }
-
-  private fun hasFoundryConfig(dir: VirtualFile): Boolean {
-    return dir.findChild("remappings.txt") != null || dir.findChild("foundry.toml") != null
-  }
 
   private fun parseRemappingsFile(file: VirtualFile?): List<Remapping> {
     if (file == null) {
@@ -256,7 +237,6 @@ class SolImportConfigService(val project: Project) {
 
   companion object {
     private val newlineRegex = "[\r\n]+".toRegex()
-    private val DEFAULT_LIBS = listOf("lib", "dependencies")
 
     @JvmStatic
     fun getInstance(project: Project): SolImportConfigService = project.service()

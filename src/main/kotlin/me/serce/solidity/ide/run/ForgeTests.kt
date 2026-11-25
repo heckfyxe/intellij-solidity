@@ -14,6 +14,7 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.GlobalSearchScope
 import me.serce.solidity.chain.foundry.FoundryProject
+import me.serce.solidity.util.resolvePath
 import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.Visibility
@@ -75,8 +76,7 @@ class SolidityFileLocationFilter(private val project: Project, rootProvider: () 
     val lineStart = entireLength - line.length
     val items = location.findAll(line).mapNotNull { m ->
       val path = m.groupValues[1]
-      val file = (if (path.startsWith("/")) LocalFileSystem.getInstance().findFileByPath(path) else root?.findFileByRelativePath(path))
-        ?: return@mapNotNull null
+      val file = root.resolvePath(path) ?: return@mapNotNull null
       val lineNumber = m.groupValues[2].toInt() - 1
       val column = m.groupValues[3].toIntOrNull()?.minus(1) ?: 0
       Filter.ResultItem(

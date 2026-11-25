@@ -81,8 +81,8 @@ data class CompilerMessage(
 
 class BuildResult(val success: Boolean, val messages: List<CompilerMessage>)
 
-/** A Foundry project: the directory containing foundry.toml. */
-class FoundryProject(val root: Path, private val forgeExe: String) {
+/** A Foundry project: the directory containing foundry.toml. Get one with [find]; tests may pass their own forge. */
+class FoundryProject internal constructor(val root: Path, private val forgeExe: String) {
   /** [file]'s path relative to [root], or null when it is outside. */
   fun relativePath(file: VirtualFile): String? =
     runCatching { root.relativize(Path.of(file.path)) }.getOrNull()?.takeIf { !it.startsWith("..") }?.toString()?.replace('\\', '/')
@@ -124,7 +124,7 @@ class FoundryProject(val root: Path, private val forgeExe: String) {
     }
   }
 
-  private fun stamp() = listOf(CONFIG_FILE, "remappings.txt").map { root.resolve(it).toFile().lastModified() }
+  private fun stamp() = listOf(CONFIG_FILE, REMAPPINGS_FILE).map { root.resolve(it).toFile().lastModified() }
 
   private fun readConfig(): ForgeConfig {
     val out = forge(listOf("config", "--json"), timeoutMs = 30_000).let { o ->
@@ -152,6 +152,13 @@ class FoundryProject(val root: Path, private val forgeExe: String) {
   fun output(): ForgeOutput = ForgeOutput.of(root, root.resolve(config().out))
 
   fun artifacts(): List<Artifact> = output().artifacts
+
+  /**
+   * Whether [relativePath] is in a dependency directory: forge's `libs` (once its config is known), Soldeer's
+   * `dependencies`, or `node_modules`. Never runs forge.
+   */
+  fun isLibrary(relativePath: String): Boolean =
+    (libraryDirs(cachedConfig()?.getOrNull()) + "node_modules").any { relativePath.startsWith(it.trim('/') + "/") }
 
   /** Under the configured `src` and not a test or script, i.e. something you'd deploy. */
   fun isSource(relativePath: String, config: ForgeConfig = config()): Boolean {
@@ -185,6 +192,10 @@ class FoundryProject(val root: Path, private val forgeExe: String) {
 
   companion object {
     const val CONFIG_FILE = "foundry.toml"
+    const val REMAPPINGS_FILE = "remappings.txt"
+
+    /** Directories dependencies are installed in: forge's `libs` from [config], and `lib` and Soldeer's `dependencies`. */
+    fun libraryDirs(config: ForgeConfig?): List<String> = (config?.libs.orEmpty() + listOf("lib", "dependencies")).distinct()
     private val configCache = ConcurrentHashMap<Path, Pair<List<Long>, Result<ForgeConfig>>>()
     private val loading = ConcurrentHashMap.newKeySet<Path>()
 
@@ -228,19 +239,26 @@ class FoundryProject(val root: Path, private val forgeExe: String) {
       return FoundryProject(Path.of(root.path), forgePath(project))
     }
 
-    fun rootOf(file: VirtualFile): VirtualFile? {
+    /** The nearest directory from [file] up holding foundry.toml or, with [orRemappings], remappings.txt. */
+    fun rootOf(file: VirtualFile, orRemappings: Boolean = false): VirtualFile? {
       var dir: VirtualFile? = if (file.isDirectory) file else file.parent
       while (dir != null) {
-        if (dir.findChild(CONFIG_FILE) != null) return dir
+        if (!dir.isValid) return null
+        if (isRoot(dir, orRemappings)) return dir
         dir = dir.parent
       }
       return null
     }
 
+    /** [dir] holds foundry.toml or, with [orRemappings], remappings.txt. */
+    fun isRoot(dir: VirtualFile, orRemappings: Boolean = false): Boolean =
+      dir.findChild(CONFIG_FILE) != null || orRemappings && dir.findChild(REMAPPINGS_FILE) != null
+
+    /** The project directory when it is a Foundry root, else its first subdirectory that is one. */
     private fun projectRoot(project: Project): VirtualFile? {
       val base = project.guessProjectDir() ?: project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) } ?: return null
-      if (base.findChild(CONFIG_FILE) != null) return base
-      return base.children.firstOrNull { it.isDirectory && it.findChild(CONFIG_FILE) != null }
+      if (isRoot(base)) return base
+      return base.children.firstOrNull { it.isDirectory && isRoot(it) }
     }
   }
 }

@@ -65,7 +65,7 @@ class ForgeLintAnnotator : ExternalAnnotator<ForgeLintAnnotator.Input, ForgeLint
     val document = PsiDocumentManager.getInstance(file.project).getDocument(file) ?: return null
     val foundry = FoundryProject.find(file.project, vFile) ?: return null
     val relative = foundry.relativePath(vFile) ?: return null
-    if (LIB_DIRS.any { relative.startsWith(it) }) return null // dependencies aren't yours to fix
+    if (foundry.isLibrary(relative)) return null // dependencies aren't yours to fix
     return Input(foundry, relative, document.text, document, foundry.unsavedSolFiles())
   }
 
@@ -123,7 +123,6 @@ class ForgeLintAnnotator : ExternalAnnotator<ForgeLintAnnotator.Input, ForgeLint
   companion object {
     private val LOG = logger<ForgeLintAnnotator>()
     private val CACHE = Key.create<List<Pair<RangeMarker, ForgeLintIssue>>>("solidity.forge.lint.results")
-    private val LIB_DIRS = listOf("lib/", "dependencies/", "node_modules/")
 
     /**
      * Parses `forge lint --json` output: one diagnostic per line, `{"code": {"code": "<lint>"}, "level": "warning",
