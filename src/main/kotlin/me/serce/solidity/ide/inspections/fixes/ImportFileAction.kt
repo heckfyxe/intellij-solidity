@@ -20,7 +20,6 @@ import me.serce.solidity.ide.formatting.SolImportOptimizer
 import me.serce.solidity.ide.formatting.layoutImports
 import me.serce.solidity.ide.formatting.solidityCustomSettings
 import me.serce.solidity.lang.resolve.ref.SolImportConfigService
-import me.serce.solidity.lang.psi.SolContractDefinition
 import me.serce.solidity.lang.psi.SolImportDirective
 import me.serce.solidity.lang.psi.SolNamedElement
 import me.serce.solidity.lang.psi.SolPragmaDirective
@@ -127,8 +126,6 @@ class ImportFileAction(
         } ?: false
       }
     }
-
-    fun addContractImport(contract: SolContractDefinition, file: PsiFile) = addNamedImport(contract, file)
 
     /** Adds `import {Name} from "path";` for a top-level declaration (contract, event, error, ...) of another file. */
     fun addNamedImport(element: SolNamedElement, file: PsiFile) {
