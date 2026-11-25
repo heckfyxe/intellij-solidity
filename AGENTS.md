@@ -266,6 +266,12 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   Broadcasts to anything but a local dev chain ask first (mainnets with a real-funds warning); the chain is refreshed
   when forge exits.
 
+* Chisel (`ide/run/Chisel.kt`) is a run configuration too (Tools | Open Chisel, or Open Chisel on Fork in the Chains
+  tool window, which reuse one configuration per chain). chisel draws its own prompt and line editing, so it runs in
+  a `PtyCommandLine` shown in the platform's `TerminalExecutionConsole` (in `app-client.jar`, no terminal plugin
+  dependency), with `TERM` set. It forks the same `ForgeTarget`s, through `FOUNDRY_ETH_RPC_URL`, which chisel reads
+  like forge (not `ETH_RPC_URL`). Its output is coloured, so tests strip ANSI codes before matching.
+
 ## Contract Storage
 
 * Read Storage (`storage/StorageDialog`) reads any slot with `eth_getStorageAt`, and for contracts compiled in the

@@ -412,6 +412,7 @@
                 implementation="me.serce.solidity.ide.run.ForgeTestRunConfigurationProducer" />
         <configurationType implementation="me.serce.solidity.ide.run.ForgeScriptRunConfigurationType"/>
         <runConfigurationProducer implementation="me.serce.solidity.ide.run.ForgeScriptRunConfigurationProducer"/>
+        <configurationType implementation="me.serce.solidity.ide.run.ChiselRunConfigurationType"/>
         <runLineMarkerContributor language="Solidity"
                                   implementationClass="me.serce.solidity.ide.run.ForgeScriptRunLineMarkerContributor"/>
 
@@ -491,6 +492,12 @@
                     description="Run forge snapshot --check and report tests whose gas differs from .gas-snapshot"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </group>
+        <action id="solidity.chisel.open"
+                class="me.serce.solidity.ide.run.OpenChiselAction"
+                text="Open Chisel" icon="AllIcons.Nodes.Console"
+                description="Open chisel, Foundry's Solidity REPL, in the project's Foundry root">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
 
     </actions>
 

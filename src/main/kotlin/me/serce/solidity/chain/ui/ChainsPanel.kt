@@ -127,7 +127,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
 
     val toolbarGroup = DefaultActionGroup(
       AddChainGroup(), StartAction(), StopAction(), Separator(),
-      DeployAction(), AttachAction(), LowLevelCallAction(), ReadStorageAction(), BuildAction(), Separator(),
+      DeployAction(), AttachAction(), LowLevelCallAction(), ReadStorageAction(), ChiselAction(), BuildAction(), Separator(),
       RefreshAction(), EditAction(), RemoveAction(), Separator(),
       CompileWhileEditingAction(),
     )
@@ -135,7 +135,7 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
     toolbar.targetComponent = this
     setToolbar(toolbar.component)
     PopupHandler.installPopupMenu(tree, DefaultActionGroup(
-      StartAction(), StopAction(), Separator(), DeployAction(), AttachAction(), LowLevelCallAction(), ReadStorageAction(), Separator(),
+      StartAction(), StopAction(), Separator(), DeployAction(), AttachAction(), LowLevelCallAction(), ReadStorageAction(), ChiselAction(), Separator(),
       CopyAddressAction(), OpenInExplorerAction(), GenerateInterfaceAction(), Separator(), RefreshAction(), EditAction(), RemoveAction(),
     ), "SolidityChainsPopup")
 
@@ -478,6 +478,13 @@ class ChainsPanel(private val project: Project) : SimpleToolWindowPanel(true, tr
       val chain = selectedChain() ?: return
       val deployment = selected()?.deployment
       StorageDialog(project, chain, deployment, deployment?.address).show()
+    }
+  }
+
+  /** chisel on a fork of the selected chain, at its latest block. */
+  private inner class ChiselAction : RunningChainAction("Open Chisel on Fork", AllIcons.Nodes.Console) {
+    override fun actionPerformed(e: AnActionEvent) {
+      selectedChain()?.let { me.serce.solidity.ide.run.Chisel.open(project, it) }
     }
   }
 

@@ -228,8 +228,8 @@ class FoundryProject internal constructor(val root: Path, private val forgeExe: 
     }
 
     /** Another Foundry tool (`anvil`, `cast`): they sit next to forge in a Foundry install. */
-    fun toolPath(project: Project, tool: String): String =
-      Path.of(forgePath(project)).resolveSibling(if (SystemInfo.isWindows) "$tool.exe" else tool).toString()
+    fun toolPath(project: Project, tool: String, isWindows: Boolean = SystemInfo.isWindows): String =
+      Path.of(forgePath(project, isWindows)).resolveSibling(if (isWindows) "$tool.exe" else tool).toString()
 
     fun anvilPath(project: Project): String = toolPath(project, "anvil")
 
