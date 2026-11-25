@@ -173,6 +173,9 @@ These guidelines are crucial for maintaining a robust and adaptable lexer/parser
   unknown (solc rejects it). Keep inference unknown rather than guessing wherever solc would reject.
 * `bytes.concat`/`string.concat` exist only on the type names (`elementaryTypeNameMembers`), not on values.
 * Integers are not assignable to `address`; only a 40-digit hex literal (solc's address literal) is.
+* Built-in functions are Solidity declarations in `lang/types/internal.kt`. They say `pure` or `view` (the state
+  mutability inspections read it from there); one without a keyword changes state. Each must end with `;`: a
+  declaration with a parse error is ignored by those analyses.
 * `using L for T`/`*` attaches only library functions whose first parameter accepts the receiver
   (`SolMemberAccessElement.collectUsingForLibraryFunctions`); unknown parameter types keep the function.
 
