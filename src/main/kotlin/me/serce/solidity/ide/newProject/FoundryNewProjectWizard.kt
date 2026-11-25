@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.newProject
 
+import me.serce.solidity.ide.foundry.foundryNotification
 import me.serce.solidity.chain.foundry.FoundryException
 import me.serce.solidity.chain.foundry.FoundryTools
 import me.serce.solidity.chain.foundry.ToolOutput
@@ -27,7 +28,6 @@ import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.Panel
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
-import me.serce.solidity.chain.chainNotification
 import me.serce.solidity.ide.SolidityIcons
 import me.serce.solidity.settings.ConfigurationMode
 import me.serce.solidity.settings.SoliditySettings
@@ -117,7 +117,7 @@ private fun forgeInit(project: Project, dir: Path, forge: String, options: Forge
       }
       if (error != null) {
         refresh(dir)
-        chainNotification("forge init failed", error, NotificationType.ERROR).notify(project)
+        foundryNotification("forge init failed", error, NotificationType.ERROR).notify(project)
         return
       }
       ensureGitignore(dir)

@@ -50,10 +50,13 @@ abstract class ForgeAction(private val notificationTitle: String) : DumbAwareAct
   }
 
   protected fun notification(content: String, type: NotificationType): Notification =
-    NotificationGroupManager.getInstance().getNotificationGroup("Solidity Foundry")
-      .createNotification(notificationTitle, content, type)
+    foundryNotification(notificationTitle, content, type)
 
   protected fun notify(project: Project, content: String, type: NotificationType) {
     notification(content, type).notify(project)
   }
 }
+
+/** A notification about running a Foundry tool (forge actions, `forge init`); chain events use `chainNotification`. */
+fun foundryNotification(title: String, content: String, type: NotificationType): Notification =
+  NotificationGroupManager.getInstance().getNotificationGroup("Solidity Foundry").createNotification(title, content, type)
