@@ -13,8 +13,11 @@ internal sealed interface CalleeKind {
   /** A contract conversion, a struct constructor, an event, an error or a user-defined value type: no code runs. */
   object TypeName : CalleeKind
 
-  /** A built-in function: [name] of the internal type [owner] (`Global`, `Address`, `Array`, ...). */
-  class Builtin(val owner: String, val name: String) : CalleeKind
+  /**
+   * A built-in function: [name] of the internal type [owner] (`Global`, `Address`, `Array`, ...). Its declaration
+   * ([function], in `lang/types/internal.kt`) says `pure` or `view`; the others change state.
+   */
+  class Builtin(val owner: String, val name: String, val function: SolFunctionDefinition) : CalleeKind
 
   /** A function declared in user code. */
   class Function(val function: SolFunctionDefinition) : CalleeKind
@@ -38,7 +41,7 @@ internal fun calleeKind(callable: SolCallable): CalleeKind = when (val element =
 private fun builtinKind(function: SolFunctionDefinition): CalleeKind {
   val owner = function.contract?.name?.let { deInternalise(it) } ?: return CalleeKind.Unknown
   val name = function.name ?: return CalleeKind.Unknown
-  return CalleeKind.Builtin(owner, name)
+  return CalleeKind.Builtin(owner, name, function)
 }
 
 /** What `new T` creates. */

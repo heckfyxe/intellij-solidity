@@ -32,7 +32,7 @@ class SolInternalTypeFactory(project: Project) {
  							/**
                 @return contents of the arguments without padding. 
  							*/
- 							function concat(string $varargsId) returns (string memory);
+ 							function concat(string $varargsId) pure returns (string memory);
          }
      """)
    }
@@ -105,17 +105,17 @@ class SolInternalTypeFactory(project: Project) {
             /**
             * issue low-level CALL with the given payload, returns success condition and return data, forwards all available gas, adjustable
             */
-            function call(bytes memory) returns (bool, bytes memory)
+            function call(bytes memory) returns (bool, bytes memory);
             
             /**
             * issue low-level DELEGATECALL with the given payload, returns success condition and return data, forwards all available gas, adjustable
             */
             
-            function delegatecall(bytes memory) returns (bool, bytes memory)
+            function delegatecall(bytes memory) returns (bool, bytes memory);
             /**
             * issue low-level STATICCALL with the given payload, returns success condition and return data, forwards all available gas, adjustable
             */
-            function staticcall(bytes memory) returns (bool, bytes memory)
+            function staticcall(bytes memory) view returns (bool, bytes memory);
             
             }
     """)
@@ -128,32 +128,32 @@ class SolInternalTypeFactory(project: Project) {
             * ABI-decodes the given data, while the types are given in parentheses as second argument. Example: (uint a, uint[2] memory b, bytes memory c) = abi.decode(data, (uint, uint[2], bytes))
             * @custom:no_validation
             */
-            function decode(bytes memory encodedData) returns (data); 
+            function decode(bytes memory encodedData) pure returns (data); 
             /**
             * ABI-encodes the given arguments
             * @custom:no_validation
             */        
-            function encode(data $varargsId) returns (bytes memory);
+            function encode(data $varargsId) pure returns (bytes memory);
             /**
             * Performs packed encoding of the given arguments. Note that packed encoding can be ambiguous! 
             * @custom:no_validation
             */        
-            function encodePacked(data $varargsId) returns (bytes memory); 
+            function encodePacked(data $varargsId) pure returns (bytes memory); 
             /**
             * ABI-encodes the given arguments starting from the second and prepends the given four-byte selector
             * @custom:no_validation
             */        
-            function encodeWithSelector(bytes4 selector, data $varargsId) returns (bytes memory);
+            function encodeWithSelector(bytes4 selector, data $varargsId) pure returns (bytes memory);
             /**
             * Equivalent to abi.encodeWithSelector(bytes4(keccak256(bytes(signature))), ...)
             * @custom:no_validation
             */        
-            function encodeWithSignature(string memory signature, data $varargsId) returns (bytes memory);
+            function encodeWithSignature(string memory signature, data $varargsId) pure returns (bytes memory);
             /**
             * ABI-encodes a call to functionPointer with the arguments found in the tuple. Performs a full type-check, ensuring the types match the function signature. Result equals abi.encodeWithSelector(functionPointer.selector, (...))                   
             * @custom:no_validation
             */        
-            function encodeCall(functionPointer) returns (bytes memory);
+            function encodeCall(functionPointer) pure returns (bytes memory);
             }
       """)
     }
@@ -328,43 +328,43 @@ class SolInternalTypeFactory(project: Project) {
           /**
           * causes a Panic error and thus state change reversion if the condition is not met - to be used for internal errors.
           */
-          function assert(bool condition);
+          function assert(bool condition) pure;
           /**
           * reverts if the condition is not met - to be used for errors in inputs or external components.
           */
-          function require(bool condition);
+          function require(bool condition) pure;
           /**
           * reverts if the condition is not met - to be used for errors in inputs or external components. Also provides an error message.
           */
-          function require(bool condition, string message);
+          function require(bool condition, string message) pure;
           /**
           * reverts with a custom error if the condition is not met.
           */
-          function require(bool condition, ${internalise("Error")} customError);
+          function require(bool condition, ${internalise("Error")} customError) pure;
           /**
           * abort execution and revert state changes
           */
-          function revert();
+          function revert() pure;
           /**
           * abort execution and revert state changes, providing an explanatory string
           */
-          function revert(string memory reason);
+          function revert(string memory reason) pure;
           /**
           * compute the Keccak-256 hash of the input
           */
-          function keccak256(bytes memory input) returns (bytes32);
+          function keccak256(bytes memory input) pure returns (bytes32);
           /**
           * compute the ERC-7201 storage namespace base slot from its identifier
           */
-          function erc7201(string memory id) returns (uint);
+          function erc7201(string memory id) pure returns (uint);
           /**
           * compute the SHA-256 hash of the input
           */
-          function sha256(bytes memory input) returns (bytes32);
+          function sha256(bytes memory input) pure returns (bytes32);
           /**
           * compute RIPEMD-160 hash of the input
           */
-          function ripemd160(bytes memory input) returns (bytes20);
+          function ripemd160(bytes memory input) pure returns (bytes20);
           /**
           * recover the address associated with the public key from elliptic curve signature or return zero on error. The function parameters correspond to ECDSA values of the signature:
           * 
@@ -378,15 +378,15 @@ class SolInternalTypeFactory(project: Project) {
           * 
           * For further details, read example usage.
           */
-          function ecrecover(bytes32 hash, uint8 v, bytes32 r, bytes32 s) returns (address);
+          function ecrecover(bytes32 hash, uint8 v, bytes32 r, bytes32 s) pure returns (address);
           /**
           * compute <code>(x + y) % k</code> where the addition is performed with arbitrary precision and does not wrap around at <code>2**256</code>. Assert that <code>k != 0</code> starting from version 0.5.0.
           */
-          function addmod(uint x, uint y, uint k) returns (uint);
+          function addmod(uint x, uint y, uint k) pure returns (uint);
           /**
           * compute <code>(x * y) % k</code> where the multiplication is performed with arbitrary precision and does not wrap around at <code>2**256</code>. Assert that <code>k != 0</code> starting from version 0.5.0.
           */
-          function mulmod(uint x, uint y, uint k) returns (uint);
+          function mulmod(uint x, uint y, uint k) pure returns (uint);
           /**
           * Destroy the current contract, sending its funds to the given Address and end execution. Note that selfdestruct has some peculiarities inherited from the EVM:
           * 
@@ -403,17 +403,17 @@ class SolInternalTypeFactory(project: Project) {
           /**
           * Returns the amount of gas remaining the current transaction.
           */
-          function gasleft() returns (uint256);
+          function gasleft() view returns (uint256);
           
           /**
           * Returns hash of the given block when blocknumber is one of the 256 most recent blocks; otherwise returns zero
           */
-          function blockhash(uint blockNumber) returns (bytes32);
+          function blockhash(uint blockNumber) view returns (bytes32);
 
           /**
           * versioned hash of the index-th blob associated with the current transaction. A versioned hash consists of a single byte representing the version (currently 0x01), followed by the last 31 bytes of the SHA256 hash of the KZG commitment (<a href="https://eips.ethereum.org/EIPS/EIP-4844">EIP-4844</a>).
           */
-          function blobhash(uint index) returns (bytes32);
+          function blobhash(uint index) view returns (bytes32);
       }
     """)
   }

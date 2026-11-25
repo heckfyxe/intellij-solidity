@@ -43,9 +43,6 @@ object StateMutabilityAnalyzer {
 
   private enum class StorageKind { STATE, POINTER }
 
-  private val PURE_GLOBALS = setOf(
-    "assert", "require", "revert", "keccak256", "erc7201", "sha3", "sha256", "ripemd160", "ecrecover", "addmod", "mulmod"
-  )
   private val ENVIRONMENT_VARIABLES = setOf("msg", "block", "tx")
   private val PURE_MSG_MEMBERS = setOf("data", "sig")
   private val ADDRESS_STATE_MEMBERS = setOf("balance", "code", "codehash")
@@ -147,7 +144,7 @@ object StateMutabilityAnalyzer {
     private fun callableLevel(callable: SolCallable): MutabilityLevel? {
       return when (val kind = calleeKind(callable)) {
         CalleeKind.Conversion, CalleeKind.TypeName -> MutabilityLevel.PURE
-        is CalleeKind.Builtin -> builtinLevel(kind.owner, kind.name)
+        is CalleeKind.Builtin -> functionLevel(kind.function)
         is CalleeKind.Function -> functionLevel(kind.function)
         is CalleeKind.StateVariable -> if (kind.variable.isBuiltin()) null else MutabilityLevel.VIEW
         CalleeKind.Unknown -> null
@@ -162,30 +159,6 @@ object StateMutabilityAnalyzer {
         Mutability.PURE -> MutabilityLevel.PURE
         Mutability.VIEW -> MutabilityLevel.VIEW
         Mutability.PAYABLE, null -> MutabilityLevel.NONPAYABLE
-      }
-    }
-
-    private fun builtinLevel(owner: String, name: String): MutabilityLevel? {
-      return when (owner) {
-        "Global" -> when (name) {
-          "selfdestruct", "suicide" -> MutabilityLevel.NONPAYABLE
-          "gasleft", "blockhash" -> MutabilityLevel.VIEW
-          in PURE_GLOBALS -> MutabilityLevel.PURE
-          else -> null
-        }
-        "Address" -> when (name) {
-          "transfer", "send", "call", "delegatecall" -> MutabilityLevel.NONPAYABLE
-          "staticcall" -> MutabilityLevel.VIEW
-          else -> null
-        }
-        "Block" -> when (name) {
-          "blockhash", "blobhash" -> MutabilityLevel.VIEW
-          else -> null
-        }
-        // only storage arrays have push and pop
-        "Array" -> if (name == "push" || name == "pop") MutabilityLevel.NONPAYABLE else null
-        "Abi", "String" -> MutabilityLevel.PURE
-        else -> null
       }
     }
 
