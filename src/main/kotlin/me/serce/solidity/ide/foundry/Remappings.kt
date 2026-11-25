@@ -1,5 +1,6 @@
 package me.serce.solidity.ide.foundry
 
+import me.serce.solidity.lang.resolve.ref.SolImportConfigService
 import me.serce.solidity.util.text
 import me.serce.solidity.util.Json
 import me.serce.solidity.chain.foundry.ForgeConfig
@@ -108,33 +109,32 @@ class RemappingsInspection : LocalInspectionTool() {
     if (!RemappingsFile.isRemappingsFile(file)) return null
     val root = RemappingsFile.root(file) ?: return null
     val problems = mutableListOf<ProblemDescriptor>()
-    var lineStart = 0
-    for (line in file.text.split('\n')) {
-      val content = line.trimEnd('\r')
+    val document = file.viewProvider.document ?: return null
+    for (line in 0 until document.lineCount) {
+      val lineRange = TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line))
+      val content = document.getText(lineRange)
       val trimmed = content.trim()
-      if (trimmed.isNotEmpty()) {
-        val start = lineStart + content.indexOf(trimmed)
-        val eq = trimmed.indexOf('=')
-        if (eq <= 0) {
-          problems += manager.createProblemDescriptor(
-            file, TextRange(start, start + trimmed.length), "A remapping has the form [context:]prefix=target",
-            ProblemHighlightType.GENERIC_ERROR, isOnTheFly
-          )
-        } else {
-          val target = trimmed.substring(eq + 1).trim()
-          val path = target.trimEnd('/')
-          val exists = path.isEmpty() || Path.of(path).isAbsolute && LocalFileSystem.getInstance().findFileByPath(path) != null ||
-            root.findFileByRelativePath(path) != null
-          if (!exists) {
-            val targetStart = start + trimmed.indexOf(target, eq + 1)
-            problems += manager.createProblemDescriptor(
-              file, TextRange(targetStart, targetStart + target.length), "Remapping target '$target' does not exist",
-              ProblemHighlightType.GENERIC_ERROR_OR_WARNING, isOnTheFly
-            )
-          }
-        }
+      if (trimmed.isEmpty()) continue
+      val start = lineRange.startOffset + content.indexOf(trimmed)
+      val remapping = SolImportConfigService.Remapping.parse(trimmed)
+      if (remapping == null) {
+        problems += manager.createProblemDescriptor(
+          file, TextRange(start, start + trimmed.length), "A remapping has the form [context:]prefix=target",
+          ProblemHighlightType.GENERIC_ERROR, isOnTheFly
+        )
+        continue
       }
-      lineStart += line.length + 1
+      val target = remapping.target
+      val path = target.trimEnd('/')
+      val exists = path.isEmpty() || Path.of(path).isAbsolute && LocalFileSystem.getInstance().findFileByPath(path) != null ||
+        root.findFileByRelativePath(path) != null
+      if (!exists) {
+        val targetStart = start + trimmed.indexOf(target, trimmed.indexOf('=') + 1)
+        problems += manager.createProblemDescriptor(
+          file, TextRange(targetStart, targetStart + target.length), "Remapping target '$target' does not exist",
+          ProblemHighlightType.GENERIC_ERROR_OR_WARNING, isOnTheFly
+        )
+      }
     }
     return problems.toTypedArray()
   }
